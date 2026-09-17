@@ -19,8 +19,8 @@
 #      agent exited.
 set -u
 
-# shellcheck source=tests/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-control-lib.sh"
 # shellcheck source=/dev/null
@@ -53,6 +53,10 @@ trap relaunch_cleanup EXIT
 make_tmux_stub() {  # <dir>
   local fb="$1/fakebin"
   mkdir -p "$fb"
+  # A Pi crewmate relaunch passes bin/fm-spawn.sh's post-launch start gate
+  # only on the worker extension's own busy record; the shared fake models
+  # that extension firing agent_start when the launch literal lands.
+  fm_test_fake_pi_start "$fb"
   cat > "$fb/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -79,6 +83,7 @@ case "${1:-}" in
         *'encode launch-brief'*)
           cat "$D/becomes" > "$D/command"
           [ -z "${FM_FAKE_LAUNCH_TRANSPORT_FAIL_AFTER_START:-}" ] || exit 1
+          "$(dirname "$0")/fm-fake-pi-start" "$payload"
           ;;
       esac
     else

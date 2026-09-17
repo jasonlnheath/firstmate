@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # Behavior tests for the Pi/pi-signed crewmate/scout launch hardening ported
 # from the Claude adapter (bin/fm-spawn.sh launch_template, the seeded agent
-# dir, and the post-launch gate):
+# dir, and the post-launch start gate):
 #   1. A crewmate launch carries the three suppression variables
 #      (PI_TELEMETRY=0, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1), the isolated
 #      PI_CODING_AGENT_DIR, --approve for per-run project trust, the
 #      first-party task-channel statement through --append-system-prompt, and
 #      the -e worker extension.
 #   2. The seeded agent dir is created under state/ with auth.json symlinked
-#      to the operator's own auth store and a telemetry-off settings.json,
-#      and a missing or empty operator store refuses the launch before any
-#      endpoint exists.
-#   3. The post-launch gate passes when no project-trust dialog renders and
-#      the busy classifier confirms the submitted brief, answers a rendered
-#      dialog exactly once and then requires extension-confirmed busy, and
-#      fails with endpoint cleanup when the dialog never clears.
+#      to the operator's own auth store and a telemetry-off settings.json; the
+#      operator's models.json and herdr-managed Pi integration are linked
+#      across when present and dropped again when absent, re-established on
+#      every launch; a missing or empty operator store refuses the launch
+#      before any endpoint exists.
+#   3. The post-launch gate passes only on the worker extension's own busy
+#      record: a worker that boots after the launch line passes once its
+#      agent_start lands, and a worker that never starts fails the spawn with
+#      a status event even though the spawn's own pre-launch seed reads busy.
 # The secondmate arm's opposite shape (suppression without the task-worker
 # statement, isolation, or --approve) is pinned in
 # tests/fm-secondmate-harness.test.sh, which owns the secondmate spawn world.
@@ -37,101 +39,17 @@ unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT CURSOR_AGENT CURSOR_IN
 SPAWN="$ROOT/bin/fm-spawn.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pi-harness)
 
-# The spawn and its gate read pane state through node-free shell only, but the
-# fake tmux writes busy records through bin/fm-busy-event.sh (a bash script),
-# so PATH must carry a shell world. Carry the invoking node dir for parity with
-# the fm-kimi-harness shape.
+# The spawn and its gate read busy state through node-free shell only, but the
+# fake worker start writes busy records through bin/fm-busy-event.sh (a bash
+# script), so PATH must carry a shell world. Carry the invoking node dir for
+# parity with the fm-kimi-harness shape.
 NODE_BIN=$(command -v node) || fail "test needs node"
 NODE_BIN_DIR=$(dirname "$NODE_BIN")
 BASE_PATH=${FM_TEST_BASE_PATH:-$NODE_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
 
 make_pi_fakebin() {
   local dir=$1 fakebin
-  fakebin=$(fm_fakebin "$dir")
-  cat > "$fakebin/tmux" <<'SH'
-#!/usr/bin/env bash
-set -u
-case "$*" in
-  *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
-esac
-case "${1:-}" in
-  display-message) printf 'firstmate\n'; exit 0 ;;
-  list-windows) exit 0 ;;
-  has-session|new-session|new-window|kill-window|set-window-option) exit 0 ;;
-  send-keys)
-    literal=
-    prev=
-    for a in "$@"; do
-      if [ "$prev" = "-l" ]; then literal=$a; break; fi
-      prev=$a
-    done
-    if [ -n "$literal" ]; then
-      printf '%s\n' "$*" >> "${FM_FAKE_TMUX_CALL_LOG:-/dev/null}"
-      case "$literal" in
-        *--append-system-prompt*)
-          printf '%s\n' "$literal" >> "${FM_FAKE_LAUNCH_LOG:?FM_FAKE_LAUNCH_LOG unset}"
-          # Pi boots after the launch line lands; the dialog (when the run is
-          # modeled as untrusted) only paints once the TUI is up, so the
-          # submit Enter below must not answer it.
-          if [ "${FM_FAKE_PI_TRUST:-clear}" = dialog ]; then
-            printf 'booting\n' > "$FM_FAKE_PI_STATE"
-          else
-            printf 'launched\n' > "$FM_FAKE_PI_STATE"
-          fi
-          ;;
-      esac
-      exit 0
-    fi
-    printf '%s\n' "$*" >> "${FM_FAKE_TMUX_CALL_LOG:-/dev/null}"
-    case " $* " in
-      *' Enter '*)
-        state=$(cat "$FM_FAKE_PI_STATE" 2>/dev/null || true)
-        case "$state" in
-          booting)
-            # The TUI came up: the trust dialog is now on screen.
-            printf 'dialog\n' > "$FM_FAKE_PI_STATE"
-            ;;
-          dialog)
-            if [ "${FM_FAKE_PI_ANSWER:-works}" = works ]; then
-              # The answered trust dialog lets pi submit the brief; the real
-              # worker extension then proves the run started. Simulate that
-              # proof exactly the way the real extension writes it: through
-              # the real writer with the gen embedded in the generated
-              # extension file.
-              ext=$(sed -n "s/.*-e '\([^']*\.pi-ext\.ts\)'.*/\1/p" "$FM_FAKE_LAUNCH_LOG" | head -1)
-              if [ -n "$ext" ] && [ -f "$ext" ]; then
-                gen=$(sed -n 's/.*"--gen", "\([^"]*\)".*/\1/p' "$ext" | head -1)
-                "$FM_TEST_FMROOT/bin/fm-busy-event.sh" apply \
-                  "$(dirname "$ext")" "$(basename "$ext" .pi-ext.ts)" busy --gen "$gen" \
-                  --source pi-ext --event agent-start >> "${FM_FAKE_PI_STATE}.applylog" 2>&1
-              fi
-              printf 'launched\n' > "$FM_FAKE_PI_STATE"
-            fi
-            ;;
-        esac
-        ;;
-    esac
-    exit 0
-    ;;
-  capture-pane)
-    state=$(cat "$FM_FAKE_PI_STATE" 2>/dev/null || true)
-    case "$state" in
-      dialog)
-        printf '────────────\n Project trust\n %s\n Saved decision: none\n Current session: untrusted\n → Trust\n   Trust parent folder (/)\n   Do not trust\n ↑↓ navigate  Enter save  Esc cancel\n────────────\n' "$FM_FAKE_PANE_PATH"
-        ;;
-      launched)
-        printf 'Welcome to Pi.\n Type a message\n'
-        ;;
-      *)
-        printf 'shell starting\n$ \n'
-        ;;
-    esac
-    exit 0
-    ;;
-esac
-exit 0
-SH
-  chmod +x "$fakebin/tmux"
+  fakebin=$(fm_test_make_spawn_fakebin "$dir" gh-axi gh)
   cat > "$fakebin/pi" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -143,7 +61,6 @@ echo "fake pi must never execute" >&2
 exit 9
 SH
   chmod +x "$fakebin/pi"
-  fm_fake_exit0 "$fakebin" treehouse gh-axi gh
   printf '%s\n' "$fakebin"
 }
 
@@ -163,8 +80,6 @@ make_pi_spawn_case() {
   printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
     >"$home/user-home/.pi/agent/auth.json"
   : > "$case_dir/launch.log"
-  : > "$case_dir/tmux-calls.log"
-  printf 'launched\n' > "$case_dir/pi.state"
   printf '%s\n' "$case_dir|$home|$proj|$wt|$fakebin"
 }
 
@@ -182,23 +97,12 @@ run_pi_spawn() {
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$wt" TMUX="fake,1,0" \
     FM_FAKE_LAUNCH_LOG="$case_dir/launch.log" \
-    FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
-    FM_FAKE_PI_STATE="$case_dir/pi.state" \
-    FM_FAKE_PI_TRUST="${FM_FAKE_PI_TRUST:-clear}" \
-    FM_FAKE_PI_ANSWER="${FM_FAKE_PI_ANSWER:-works}" \
-    FM_PI_READY_POLLS=4 FM_PI_POLL_INTERVAL=0 \
-    FM_TEST_FMROOT="$ROOT" \
+    FM_FAKE_PI_START="${FM_FAKE_PI_START:-now}" \
+    FM_PI_READY_POLLS="${FM_PI_READY_POLLS:-40}" FM_PI_POLL_INTERVAL=0.05 \
     PI_CODING_AGENT_DIR='' \
     HOME="$home/user-home" \
     PATH="$fakebin:$BASE_PATH" \
     "$SPAWN" "$id" "$PROJ_DIR" --harness pi --mode no-mistakes --yolo off "$@" 2>&1
-}
-
-enters_after_launch() {  # <tmux-call-log>
-  # The spawn types treehouse get, two exports, the launch literal, and one
-  # submit Enter before the gate runs; any Enter past that submit is a
-  # gate-generated dialog answer.
-  sed -n '/--append-system-prompt/,$p' "$1" | grep 'Enter' | tail -n +2 | wc -l
 }
 
 test_pi_crewmate_launch_carries_the_ported_hardening() {
@@ -224,7 +128,8 @@ test_pi_crewmate_launch_carries_the_ported_hardening() {
   assert_not_contains "$launch" "__PI" "pi launch left a Pi placeholder unsubstituted"
   assert_not_contains "$launch" "__MODELFLAG__" "pi launch left its model placeholder unsubstituted"
   # The seed dir: auth symlink to the throwaway operator store, telemetry-off
-  # settings, and nothing else written.
+  # settings, and no provider catalog or herdr integration link when the
+  # operator has neither.
   seed="$HOME_DIR/state/pi-worker-agent"
   assert_present "$seed/auth.json" "pi seed did not link an auth store"
   [ -L "$seed/auth.json" ] || fail "pi seed auth.json must be a symlink, never a secret copy"
@@ -232,6 +137,9 @@ test_pi_crewmate_launch_carries_the_ported_hardening() {
     || fail "pi seed auth.json must point at the operator's own store"
   [ "$(cat "$seed/settings.json")" = '{"enableInstallTelemetry":false}' ] \
     || fail "pi seed settings.json must be the minimal telemetry-off seed"
+  assert_absent "$seed/models.json" "pi seed must not carry a models.json when the operator has none"
+  assert_absent "$seed/extensions/herdr-agent-state.ts" \
+    "pi seed must not carry a herdr integration the operator never installed"
   pass "fm-spawn: pi crewmate launch carries suppression, isolation, trust grant, task-channel statement, and a seeded agent dir"
 }
 
@@ -250,48 +158,88 @@ test_pi_seed_fails_closed_without_operator_credentials() {
   pass "fm-spawn: pi crewmate launch refuses when the operator auth store is missing"
 }
 
-test_pi_gate_accepts_the_dialog_free_path_on_a_single_enter() {
-  local id rec out rc enters
-  id="pi-clear-z1-$$"
-  rec=$(make_pi_spawn_case clear "$id")
+# Pi reads models.json from the agent dir only, so a seed without the
+# operator's catalog would silently reroute every custom-provider dispatch
+# (a local llama-server, a proxy) onto whichever cloud model the auth store
+# unlocks first. The herdr-managed Pi integration is what reports
+# agent_status to `herdr agent get`. Both are linked, never copied, and
+# re-established on every launch so the seed tracks the operator's store.
+test_pi_seed_links_operator_models_and_herdr_integration_per_launch() {
+  local id id2 rec out rc seed agent
+  id="pi-models-z1-$$"
+  id2="pi-models-z2-$$"
+  rec=$(make_pi_spawn_case models "$id")
   read_pi_spawn_record "$rec"
+  agent="$HOME_DIR/user-home/.pi/agent"
+  mkdir -p "$agent/extensions"
+  printf '%s\n' '{"providers":{"local":{"baseUrl":"http://127.0.0.1:8036/v1","api":"openai-completions","models":[{"id":"local-model"}]}}}' \
+    >"$agent/models.json"
+  printf '%s\n' '// installed by herdr' '// HERDR_INTEGRATION_ID=pi' 'export default function () {}' \
+    >"$agent/extensions/herdr-agent-state.ts"
   out=$(run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
   rc=$?
-  expect_code 0 "$rc" "the dialog-free path should pass the gate: $out"
-  enters=$(enters_after_launch "$CASE_DIR/tmux-calls.log")
-  [ "$enters" -eq 0 ] || fail "the dialog-free path must answer nothing, sent $enters Enters"
-  pass "fm-spawn: pi gate passes the --approve path without answering anything"
+  expect_code 0 "$rc" "pi crewmate spawn should succeed: $out"
+  seed="$HOME_DIR/state/pi-worker-agent"
+  [ -L "$seed/models.json" ] || fail "pi seed must link the operator's models.json, never copy it"
+  [ "$(readlink "$seed/models.json")" = "$agent/models.json" ] \
+    || fail "pi seed models.json must point at the operator's own catalog"
+  [ "$(cat "$seed/models.json")" = "$(cat "$agent/models.json")" ] \
+    || fail "the worker must read the operator's live provider catalog through the seed"
+  [ -L "$seed/extensions/herdr-agent-state.ts" ] \
+    || fail "pi seed must link the operator's herdr-managed Pi integration"
+  [ "$(readlink "$seed/extensions/herdr-agent-state.ts")" = "$agent/extensions/herdr-agent-state.ts" ] \
+    || fail "pi seed herdr integration must point at the herdr-managed file"
+
+  # The operator removes both; the next launch must drop the links rather
+  # than leave the worker on a stale catalog or a dangling extension.
+  rm -f "$agent/models.json" "$agent/extensions/herdr-agent-state.ts"
+  fm_test_spawn_brief "$HOME_DIR" "$id2"
+  out=$(run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id2")
+  rc=$?
+  expect_code 0 "$rc" "second pi crewmate spawn should succeed: $out"
+  [ ! -L "$seed/models.json" ] && [ ! -e "$seed/models.json" ] \
+    || fail "pi seed must drop the models.json link once the operator has no catalog"
+  [ ! -L "$seed/extensions/herdr-agent-state.ts" ] && [ ! -e "$seed/extensions/herdr-agent-state.ts" ] \
+    || fail "pi seed must drop the herdr integration link once it is uninstalled"
+  pass "fm-spawn: pi seed links the operator's models.json and herdr integration and re-establishes both per launch"
 }
 
-test_pi_gate_answers_a_rendered_dialog_once_then_requires_extension_proof() {
-  local id rec out rc enters verdict
-  id="pi-dialog-z1-$$"
-  rec=$(make_pi_spawn_case dialog "$id")
+# The spawn arms busy/fm-spawn before it types the launch line, so a gate
+# that accepted any trusted busy verdict would pass before Pi had even
+# booted. A worker that comes up after the launch line and fires agent_start
+# passes; the pass must rest on the extension's own record.
+test_pi_gate_waits_for_the_worker_extension_start() {
+  local id rec out rc verdict
+  id="pi-start-z1-$$"
+  rec=$(make_pi_spawn_case start "$id")
   read_pi_spawn_record "$rec"
-  out=$(FM_FAKE_PI_TRUST=dialog run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  out=$(FM_FAKE_PI_START=delayed run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
   rc=$?
-  expect_code 0 "$rc" "an answered dialog followed by a running turn should pass: $out"
-  enters=$(enters_after_launch "$CASE_DIR/tmux-calls.log")
-  [ "$enters" -eq 1 ] || fail "a rendered dialog must be answered exactly once, post-launch Enters sent: $enters"
+  expect_code 0 "$rc" "a worker that boots and fires agent_start should pass the gate: $out"
   verdict=$(fm_busy_classify tmux fake:w pi "$id" "$HOME_DIR/state")
   [ "$verdict" = "busy pi-ext" ] \
-    || fail "the post-dialog pass must rest on extension-confirmed busy, got '$verdict'"
-  pass "fm-spawn: pi gate answers a rendered trust dialog once and requires extension-confirmed busy"
+    || fail "the gate's pass must rest on extension-confirmed busy, got '$verdict'"
+  assert_contains "$out" "spawned $id" "a passed gate must report the spawn"
+  pass "fm-spawn: pi gate waits past the pre-launch seed for the worker extension's agent_start"
 }
 
-test_pi_gate_fails_and_cleans_up_when_the_dialog_never_clears() {
+# A Pi that dies on boot, parks on a diagnostic, or never fires agent_start
+# leaves only the spawn's own seed behind; the seed must never count as
+# proof of a started worker.
+test_pi_gate_fails_when_the_worker_never_starts() {
   local id rec out rc
-  id="pi-stuck-z1-$$"
-  rec=$(make_pi_spawn_case stuck "$id")
+  id="pi-dead-z1-$$"
+  rec=$(make_pi_spawn_case dead "$id")
   read_pi_spawn_record "$rec"
-  out=$(FM_FAKE_PI_TRUST=dialog FM_FAKE_PI_ANSWER=stuck run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  out=$(FM_FAKE_PI_START=never FM_PI_READY_POLLS=6 run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
   rc=$?
-  expect_code 1 "$rc" "a dialog that never clears must fail the spawn"
-  assert_contains "$out" "did not start processing its brief after the project-trust dialog was answered" \
-    "the failure must name the answered-dialog wedge"
+  expect_code 1 "$rc" "a worker that never starts must fail the spawn"
+  assert_contains "$out" "worker extension never reported agent_start" \
+    "the failure must name the missing start proof"
   assert_grep "failed: pi did not start processing its brief" "$HOME_DIR/state/$id.status" \
     "the failed gate must append a failed status event"
-  pass "fm-spawn: pi gate fails the spawn with a status event when the trust dialog wedges"
+  assert_not_contains "$out" "spawned $id" "a failed gate must never report the spawn"
+  pass "fm-spawn: pi gate fails the spawn with a status event when the worker never starts"
 }
 
 test_pi_crewmate_launch_never_strips_project_reach() {
@@ -310,9 +258,9 @@ test_pi_crewmate_launch_never_strips_project_reach() {
 
 test_pi_crewmate_launch_carries_the_ported_hardening
 test_pi_seed_fails_closed_without_operator_credentials
-test_pi_gate_accepts_the_dialog_free_path_on_a_single_enter
-test_pi_gate_answers_a_rendered_dialog_once_then_requires_extension_proof
-test_pi_gate_fails_and_cleans_up_when_the_dialog_never_clears
+test_pi_seed_links_operator_models_and_herdr_integration_per_launch
+test_pi_gate_waits_for_the_worker_extension_start
+test_pi_gate_fails_when_the_worker_never_starts
 test_pi_crewmate_launch_never_strips_project_reach
 
 echo "all fm-pi-harness tests passed"

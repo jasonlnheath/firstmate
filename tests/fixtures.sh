@@ -104,6 +104,7 @@ fm_test_fake_gh_axi() {
 # suites that do not set FM_FAKE_LAUNCH_LOG keep a silent send-keys.
 fm_test_fake_tmux_spawn() {
   local fakebin=$1
+  fm_test_fake_pi_start "$fakebin"
   cat > "$fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -120,15 +121,16 @@ case "${1:-}" in
     ;;
   has-session|new-session|new-window|kill-window|set-window-option) exit 0 ;;
   send-keys)
-    if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
-      prev=
-      for a in "$@"; do
-        if [ "$prev" = "-l" ]; then
+    prev=
+    for a in "$@"; do
+      if [ "$prev" = "-l" ]; then
+        if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
           printf '%s\n' "$a" >> "$FM_FAKE_LAUNCH_LOG"
         fi
-        prev=$a
-      done
-    fi
+        "$(dirname "$0")/fm-fake-pi-start" "$a"
+      fi
+      prev=$a
+    done
     # The pre-launch pane exports ride the text-line form
     # (`send-keys -t <target> <text> Enter`), which carries no -l flag, so a
     # suite that asserts on what the pane shell received opts in with its own
@@ -154,6 +156,44 @@ esac
 exit 0
 SH
   chmod +x "$fakebin/tmux"
+}
+
+# fm_test_fake_pi_start <fakebin>
+# Writes <fakebin>/fm-fake-pi-start, the stand-in for a launched Pi worker's
+# generated extension firing agent_start. A fake tmux hands it every typed
+# launch literal; a Pi crewmate launch (one carrying -e '<state>/<id>.pi-ext.ts')
+# makes it write the busy record exactly the way the real extension does -
+# through the real bin/fm-busy-event.sh writer, with the gen embedded in the
+# generated extension file - so bin/fm-spawn.sh's post-launch start gate
+# reads extension-confirmed busy. Any other literal is ignored. Env knobs:
+#   FM_FAKE_PI_START=never    the worker never starts (a Pi that dies on
+#                             boot or never fires agent_start); nothing is
+#                             written and the gate must time out
+#   FM_FAKE_PI_START=delayed  the worker boots after the launch: the record
+#                             lands 0.2s later, so the gate's first polls see
+#                             only the spawn's own pre-launch seed
+fm_test_fake_pi_start() {
+  local fakebin=$1
+  {
+    printf '#!/usr/bin/env bash\nset -u\nFM_BUSY_EVENT=%q\n' "$ROOT/bin/fm-busy-event.sh"
+    cat <<'SH'
+[ "${FM_FAKE_PI_START:-now}" != never ] || exit 0
+ext=$(printf '%s\n' "${1:-}" | sed -n "s/.*-e '\([^']*\.pi-ext\.ts\)'.*/\1/p" | head -1)
+[ -n "$ext" ] && [ -f "$ext" ] || exit 0
+gen=$(sed -n 's/.*"--gen", "\([^"]*\)".*/\1/p' "$ext" | head -1)
+apply() {
+  "$FM_BUSY_EVENT" apply "$(dirname "$ext")" "$(basename "$ext" .pi-ext.ts)" busy \
+    --gen "$gen" --source pi-ext --event agent-start >/dev/null 2>&1
+}
+if [ "${FM_FAKE_PI_START:-now}" = delayed ]; then
+  ( /bin/sleep 0.2; apply ) &
+else
+  apply
+fi
+exit 0
+SH
+  } > "$fakebin/fm-fake-pi-start"
+  chmod +x "$fakebin/fm-fake-pi-start"
 }
 
 # fm_test_fake_tmux_send <fakebin>

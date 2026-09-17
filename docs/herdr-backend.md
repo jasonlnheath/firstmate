@@ -296,6 +296,7 @@ The generic Herdr agent-liveness probe reuses that pane classifier, then applies
 A structurally gone pane or a pane read from a session positively reported as having no running server becomes `missing`, a restored agent-less shell and a stale registration over a shell-only pane both become `dead`, a registered agent with a live process becomes `alive`, and every other unexpected read becomes `unreadable`.
 Neither the stopped-server exception nor the stale-registration verdict widens husk detection or any close authority; those paths still refuse an unreadable pane, and a `stale-agent` pane is reused by recovery, never closed as a husk, because the shell it holds may be a nested worktree shell.
 Native registration still identifies Pi by name where tmux would see a generic interpreter; the process-level proof only decides whether that registration is backed by a running process.
+That registration comes from the herdr-managed Pi extension (`~/.pi/agent/extensions/herdr-agent-state.ts`, installed by Herdr's Pi integration); a Pi crewmate runs on an isolated agent dir, so [`bin/fm-spawn.sh`](../bin/fm-spawn.sh) links that one file into the worker seed on every launch, which is what keeps `agent get` reporting for crew panes.
 `tests/fm-backend-herdr-agent-exit-shell-e2e.test.sh` pins the live-Pi versus leftover-shell distinction; [`verification/runtime-backends.md`](verification/runtime-backends.md#agent-lifecycle-control) owns the versioned evidence.
 
 The session-start sweep uses this probe.

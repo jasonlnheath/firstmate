@@ -90,19 +90,22 @@ test_pi_extension_semantic_lifecycle() {
   ext="$state/$id.pi-ext.ts"
   assert_present "$ext" "pi spawn did not write the per-task extension"
 
+  # The spawn only reports success once the launched worker's extension has
+  # confirmed agent_start (the shared fake models it), so the post-spawn
+  # state is extension-confirmed busy, not the spawn's own pre-launch seed.
   out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "seed after spawn must be 'busy fm-spawn', got '$out'"
+  [ "$out" = "busy pi-ext" ] || fail "state after a passed spawn must be 'busy pi-ext', got '$out'"
 
   rm -f "$state/$id.turn-ended"
   out=$(drive_pi_ext "$ext" progress) || fail "native progress drive failed: $out"
   [ -f "$state/$id.progress" ] || fail "native progress did not write its separate marker"
   [ ! -e "$state/$id.turn-ended" ] || fail "native progress fabricated a completed turn"
   out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "native progress changed semantic state: $out"
+  [ "$out" = "busy pi-ext" ] || fail "native progress changed semantic state: $out"
   out=$(drive_pi_ext "$ext" turn-end) || fail "turn_end drive failed: $out"
   [ -f "$state/$id.turn-ended" ] || fail "turn_end no longer touches the notification marker"
   out=$(classify pi "$id" "$state")
-  [ "$out" = "busy fm-spawn" ] || fail "turn_end must stay a notification, not a state edge, got '$out'"
+  [ "$out" = "busy pi-ext" ] || fail "turn_end must stay a notification, not a state edge, got '$out'"
 
   out=$(drive_pi_ext "$ext" settle-idle) || fail "agent_settled drive failed: $out"
   out=$(classify pi "$id" "$state")
