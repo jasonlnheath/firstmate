@@ -2521,8 +2521,10 @@ test_pi_secondmate_launch_suppresses_without_the_task_worker_shape() {
   status=$?
   expect_code 0 "$status" "pi secondmate spawn should succeed: $out"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "PI_TELEMETRY=0 PI_OFFLINE=1 PI_SKIP_VERSION_CHECK=1" \
-    "pi secondmate launch did not suppress telemetry and startup network operations"
+  assert_contains "$launch" "PI_TELEMETRY=0 PI_SKIP_VERSION_CHECK=1" \
+    "pi secondmate launch did not suppress telemetry and the version check"
+  assert_not_contains "$launch" "PI_OFFLINE" \
+    "pi secondmate launch must not cut off catalog refresh or tool download"
   assert_not_contains "$launch" "PI_CODING_AGENT_DIR" \
     "a pi secondmate is a primary and must read its own home, not a seeded worker dir"
   assert_not_contains "$launch" "--approve" \

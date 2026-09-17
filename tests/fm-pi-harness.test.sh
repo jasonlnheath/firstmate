@@ -2,8 +2,8 @@
 # Behavior tests for the Pi/pi-signed crewmate/scout launch hardening ported
 # from the Claude adapter (bin/fm-spawn.sh launch_template, the seeded agent
 # dir, and the post-launch start gate):
-#   1. A crewmate launch carries the three suppression variables
-#      (PI_TELEMETRY=0, PI_OFFLINE=1, PI_SKIP_VERSION_CHECK=1), the isolated
+#   1. A crewmate launch carries the two suppression variables
+#      (PI_TELEMETRY=0, PI_SKIP_VERSION_CHECK=1) and never PI_OFFLINE, the isolated
 #      PI_CODING_AGENT_DIR, --approve for per-run project trust, the
 #      first-party task-channel statement through --append-system-prompt, and
 #      the -e worker extension.
@@ -117,7 +117,7 @@ test_pi_crewmate_launch_carries_the_ported_hardening() {
   assert_contains "$launch" "$FAKEBIN_DIR/pi" "pi launch did not pin the resolved absolute binary"
   assert_contains "$launch" "--tui-mode regular" "pi launch omitted the advertised regular-TUI override"
   assert_contains "$launch" "PI_TELEMETRY=0" "pi launch did not suppress install telemetry"
-  assert_contains "$launch" "PI_OFFLINE=1" "pi launch did not disable startup network operations"
+  assert_not_contains "$launch" "PI_OFFLINE" "pi launch must keep catalog refresh and tool download reachable; PI_OFFLINE exceeds the telemetry-suppression port"
   assert_contains "$launch" "PI_SKIP_VERSION_CHECK=1" "pi launch did not disable the version check"
   assert_contains "$launch" "PI_CODING_AGENT_DIR=" "pi launch did not isolate the worker's agent dir"
   assert_contains "$launch" "--approve" "pi launch did not grant per-run project trust"
@@ -159,9 +159,9 @@ test_pi_seed_fails_closed_without_operator_credentials() {
 }
 
 # Pi reads models.json from the agent dir only, so a seed without the
-# operator's catalog would silently reroute every custom-provider dispatch
-# (a local llama-server, a proxy) onto whichever cloud model the auth store
-# unlocks first. The herdr-managed Pi integration is what reports
+# operator's catalog would fail --model resolution for every custom-provider
+# dispatch (a local llama-server, a proxy): Pi 0.85.1 exits 1 on that before
+# the TUI, and the start gate would time out on the dead pane. The herdr-managed Pi integration is what reports
 # agent_status to `herdr agent get`. Both are linked, never copied, and
 # re-established on every launch so the seed tracks the operator's store.
 test_pi_seed_links_operator_models_and_herdr_integration_per_launch() {
