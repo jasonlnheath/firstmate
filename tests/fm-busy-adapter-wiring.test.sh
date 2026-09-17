@@ -53,7 +53,7 @@ classify() {  # <harness> <id> <state-dir>
 
 # drive_pi_ext <ext-path> <mode>: load the generated Pi extension in a plain
 # Node host and fire one lifecycle handler. Modes: agent-start, settle-idle,
-# settle-continuing, turn-end.
+# settle-continuing, turn-end, shutdown.
 drive_pi_ext() {
   EXT_PATH="$1" MODE="$2" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
@@ -70,6 +70,7 @@ switch (process.env.MODE) {
     await handlers["agent_start"]({}, ctx);
     break;
   case "turn-end": await handlers["turn_end"]({}, ctx); break;
+  case "shutdown": await handlers["session_shutdown"]({}, ctx); break;
   case "progress": await handlers["codex-native:progress"]({ type: "commandExecution", phase: "completed" }); break;
   default: throw new Error("unknown mode " + process.env.MODE);
 }
@@ -134,6 +135,33 @@ test_pi_extension_serializes_settle_before_next_start() {
   out=$(classify pi "$id" "$state")
   [ "$out" = "busy pi-ext" ] || fail "a fresh agent_start after agent_settled must win, got '$out'"
   pass "pi extension awaits agent_settled before the next agent_start without a test delay"
+}
+
+# The Claude worker contract closes busy on Stop, StopFailure, AND SessionEnd
+# so an abnormal end can never leave a stale busy record. Pi's worker
+# extension must close on session_shutdown the same way: an orderly end that
+# never reaches agent_settled (quit, process exit, a same-process /new or
+# /resume replacement) still releases, and the release never fabricates a
+# completed turn.
+test_pi_extension_shutdown_releases_busy() {
+  local rec id=busy-pi-shutdown out state ext
+  rec=$(make_spawn_case pi-shutdown pi "$id")
+  read_case_record "$rec"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  expect_code 0 $? "pi spawn should succeed: $out"
+  state="$HOME_DIR/state"
+  ext="$state/$id.pi-ext.ts"
+
+  out=$(drive_pi_ext "$ext" agent-start) || fail "agent_start drive failed: $out"
+  out=$(classify pi "$id" "$state")
+  [ "$out" = "busy pi-ext" ] || fail "agent_start must classify busy before shutdown, got '$out'"
+
+  rm -f "$state/$id.turn-ended"
+  out=$(drive_pi_ext "$ext" shutdown) || fail "session_shutdown drive failed: $out"
+  out=$(classify pi "$id" "$state")
+  [ "$out" = "idle pi-ext" ] || fail "session_shutdown must release busy, got '$out'"
+  [ ! -e "$state/$id.turn-ended" ] || fail "session_shutdown fabricated a completed turn"
+  pass "pi extension releases busy on session_shutdown without fabricating a completed turn"
 }
 
 test_pi_extension_stale_incarnation_rejected() {
@@ -424,6 +452,7 @@ test_kimi_and_grok_install_no_unverified_wiring() {
 
 test_pi_extension_semantic_lifecycle
 test_pi_extension_serializes_settle_before_next_start
+test_pi_extension_shutdown_releases_busy
 test_pi_extension_stale_incarnation_rejected
 test_kimi_and_grok_install_no_unverified_wiring
 test_opencode_plugin_semantic_lifecycle

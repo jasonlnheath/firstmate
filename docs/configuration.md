@@ -332,6 +332,7 @@ Kimi remains outside the primary turn-end guard integrations; [`docs/turnend-gua
 Primary-session watcher wake protocols are rendered at session start by [`bin/fm-supervision-instructions.sh`](../bin/fm-supervision-instructions.sh) from [`docs/supervision-protocols/`](supervision-protocols/).
 Claude's Stop `asyncRewake` hook owns tokenless re-arm cycles, Cursor's stop hook parks on the watcher, Grok uses background-notify cycles, Codex uses bounded foreground checkpoints, Pi and pi-signed use the same two tracked primary extensions, omp uses its own two tracked `.omp/extensions/` files with a blocking `session_stop` turn-end hook, and OpenCode uses its TUI plugin.
 `config/crew-harness` is a local, gitignored file containing one adapter name for crewmate and scout launches.
+See [`docs/examples/crew-harness-pi.md`](examples/crew-harness-pi.md) for a thin Pi-first example of this file.
 When pi-signed is selected, Firstmate preserves `FM_PI_HARNESS=pi-signed` and refuses the launch if the selected executable is unavailable rather than falling back to pi; [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns executable resolution and launch mechanics.
 Plain Pi launches set `FM_PI_HARNESS=pi`, so a signed primary's environment cannot relabel a plain Pi worker.
 When it is absent or contains `default`, crewmates mirror the firstmate's own harness.

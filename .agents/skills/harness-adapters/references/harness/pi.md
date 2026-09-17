@@ -1,18 +1,19 @@
 # Pi and Pi-signed
 
 The combined contract is genuine: Pi and the signed wrapper expose the same verified CLI and TUI behavior.
-Verified on 2026-07-27 with Pi and Pi-signed 0.82.0 unless a fact gives another version.
+Worker launch facts re-verified on 2026-09-17 against installed Pi 0.85.1 (help, dist, and a live disposable session) unless a fact gives another version.
+`pi-signed` is an optional distribution, not a Pi install prerequisite: it is not installed on this Linux machine, its adapter tables stay valid from the 0.82.0 verification, and selection refuses rather than falls back when the wrapper is absent.
 
 ## Operating facts
 
 | Fact | Value |
 |---|---|
-| Busy state | The Firstmate-owned extension's `agent_start` marks busy and `agent_settled`, confirmed by `ctx.isIdle()`, marks idle; this covers retries, compaction, tool loops, and queued continuations. |
+| Busy state | The Firstmate-owned extension's `agent_start` marks busy and `agent_settled`, confirmed by `ctx.isIdle()`, marks idle; `session_shutdown` also marks idle, so every orderly end closes (quit, process exit, same-process replacement); this covers retries, compaction, tool loops, and queued continuations. |
 | Exit command | `/quit`. |
-| Interrupt | Single Escape. |
-| Skill invocation | No separate verified form beyond normal command behavior; use natural language when the exact command is uncertain. |
+| Interrupt | Single Escape; a manual interrupt fires `turn_end` and `agent_settled` (live-verified 2026-09-17 on 0.85.1), so unlike Claude the busy record closes natively on interrupt. |
+| Skill invocation | `/skill:<name>`, for example `/skill:no-mistakes`; live-verified 2026-09-17 on 0.85.1 that the command loads and the model begins executing the named skill (this is what `enableSkillCommands` registers by default). |
 | Model flag | `--model <model>`. |
-| Effort flag | `--thinking <low\|medium\|high\|xhigh\|max>`; both identities expose the same levels and completed the same model-qualified max-thinking smoke. |
+| Effort flag | `--thinking <low\|medium\|high\|xhigh\|max>`; 0.85.1 also accepts `off` and `minimal`, which sit below the shared vocabulary's floor and are deliberately unreachable rather than remapped onto low, and both identities expose the same levels and completed the same model-qualified max-thinking smoke. |
 | Model discovery | Run the selected executable as `<executable> --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
 
 Native Codex sessions may request `ultra` through the native extension flag described by `../../../bin/fm-spawn.sh`; it is separate from Pi's thinking levels.
@@ -31,13 +32,25 @@ Keep the instructions as one positional argument.
 Multiple positional arguments become separate queued messages; the spawn template already preserves the one-argument shape.
 
 A project trust dialog can appear on the first Pi run in any not-yet-trusted directory, including a clean worktree.
-Accept it with Enter and verify the instructions begin processing.
-The decision persists per path in `~/.pi/agent/trust.json`, so later spawns in the same pooled slot skip it.
+Firstmate crewmate and scout launches grant project trust per run with `--approve`, so the dialog never renders, and the post-launch gate answers a rendered dialog once with the preselected Trust option and then requires the busy record before the spawn reports success.
+The per-run grant writes no standing consent; human sessions and secondmate launches still meet the dialog, and a decision persists per path in the agent dir's `trust.json`, so later human spawns in the same pooled slot skip it.
+Before trust resolves, Pi loads context files, user/global extensions, and CLI `-e` extensions, so brief delivery is never gated, but project `.agents/skills` only become reachable once trust resolves.
+
+## Task-worker launch hardening
+
+`../../../bin/fm-spawn.sh` ports the Claude adapter's launch hygiene to every Pi crewmate and scout launch; a `--secondmate` launch is a primary under its own supervisor contract and carries only the suppression variables.
+`--append-system-prompt` establishes the same first-party task-channel statement Claude workers get: the brief and the Firstmate instruction inbox are first-party, everything else stays untrusted, and the statement grants no merge, destructive, or security-sensitive authority.
+`PI_CODING_AGENT_DIR` points the worker at a deliberately seeded per-home directory under the supervising home's `state/pi-worker-agent/`, keeping the operator's global `AGENTS.md`, skills, extensions, settings, and session history out of the worker.
+The seed carries a symlinked `auth.json` to the operator's own store (never a copy, re-established every launch, launch refused when the store is missing) and a telemetry-off `settings.json`; worker session transcripts land under the seed's `sessions/` by design, retained rather than auto-deleted.
+Isolation never strips project reach: project context files load from the working directory regardless of the agent dir, project `.agents/skills` stay reachable through per-run trust, and the home-level `~/.agents/skills/` directory is outside `PI_CODING_AGENT_DIR`'s reach by Pi's own discovery design, which is load-bearing because the `no-mistakes` skill lives there.
+`PI_TELEMETRY=0`, `PI_OFFLINE=1`, and `PI_SKIP_VERSION_CHECK=1` suppress install telemetry, every startup network operation (model API calls and the bundled model catalog are runtime, not startup), and the version check for this launch only.
+Pi ships no model-drafted feedback tool, so unlike Claude there is no feedback surface to suppress.
 
 ## Worker turn-end extension
 
 `../../../bin/fm-spawn.sh` keeps the worker turn-end extension in `state/`, outside the worktree, because project-local extension files worsen the trust gate and pollute the project.
 The extension listens for Pi's `turn_end` event, not `agent_end`, so supervision is notified after each completed turn rather than only when the whole run exits.
+`session_shutdown` releases busy the same way Claude's `SessionEnd` hook does, so an orderly end that never reaches `agent_settled` can never leave a stale busy record; live-verified 2026-09-17 on 0.85.1 that `/quit` fires it, while process death fires nothing and remains the endpoint-death override.
 Native-harness progress uses the separate generation-bound marker owned by `../../../bin/fm-busy-event.sh`; it never fabricates Pi turn completion.
 Pi sets `PI_CODING_AGENT=true` for its children as its harness-detection marker.
 
