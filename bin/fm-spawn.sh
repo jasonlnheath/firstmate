@@ -157,9 +157,9 @@
 #   that is empty or "default" (`fm-harness.sh validate-worker-model`, because
 #   the seed carries no saved default) refuses before any endpoint or per-task
 #   state exists, and a launch with no credential source Pi could use - no
-#   provider entry in the operator auth store, no provider carrying its own
-#   apiKey in the operator models.json, and no credential variable Pi reads
-#   for the pinned model's provider - refuses when the launch line is
+#   provider entry in the operator auth store, no apiKey of its own on the
+#   pinned model's provider in the operator models.json, and no credential
+#   variable Pi reads for that provider - refuses when the launch line is
 #   assembled. A start-gate failure records the pane's last output on its
 #   failed: status event before the endpoint is closed. The
 #   harness-adapters skill's pi reference owns the knowledge half.
@@ -1656,7 +1656,7 @@ pi_seed_worker_agent_dir() {  # <model>
   local src_herdr="$src_dir/extensions/herdr-agent-state.ts"
   mkdir -p "$seed/extensions" || return 1
   if ! pi_worker_credential_present "$src_auth" "$src_models" "$1"; then
-    echo "error: no Pi credentials for a $HARNESS worker: $src_auth holds no provider entry, $src_models declares no provider with its own apiKey, and $(pi_env_credential_description "$1"); refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi (pi auth), give the provider an apiKey in models.json, export its credential variable, or select another crew harness" >&2
+    echo "error: no Pi credentials for a $HARNESS worker: $src_auth holds no provider entry, $(pi_models_json_credential_description "$src_models" "$1"), and $(pi_env_credential_description "$1"); refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi (pi auth), give the provider an apiKey in models.json, export its credential variable, or select another crew harness" >&2
     return 1
   fi
   ln -sfn "$src_auth" "$seed/auth.json" || return 1
@@ -1678,26 +1678,35 @@ pi_seed_worker_agent_dir() {  # <model>
 }
 
 # The credential sources Pi 0.85.1 resolves a model through, any one of which
-# lets a worker run: a provider entry in auth.json (/login or `pi auth`), a
-# provider in models.json carrying its own apiKey (a literal, a dummy value
-# for a keyless local server, $ENV interpolation, or a !command - Pi's
-# docs/models.md), or the environment variable Pi reads for the pinned
-# model's built-in provider. The variable is checked in this process's
-# environment, which the launched pane's login shell shares on a normally
-# configured host.
+# lets a worker run: a provider entry in auth.json (/login or `pi auth`), the
+# pinned model's provider carrying its own apiKey in models.json (a literal,
+# a dummy value for a keyless local server, $ENV interpolation, or a
+# !command - Pi's docs/models.md), or the environment variable Pi reads for
+# the pinned model's built-in provider. The last two are scoped to the
+# provider the pin names, so a pin nothing keys refuses up front instead of
+# dying in the pane. The variable is checked in this process's environment,
+# which the launched pane's login shell shares on a normally configured
+# host.
 pi_worker_credential_present() {  # <auth.json> <models.json> <model>
   local provider name
   if [ -s "$1" ] && [ "$(tr -d '[:space:]' <"$1")" != '{}' ]; then
     return 0
   fi
-  if [ -f "$2" ] && jq -e '[(.providers // {})[]? | select(type == "object" and ((.apiKey // "") | tostring) != "")] | length > 0' "$2" >/dev/null 2>&1; then
+  case "$3" in */*) provider=${3%%/*} ;; *) return 1 ;; esac
+  if [ -f "$2" ] && jq -e --arg p "$provider" '(.providers // {})[$p]? | type == "object" and ((.apiKey // "") | tostring) != ""' "$2" >/dev/null 2>&1; then
     return 0
   fi
-  case "$3" in */*) provider=${3%%/*} ;; *) return 1 ;; esac
   for name in $(pi_provider_env_credentials "$provider"); do
     [ -z "${!name:-}" ] || return 0
   done
   return 1
+}
+
+pi_models_json_credential_description() {  # <models.json> <model>
+  case "$2" in
+  */*) printf '%s declares no %s provider with its own apiKey' "$1" "${2%%/*}" ;;
+  *) printf 'model %s names no provider whose models.json apiKey could stand in' "$2" ;;
+  esac
 }
 
 pi_env_credential_description() {  # <model>
@@ -3802,7 +3811,7 @@ pi_wait_for_working() {
 pi_spawn_fail() {  # <detail>
   local tail
   tail=$(fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null \
-    | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -n "${FM_PI_FAIL_TAIL_LINES:-8}" | paste -sd '|' -) || tail=
+    | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -n 8 | paste -sd '|' -) || tail=
   if [ -n "$tail" ]; then
     printf 'failed: %s; last pane output: %s\n' "$1" "$tail" >>"$STATE/$ID.status"
     echo "error: $1; last pane output: $tail" >&2

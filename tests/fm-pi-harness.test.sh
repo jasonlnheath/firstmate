@@ -12,8 +12,8 @@
 #      operator's models.json and herdr-managed Pi integration are linked
 #      across when present and dropped again when absent, re-established on
 #      every launch; a launch with no credential source Pi could use (no
-#      provider entry in the operator store, no models.json provider with
-#      its own apiKey, no credential variable for the pinned provider)
+#      provider entry in the operator store, no apiKey of its own on the
+#      pinned provider in models.json, no credential variable for it)
 #      refuses before any endpoint exists, and so does a launch without a
 #      concrete model, because the seed carries no saved default for Pi to
 #      fall back on.
@@ -184,9 +184,9 @@ test_pi_seed_fails_closed_without_operator_credentials() {
 # auth.json is not Pi's only credential source (Pi 0.85.1 docs/models.md): a
 # models.json provider may carry its own apiKey, a dummy literal for a
 # keyless local server included, and a built-in provider may be keyed by
-# its environment variable. Either lets the worker run, so the fail-closed
-# guard must stand aside for them and refuse only a genuinely credential-less
-# dispatch.
+# its environment variable. Either lets the worker run when it keys the
+# provider the pin names, so the fail-closed guard must stand aside for
+# them and refuse only a pin nothing keys.
 test_pi_seed_accepts_models_json_provider_with_its_own_api_key() {
   local id rec out rc agent
   id="pi-modelkey-z1-$$"
@@ -217,7 +217,18 @@ test_pi_seed_refuses_models_json_provider_without_api_key() {
   rc=$?
   expect_code 1 "$rc" "a custom provider with neither auth entry nor apiKey must refuse: $out"
   assert_contains "$out" "no Pi credentials" "the refusal must name the missing credentials"
-  assert_contains "$out" "declares no provider with its own apiKey" "the refusal must name the models.json source it checked"
+  assert_contains "$out" "declares no flashnext provider with its own apiKey" "the refusal must name the models.json provider it checked"
+  id="pi-modelotherkey-z1-$$"
+  rec=$(make_pi_spawn_case modelotherkey "$id")
+  read_pi_spawn_record "$rec"
+  agent="$HOME_DIR/user-home/.pi/agent"
+  printf '{}' >"$agent/auth.json"
+  printf '%s\n' '{"providers":{"flashnext":{"baseUrl":"http://127.0.0.1:8039/v1","api":"openai-completions","apiKey":"dummy","models":[{"id":"Qwen3.8-Flash-Next"}]}}}' \
+    >"$agent/models.json"
+  out=$(CEREBRAS_API_KEY='' FM_TEST_PI_MODEL=cerebras/fm-test run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 1 "$rc" "another provider's models.json apiKey must not key the pinned provider: $out"
+  assert_contains "$out" "declares no cerebras provider with its own apiKey" "the refusal must name the pinned provider it looked for"
   [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
   pass "fm-spawn: pi seed still refuses a models.json provider that carries no apiKey"
 }
@@ -251,7 +262,7 @@ test_pi_seed_refuses_env_credential_that_is_unset_or_for_another_provider() {
   rec=$(make_pi_spawn_case envother "$id")
   read_pi_spawn_record "$rec"
   printf '{}' >"$HOME_DIR/user-home/.pi/agent/auth.json"
-  out=$(GROQ_API_KEY=fm-test-env FM_TEST_PI_MODEL=cerebras/fm-test run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  out=$(CEREBRAS_API_KEY='' GROQ_API_KEY=fm-test-env FM_TEST_PI_MODEL=cerebras/fm-test run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
   rc=$?
   expect_code 1 "$rc" "another provider's variable must not key the pinned provider: $out"
   assert_contains "$out" "no Pi credentials" "the refusal must name the missing credentials"
