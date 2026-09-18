@@ -158,6 +158,7 @@ test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
   id=profile-relative-paths-z1b
   rec=$(make_spawn_case profile-relative-paths pi "$id")
   read_case_record "$rec"
+  fm_test_pi_auth_home "$CASE_DIR/user-home"
   home_real=$(cd "$HOME_DIR" && pwd -P)
   mkdir -p "$CASE_DIR/cdpath/home/state" "$CASE_DIR/cdpath/home/data"
   : > "$LAUNCH_LOG"
@@ -169,8 +170,9 @@ test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
       FM_PROJECTS_OVERRIDE=home/projects FM_CONFIG_OVERRIDE=home/config \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME=home/grok-home PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with relative home overrides should succeed"
@@ -188,6 +190,7 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
   absolute_id=profile-absolute-home-defaults-z1d
   rec=$(make_spawn_case profile-home-defaults pi "$relative_id" "$absolute_id")
   read_case_record "$rec"
+  fm_test_pi_auth_home "$CASE_DIR/user-home"
   home_real=$(cd "$HOME_DIR" && pwd -P)
 
   : > "$LAUNCH_LOG"
@@ -198,8 +201,9 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
       FM_PROJECTS_OVERRIDE=home/projects FM_CONFIG_OVERRIDE=home/config \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME=home/grok-home PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$relative_id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$relative_id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with relative FM_HOME defaults should succeed"
@@ -218,8 +222,9 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
       FM_PROJECTS_OVERRIDE="$linked_home/projects" FM_CONFIG_OVERRIDE="$linked_home/config" \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME="$linked_home/grok-home" PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$absolute_id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$absolute_id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with absolute symlink-spelled FM_HOME defaults should succeed"
@@ -236,6 +241,7 @@ test_absolute_override_spelling_is_preserved_in_launch_paths() {
   id=profile-absolute-paths-z1c
   rec=$(make_spawn_case profile-absolute-paths pi "$id")
   read_case_record "$rec"
+  fm_test_pi_auth_home "$CASE_DIR/user-home"
   linked_home="$CASE_DIR/home-link"
   ln -s "$HOME_DIR" "$linked_home"
   : > "$LAUNCH_LOG"
@@ -246,8 +252,9 @@ test_absolute_override_spelling_is_preserved_in_launch_paths() {
       FM_PROJECTS_OVERRIDE="$linked_home/projects" FM_CONFIG_OVERRIDE="$linked_home/config" \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME="$linked_home/grok-home" PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with absolute symlink-spelled overrides should succeed"
@@ -773,7 +780,7 @@ test_pi_tui_mode_probe_is_safe_for_old_and_new_pi() {
 
       out=$(FM_TEST_PI_VERSION="$version" \
         run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-        "$id" "$PROJ_DIR")
+        "$id" "$PROJ_DIR" --model test-provider/fm-test)
       status=$?
       expect_code 0 "$status" "$harness $version spawn should succeed"
       launch=$(cat "$LAUNCH_LOG")

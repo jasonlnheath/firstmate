@@ -329,6 +329,17 @@ make_spawn_fakebin() {
   fm_test_make_spawn_fakebin "$@"
 }
 
+# fm_test_pi_auth_home <user-home>
+# Write the minimal fake Pi auth store a crewmate/scout spawn seeds its
+# isolated agent dir from, at the path bin/fm-spawn.sh resolves when
+# PI_CODING_AGENT_DIR is blank (${HOME}/.pi/agent/auth.json). Every machine
+# that launches Pi workers has one; a spawn refuses the launch without it.
+fm_test_pi_auth_home() {
+  mkdir -p "$1/.pi/agent"
+  printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
+    >"$1/.pi/agent/auth.json"
+}
+
 # fm_test_run_spawn <home> <pane-path> <fakebin> [fm-spawn args...]
 # Common spawn env. Extra variables in the caller (GROK_HOME, FM_FAKE_LAUNCH_LOG,
 # CLAUDE_CONFIG_DIR, ...) are inherited. Does not add --mode/--yolo; ship tests
@@ -347,14 +358,11 @@ fm_test_run_spawn() {
   # so every launch-shape assertion in the suite keeps reading the same command.
   # A test that needs the set case opts in through FM_TEST_CLAUDE_CONFIG_DIR.
   # A Pi crewmate spawn seeds its isolated agent dir from the operator's auth
-  # store at ${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/auth.json and refuses the
-  # launch when it is missing, so the throwaway HOME carries a minimal fake
-  # store (every machine that launches Pi workers has one) and any inherited
-  # PI_CODING_AGENT_DIR is blanked so the store path is deterministic.
+  # store, so the throwaway HOME carries the fake one (fm_test_pi_auth_home)
+  # and any inherited PI_CODING_AGENT_DIR is blanked so the store path is
+  # deterministic.
   local spawn_home=$home/user-home
-  mkdir -p "$spawn_home/.pi/agent"
-  printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
-    >"$spawn_home/.pi/agent/auth.json"
+  fm_test_pi_auth_home "$spawn_home"
   FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$spawn_home" \
     CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
     PI_CODING_AGENT_DIR='' \

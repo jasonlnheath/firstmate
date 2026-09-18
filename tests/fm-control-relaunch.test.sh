@@ -187,10 +187,8 @@ run_control() {  # <case-dir> <args...>
   # store (bin/fm-claude-trust.sh), and a relaunch reaches it through fm-control.sh, so this runs against a throwaway HOME;
   # without it this suite would write the developer's real ~/.claude.json.
   # A Pi relaunch seeds its isolated agent dir from the operator's auth store,
-  # so the throwaway HOME carries a minimal fake store.
-  mkdir -p "$dir/user-home/.pi/agent"
-  printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
-    >"$dir/user-home/.pi/agent/auth.json"
+  # so the throwaway HOME carries the fake one.
+  fm_test_pi_auth_home "$dir/user-home"
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
     HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' PI_CODING_AGENT_DIR='' \
     FM_SPAWN_NO_GUARD=1 GROK_HOME="$dir/grokhome" \
@@ -211,9 +209,7 @@ run_spawn() {  # <case-dir> <args...>
   # store (bin/fm-claude-trust.sh), so it runs against a throwaway HOME;
   # without it this suite would write the developer's real ~/.claude.json.
   # A Pi crewmate spawn seeds from the same store, so it is provided here.
-  mkdir -p "$dir/user-home/.pi/agent"
-  printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
-    >"$dir/user-home/.pi/agent/auth.json"
+  fm_test_pi_auth_home "$dir/user-home"
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
     HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' PI_CODING_AGENT_DIR='' \
     FM_SPAWN_NO_GUARD=1 GROK_HOME="$dir/grokhome" \
@@ -725,6 +721,30 @@ test_explicit_model_wins_over_the_recorded_one() {
   [ "$(meta_field "$dir" rl7 model)" = sonnet ] || fail "an explicit model should be recorded"
   [ "$(meta_field "$dir" rl7 effort)" = low ] || fail "an explicit effort should be recorded"
   pass "fm-control relaunch: explicit model and effort win over the recorded ones"
+}
+
+test_model_less_pi_relaunch_refuses_before_stop() {
+  local dir out rc
+  dir=$(new_case pimodel rl-pimodel)
+  add_ship_task "$dir" rl-pimodel claude
+  printf 'pi' > "$dir/fake/becomes"
+  printf '#!/usr/bin/env bash\nprintf "Options: --tui-mode\\n"\n' > "$dir/fakebin/pi"
+  chmod +x "$dir/fakebin/pi"
+  out=$(run_control "$dir" rl-pimodel relaunch --harness pi --note "switching runtime"); rc=$?
+  expect_code 1 "$rc" "a harness switch onto pi without a model should refuse"
+  assert_contains "$out" "--model" "the refusal should name the explicit model flag as the fix"
+  assert_contains "$out" "config/crew-dispatch.json" "the refusal should name the dispatch pin as the fix"
+  [ "$(cat "$dir/fake/command")" = claude ] \
+    || fail "the refusal must land before the running agent is stopped"
+  [ -z "$(cat "$dir/fake/literal")" ] && [ -z "$(cat "$dir/fake/keys")" ] \
+    || fail "a refused model-less pi relaunch must deliver no lifecycle input"
+  [ "$(meta_field "$dir" rl-pimodel harness)" = claude ] \
+    || fail "a refused relaunch must leave the durable record on the recorded harness"
+  out=$(run_control "$dir" rl-pimodel relaunch --harness pi --model test-provider/fm-test --note "switching runtime"); rc=$?
+  expect_code 0 "$rc" "the same switch with a model should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" rl-pimodel model)" = test-provider/fm-test ] \
+    || fail "the explicit model should be recorded"
+  pass "fm-control relaunch: a model-less pi crewmate relaunch refuses before the agent is stopped"
 }
 
 test_relaunch_onto_an_unverified_harness_is_refused() {
@@ -1709,6 +1729,7 @@ test_prefixed_recorded_harness_requires_explicit_replacement
 test_same_harness_relaunch_keeps_the_profile_axes
 test_native_ultra_relaunch_preserves_profile_and_rejects_before_stop
 test_explicit_model_wins_over_the_recorded_one
+test_model_less_pi_relaunch_refuses_before_stop
 test_relaunch_onto_an_unverified_harness_is_refused
 test_prior_harness_turnend_registry_entry_is_cleared
 test_wiring_removal_failure_refuses_before_replacement_arm

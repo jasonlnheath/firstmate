@@ -2084,14 +2084,6 @@ pi | pi-signed)
   fi
   LAUNCH=${LAUNCH//__PITUIMODE__/$PI_TUI_MODE}
   LAUNCH="FM_PI_HARNESS=$HARNESS $LAUNCH"
-  case "$LAUNCH" in
-  *__PIAGENTDIR__*)
-    if [ -z "$MODEL" ] || [ "$MODEL" = default ]; then
-      echo "error: a $HARNESS crewmate/scout runs in an isolated agent dir that carries no saved default model; pin one via config/crew-dispatch.json or pass --model <provider>/<id> explicitly" >&2
-      exit 1
-    fi
-    ;;
-  esac
   ;;
 cursor)
   # `cursor` is not the CLI name, and the legacy alias `agent` is far too
@@ -2158,6 +2150,11 @@ if [ "$EFFORT" = ultra ]; then
     exit 1
   }
 fi
+case "$LAUNCH" in
+*__PIAGENTDIR__*)
+  "$SCRIPT_DIR/fm-harness.sh" validate-worker-model "$HARNESS" "$KIND" "$MODEL" || exit 1
+  ;;
+esac
 if [ "$HARNESS" = omp ]; then
   omp_model_validate "$OMP_BIN" "$MODEL" || exit 1
 fi

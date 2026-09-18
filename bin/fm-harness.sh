@@ -19,6 +19,13 @@
 #                                        codex-native/<id>. Other efforts retain
 #                                        their adapter's existing policy. Native
 #                                        Codex validates model support at startup.
+#        fm-harness.sh validate-worker-model <harness> <kind> <model>
+#                                        Refuse a pi or pi-signed crewmate/scout
+#                                        launch whose model is empty or "default":
+#                                        the worker's isolated agent dir carries no
+#                                        saved default, so the launch needs a pin
+#                                        from config/crew-dispatch.json or --model.
+#                                        Secondmates and other harnesses pass.
 #        fm-harness.sh ancestry [<pid>] print "<strength> <harness>" for the nearest
 #                                        harness process at or above <pid> (default this
 #                                        process), or nothing when the walk finds none.
@@ -496,8 +503,23 @@ validate_native_effort() {
   return 1
 }
 
+validate_worker_model() {
+  local harness=${1:-} kind=${2:-} model=${3:-}
+  [ "$kind" != secondmate ] || return 0
+  case "$harness" in
+    pi|pi-signed)
+      if [ -z "$model" ] || [ "$model" = default ]; then
+        echo "error: a $harness crewmate/scout runs in an isolated agent dir that carries no saved default model; pin one via config/crew-dispatch.json or pass --model <provider>/<id> explicitly" >&2
+        return 1
+      fi
+      ;;
+  esac
+  return 0
+}
+
 case "${1:-}" in
   validate-native-effort) shift; validate_native_effort "$@" ;;
+  validate-worker-model) shift; validate_worker_model "$@" ;;
   ancestry)
     case "${2:-}" in
       ''|*[!0-9]*) [ -z "${2:-}" ] || { echo "error: ancestry takes a numeric pid" >&2; exit 2; } ;;
