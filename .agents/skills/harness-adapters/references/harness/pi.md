@@ -33,7 +33,7 @@ Multiple positional arguments become separate queued messages; the spawn templat
 
 A project trust dialog can appear on the first Pi run in any not-yet-trusted directory, including a clean worktree.
 Firstmate crewmate and scout launches grant project trust per run with `--approve`, which sets Pi's trust override so the dialog is never constructed, and the post-launch gate then requires the worker extension's own busy record (`pi-ext`-sourced busy or idle under the launch's gen) before the spawn reports success; the spawn's own pre-launch `fm-spawn` seed never counts as start proof, so a Pi that dies on boot or never fires `agent_start` fails the spawn, and because that failure closes the window, the `failed:` status event and the spawn's error carry the pane's last non-blank lines (an unresolvable `--model` pin is what 0.85.1 prints there before exiting 1) instead of pointing at a window that no longer exists.
-The per-run grant writes no standing consent; human sessions and secondmate launches still meet the dialog, and a decision persists per path in the agent dir's `trust.json`, so later human spawns in the same pooled slot skip it.
+The per-run grant writes no standing consent; human sessions and secondmate launches still meet the dialog: accept it with Enter and verify the instructions begin processing, and a decision persists per path in the agent dir's `trust.json`, so later human spawns in the same pooled slot skip it.
 Before trust resolves, Pi loads context files, user/global extensions, and CLI `-e` extensions, so brief delivery is never gated, but project `.agents/skills` only become reachable once trust resolves.
 
 ## Task-worker launch hardening
