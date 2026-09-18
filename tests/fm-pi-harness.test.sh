@@ -11,14 +11,18 @@
 #      to the operator's own auth store and no settings.json of its own; the
 #      operator's models.json and herdr-managed Pi integration are linked
 #      across when present and dropped again when absent, re-established on
-#      every launch; a missing or empty operator store refuses the launch
-#      before any endpoint exists, and so does a launch without a concrete
-#      model, because the seed carries no saved default for Pi to fall back
-#      on.
+#      every launch; a launch with no credential source Pi could use (no
+#      provider entry in the operator store, no models.json provider with
+#      its own apiKey, no credential variable for the pinned provider)
+#      refuses before any endpoint exists, and so does a launch without a
+#      concrete model, because the seed carries no saved default for Pi to
+#      fall back on.
 #   3. The post-launch gate passes only on the worker extension's own busy
 #      record: a worker that boots after the launch line passes once its
 #      agent_start lands, and a worker that never starts fails the spawn with
-#      a status event even though the spawn's own pre-launch seed reads busy.
+#      a status event even though the spawn's own pre-launch seed reads busy;
+#      that event carries the pane's last output, since the failure closes
+#      the window nobody could inspect afterwards.
 # The secondmate arm's opposite shape (suppression without the task-worker
 # statement, isolation, or --approve) is pinned in
 # tests/fm-secondmate-harness.test.sh, which owns the secondmate spawn world.
@@ -177,6 +181,84 @@ test_pi_seed_fails_closed_without_operator_credentials() {
   pass "fm-spawn: pi crewmate launch refuses when the operator auth store is missing"
 }
 
+# auth.json is not Pi's only credential source (Pi 0.85.1 docs/models.md): a
+# models.json provider may carry its own apiKey, a dummy literal for a
+# keyless local server included, and a built-in provider may be keyed by
+# its environment variable. Either lets the worker run, so the fail-closed
+# guard must stand aside for them and refuse only a genuinely credential-less
+# dispatch.
+test_pi_seed_accepts_models_json_provider_with_its_own_api_key() {
+  local id rec out rc agent
+  id="pi-modelkey-z1-$$"
+  rec=$(make_pi_spawn_case modelkey "$id")
+  read_pi_spawn_record "$rec"
+  agent="$HOME_DIR/user-home/.pi/agent"
+  printf '{}' >"$agent/auth.json"
+  printf '%s\n' '{"providers":{"flashnext":{"baseUrl":"http://127.0.0.1:8039/v1","api":"openai-completions","apiKey":"dummy","models":[{"id":"Qwen3.8-Flash-Next"}]}}}' \
+    >"$agent/models.json"
+  out=$(FM_TEST_PI_MODEL=flashnext/Qwen3.8-Flash-Next run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 0 "$rc" "a keyless-local dispatch keyed by its models.json apiKey must launch: $out"
+  assert_contains "$(cat "$CASE_DIR/launch.log")" "--model 'flashnext/Qwen3.8-Flash-Next'" \
+    "the launch must carry the custom-provider pin"
+  pass "fm-spawn: pi seed lets a models.json provider's own apiKey stand in for an empty auth store"
+}
+
+test_pi_seed_refuses_models_json_provider_without_api_key() {
+  local id rec out rc agent
+  id="pi-modelnokey-z1-$$"
+  rec=$(make_pi_spawn_case modelnokey "$id")
+  read_pi_spawn_record "$rec"
+  agent="$HOME_DIR/user-home/.pi/agent"
+  printf '{}' >"$agent/auth.json"
+  printf '%s\n' '{"providers":{"flashnext":{"baseUrl":"http://127.0.0.1:8039/v1","api":"openai-completions","models":[{"id":"Qwen3.8-Flash-Next"}]}}}' \
+    >"$agent/models.json"
+  out=$(FM_TEST_PI_MODEL=flashnext/Qwen3.8-Flash-Next run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 1 "$rc" "a custom provider with neither auth entry nor apiKey must refuse: $out"
+  assert_contains "$out" "no Pi credentials" "the refusal must name the missing credentials"
+  assert_contains "$out" "declares no provider with its own apiKey" "the refusal must name the models.json source it checked"
+  [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
+  pass "fm-spawn: pi seed still refuses a models.json provider that carries no apiKey"
+}
+
+test_pi_seed_accepts_env_credential_for_the_pinned_provider() {
+  local id rec out rc agent
+  id="pi-envkey-z1-$$"
+  rec=$(make_pi_spawn_case envkey "$id")
+  read_pi_spawn_record "$rec"
+  agent="$HOME_DIR/user-home/.pi/agent"
+  printf '{}' >"$agent/auth.json"
+  out=$(CEREBRAS_API_KEY=fm-test-env FM_TEST_PI_MODEL=cerebras/fm-test run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 0 "$rc" "a pinned provider keyed by its environment variable must launch: $out"
+  assert_contains "$(cat "$CASE_DIR/launch.log")" "--model 'cerebras/fm-test'" "the launch must carry the pin"
+  pass "fm-spawn: pi seed lets the pinned provider's credential variable stand in for an empty auth store"
+}
+
+test_pi_seed_refuses_env_credential_that_is_unset_or_for_another_provider() {
+  local id rec out rc agent
+  id="pi-envnokey-z1-$$"
+  rec=$(make_pi_spawn_case envnokey "$id")
+  read_pi_spawn_record "$rec"
+  agent="$HOME_DIR/user-home/.pi/agent"
+  printf '{}' >"$agent/auth.json"
+  out=$(CEREBRAS_API_KEY='' FM_TEST_PI_MODEL=cerebras/fm-test run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 1 "$rc" "an empty credential variable must not count: $out"
+  assert_contains "$out" "CEREBRAS_API_KEY" "the refusal must name the variable Pi would have read"
+  id="pi-envother-z1-$$"
+  rec=$(make_pi_spawn_case envother "$id")
+  read_pi_spawn_record "$rec"
+  printf '{}' >"$HOME_DIR/user-home/.pi/agent/auth.json"
+  out=$(GROQ_API_KEY=fm-test-env FM_TEST_PI_MODEL=cerebras/fm-test run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 1 "$rc" "another provider's variable must not key the pinned provider: $out"
+  assert_contains "$out" "no Pi credentials" "the refusal must name the missing credentials"
+  [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
+  pass "fm-spawn: pi seed refuses when the pinned provider's credential variable is unset"
+}
+
 # Pi reads models.json from the agent dir only, so a seed without the
 # operator's catalog would fail --model resolution for every custom-provider
 # dispatch (a local llama-server, a proxy): Pi 0.85.1 exits 1 on that before
@@ -244,21 +326,44 @@ test_pi_gate_waits_for_the_worker_extension_start() {
 
 # A Pi that dies on boot, parks on a diagnostic, or never fires agent_start
 # leaves only the spawn's own seed behind; the seed must never count as
-# proof of a started worker.
+# proof of a started worker. The failure closes the window, so whatever Pi
+# printed before dying (0.85.1 reports an unresolvable --model pin to the
+# pane and exits 1 before the TUI) must survive on the status event, and
+# nothing may point the operator at the window that no longer exists.
 test_pi_gate_fails_when_the_worker_never_starts() {
-  local id rec out rc
+  local id rec out rc status
   id="pi-dead-z1-$$"
   rec=$(make_pi_spawn_case dead "$id")
   read_pi_spawn_record "$rec"
-  out=$(FM_FAKE_PI_START=never FM_PI_READY_POLLS=6 run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  out=$(FM_FAKE_PI_START=never FM_PI_READY_POLLS=6 \
+    FM_FAKE_PANE_CAPTURE=$'$ pi --model x/y\nError: Model "x/y" not found.\nAvailable models: none\n\n   ' \
+    run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
   rc=$?
   expect_code 1 "$rc" "a worker that never starts must fail the spawn"
   assert_contains "$out" "worker extension never reported agent_start" \
     "the failure must name the missing start proof"
-  assert_grep "failed: pi did not start processing its brief" "$HOME_DIR/state/$id.status" \
-    "the failed gate must append a failed status event"
+  status=$(grep '^failed: pi did not start processing its brief' "$HOME_DIR/state/$id.status") \
+    || fail "the failed gate must append a failed status event"
+  [ "$(printf '%s\n' "$status" | wc -l)" -eq 1 ] || fail "the failed status event must stay one line"
+  assert_contains "$status" 'last pane output: $ pi --model x/y|Error: Model "x/y" not found.|Available models: none' \
+    "the failed status event must carry the pane's last output, blank lines dropped"
+  assert_contains "$out" 'last pane output: $ pi --model x/y|Error: Model "x/y" not found.' \
+    "the failure must report the pane's last output"
+  assert_not_contains "$out" "inspect window" "the failure must not point at the window it closes"
   assert_not_contains "$out" "spawned $id" "a failed gate must never report the spawn"
-  pass "fm-spawn: pi gate fails the spawn with a status event when the worker never starts"
+
+  id="pi-dead-z2-$$"
+  rec=$(make_pi_spawn_case dead-nocapture "$id")
+  read_pi_spawn_record "$rec"
+  out=$(FM_FAKE_PI_START=never FM_PI_READY_POLLS=6 FM_FAKE_PANE_CAPTURE='' \
+    run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 1 "$rc" "a worker that never starts must fail the spawn"
+  status=$(grep '^failed: pi did not start processing its brief' "$HOME_DIR/state/$id.status") \
+    || fail "the failed gate must append a failed status event"
+  assert_not_contains "$status" "last pane output" "an empty capture must not fabricate pane output"
+  assert_not_contains "$out" "inspect window" "an empty capture must drop the inspect-window clause rather than misdirect"
+  pass "fm-spawn: pi gate fails the spawn with a status event carrying the pane's last output"
 }
 
 test_pi_worker_launch_refuses_without_a_concrete_model() {
@@ -294,6 +399,10 @@ test_pi_crewmate_launch_never_strips_project_reach() {
 
 test_pi_crewmate_launch_carries_the_ported_hardening
 test_pi_seed_fails_closed_without_operator_credentials
+test_pi_seed_accepts_models_json_provider_with_its_own_api_key
+test_pi_seed_refuses_models_json_provider_without_api_key
+test_pi_seed_accepts_env_credential_for_the_pinned_provider
+test_pi_seed_refuses_env_credential_that_is_unset_or_for_another_provider
 test_pi_seed_links_operator_models_and_herdr_integration_per_launch
 test_pi_gate_waits_for_the_worker_extension_start
 test_pi_gate_fails_when_the_worker_never_starts

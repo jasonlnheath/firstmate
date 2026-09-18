@@ -156,8 +156,12 @@
 #   FM_PI_POLL_INTERVAL bound that wait). Two Pi launches are refused: a model
 #   that is empty or "default" (`fm-harness.sh validate-worker-model`, because
 #   the seed carries no saved default) refuses before any endpoint or per-task
-#   state exists, and an operator auth store that is missing or holds no
-#   provider entry refuses when the launch line is assembled. The
+#   state exists, and a launch with no credential source Pi could use - no
+#   provider entry in the operator auth store, no provider carrying its own
+#   apiKey in the operator models.json, and no credential variable Pi reads
+#   for the pinned model's provider - refuses when the launch line is
+#   assembled. A start-gate failure records the pane's last output on its
+#   failed: status event before the endpoint is closed. The
 #   harness-adapters skill's pi reference owns the knowledge half.
 #   For omp (Oh My Pi), fm-spawn resolves the `omp` executable from PATH once and
 #   refuses when it is absent. Every omp launch clears the foreign harness
@@ -1638,20 +1642,21 @@ pi_supports_tui_mode() {
 # PI_CODING_AGENT_DIR's reach by Pi's own discovery design, which is
 # load-bearing rather than a leak: the no-mistakes skill a Pi worker must
 # invoke for validation lives there. Fails closed - refuses the launch - when
-# the operator auth store is missing or holds no provider entry, because a Pi
-# worker without credentials would only wedge its pane. "No provider entry"
-# rather than "no file": the TUI-mode probe above runs `pi --help` in the
-# operator's context first, and Pi 0.85.1 initializes a missing agent dir on
-# --help with auth.json = {}, so a never-authenticated operator reaches this
-# guard with a present, non-empty, credential-less store.
-pi_seed_worker_agent_dir() {
+# no credential source Pi could use is present (pi_worker_credential_present
+# below), because a Pi worker without credentials would only wedge its pane.
+# "No provider entry" rather than "no file" for the auth store: the TUI-mode
+# probe above runs `pi --help` in the operator's context first, and Pi 0.85.1
+# initializes a missing agent dir on --help with auth.json = {}, so a
+# never-authenticated operator reaches this guard with a present, non-empty,
+# credential-less store.
+pi_seed_worker_agent_dir() {  # <model>
   local seed="$STATE/pi-worker-agent"
   local src_dir="${PI_CODING_AGENT_DIR:-${HOME:-}/.pi/agent}"
   local src_auth="$src_dir/auth.json" src_models="$src_dir/models.json"
   local src_herdr="$src_dir/extensions/herdr-agent-state.ts"
   mkdir -p "$seed/extensions" || return 1
-  if [ ! -s "$src_auth" ] || [ "$(tr -d '[:space:]' <"$src_auth")" = '{}' ]; then
-    echo "error: no Pi credentials at $src_auth; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi (pi auth) or select another crew harness" >&2
+  if ! pi_worker_credential_present "$src_auth" "$src_models" "$1"; then
+    echo "error: no Pi credentials for a $HARNESS worker: $src_auth holds no provider entry, $src_models declares no provider with its own apiKey, and $(pi_env_credential_description "$1"); refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi (pi auth), give the provider an apiKey in models.json, export its credential variable, or select another crew harness" >&2
     return 1
   fi
   ln -sfn "$src_auth" "$seed/auth.json" || return 1
@@ -1670,6 +1675,84 @@ pi_seed_worker_agent_dir() {
     rm -f "$seed/extensions/herdr-agent-state.ts"
   fi
   printf '%s\n' "$seed"
+}
+
+# The credential sources Pi 0.85.1 resolves a model through, any one of which
+# lets a worker run: a provider entry in auth.json (/login or `pi auth`), a
+# provider in models.json carrying its own apiKey (a literal, a dummy value
+# for a keyless local server, $ENV interpolation, or a !command - Pi's
+# docs/models.md), or the environment variable Pi reads for the pinned
+# model's built-in provider. The variable is checked in this process's
+# environment, which the launched pane's login shell shares on a normally
+# configured host.
+pi_worker_credential_present() {  # <auth.json> <models.json> <model>
+  local provider name
+  if [ -s "$1" ] && [ "$(tr -d '[:space:]' <"$1")" != '{}' ]; then
+    return 0
+  fi
+  if [ -f "$2" ] && jq -e '[(.providers // {})[]? | select(type == "object" and ((.apiKey // "") | tostring) != "")] | length > 0' "$2" >/dev/null 2>&1; then
+    return 0
+  fi
+  case "$3" in */*) provider=${3%%/*} ;; *) return 1 ;; esac
+  for name in $(pi_provider_env_credentials "$provider"); do
+    [ -z "${!name:-}" ] || return 0
+  done
+  return 1
+}
+
+pi_env_credential_description() {  # <model>
+  local provider names
+  case "$1" in */*) provider=${1%%/*} ;; *) printf 'model %s names no provider whose credential variable could stand in' "$1"; return 0 ;; esac
+  names=$(pi_provider_env_credentials "$provider" | paste -sd ',' -)
+  if [ -n "$names" ]; then
+    printf "provider %s's credential variable (%s) is unset in this environment" "$provider" "$names"
+  else
+    printf 'Pi reads no credential variable for provider %s' "$provider"
+  fi
+}
+
+# The environment variables Pi 0.85.1 reads as a built-in provider's
+# credential, one per line (pi-ai dist/env-api-keys.js getApiKeyEnvVars plus
+# its google-vertex and amazon-bedrock alternatives); nothing for a provider
+# Pi reads no variable for, custom models.json providers included.
+pi_provider_env_credentials() {  # <provider>
+  case "$1" in
+  anthropic) printf '%s\n' ANTHROPIC_AUTH_TOKEN ANTHROPIC_OAUTH_TOKEN ANTHROPIC_API_KEY ;;
+  github-copilot) printf '%s\n' COPILOT_GITHUB_TOKEN ;;
+  ant-ling) printf '%s\n' ANT_LING_API_KEY ;;
+  qwen-token-plan | qwen-token-plan-individual) printf '%s\n' QWEN_TOKEN_PLAN_API_KEY ;;
+  qwen-token-plan-cn) printf '%s\n' QWEN_TOKEN_PLAN_CN_API_KEY ;;
+  openai) printf '%s\n' OPENAI_API_KEY ;;
+  azure-openai-responses) printf '%s\n' AZURE_OPENAI_API_KEY ;;
+  nvidia) printf '%s\n' NVIDIA_API_KEY ;;
+  deepseek) printf '%s\n' DEEPSEEK_API_KEY ;;
+  google) printf '%s\n' GEMINI_API_KEY ;;
+  google-vertex) printf '%s\n' GOOGLE_CLOUD_API_KEY GOOGLE_APPLICATION_CREDENTIALS ;;
+  groq) printf '%s\n' GROQ_API_KEY ;;
+  cerebras) printf '%s\n' CEREBRAS_API_KEY ;;
+  xai) printf '%s\n' XAI_API_KEY ;;
+  radius) printf '%s\n' RADIUS_API_KEY ;;
+  openrouter) printf '%s\n' OPENROUTER_API_KEY ;;
+  vercel-ai-gateway) printf '%s\n' AI_GATEWAY_API_KEY ;;
+  zai) printf '%s\n' ZAI_API_KEY ;;
+  zai-coding-cn) printf '%s\n' ZAI_CODING_CN_API_KEY ;;
+  mistral) printf '%s\n' MISTRAL_API_KEY ;;
+  minimax) printf '%s\n' MINIMAX_API_KEY ;;
+  minimax-cn) printf '%s\n' MINIMAX_CN_API_KEY ;;
+  moonshotai | moonshotai-cn) printf '%s\n' MOONSHOT_API_KEY ;;
+  huggingface) printf '%s\n' HF_TOKEN ;;
+  fireworks) printf '%s\n' FIREWORKS_API_KEY ;;
+  together) printf '%s\n' TOGETHER_API_KEY ;;
+  baseten) printf '%s\n' BASETEN_API_KEY ;;
+  opencode | opencode-go) printf '%s\n' OPENCODE_API_KEY ;;
+  kimi-coding) printf '%s\n' KIMI_API_KEY ;;
+  cloudflare-workers-ai | cloudflare-ai-gateway) printf '%s\n' CLOUDFLARE_API_KEY ;;
+  xiaomi) printf '%s\n' XIAOMI_API_KEY ;;
+  xiaomi-token-plan-cn) printf '%s\n' XIAOMI_TOKEN_PLAN_CN_API_KEY ;;
+  xiaomi-token-plan-ams) printf '%s\n' XIAOMI_TOKEN_PLAN_AMS_API_KEY ;;
+  xiaomi-token-plan-sgp) printf '%s\n' XIAOMI_TOKEN_PLAN_SGP_API_KEY ;;
+  amazon-bedrock) printf '%s\n' AWS_PROFILE AWS_ACCESS_KEY_ID AWS_BEARER_TOKEN_BEDROCK AWS_CONTAINER_CREDENTIALS_RELATIVE_URI AWS_CONTAINER_CREDENTIALS_FULL_URI AWS_WEB_IDENTITY_TOKEN_FILE ;;
+  esac
 }
 
 # omp pre-launch model validation. `omp models --json` (omp 18.1.11) prints
@@ -3712,9 +3795,21 @@ pi_wait_for_working() {
   return 1
 }
 
+# rovo_endpoint_cleanup closes the window a moment later, so the pane cannot
+# be inspected afterwards; what Pi printed before it died (a --model pin
+# 0.85.1 could not resolve, a startup error) is folded into the status event
+# instead, flattened to one line because the status file is line-oriented.
 pi_spawn_fail() {  # <detail>
-  printf 'failed: %s\n' "$1" >>"$STATE/$ID.status"
-  echo "error: $1; inspect window $T" >&2
+  local tail
+  tail=$(fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null \
+    | sed 's/[[:space:]]*$//' | grep -v '^$' | tail -n "${FM_PI_FAIL_TAIL_LINES:-8}" | paste -sd '|' -) || tail=
+  if [ -n "$tail" ]; then
+    printf 'failed: %s; last pane output: %s\n' "$1" "$tail" >>"$STATE/$ID.status"
+    echo "error: $1; last pane output: $tail" >&2
+  else
+    printf 'failed: %s\n' "$1" >>"$STATE/$ID.status"
+    echo "error: $1" >&2
+  fi
   rovo_endpoint_cleanup
 }
 
@@ -4535,7 +4630,7 @@ pi | pi-signed)
   LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"}
   case "$LAUNCH" in
   *__PIAGENTDIR__*)
-    PI_AGENT_DIR=$(pi_seed_worker_agent_dir) || exit 1
+    PI_AGENT_DIR=$(pi_seed_worker_agent_dir "$MODEL") || exit 1
     LAUNCH=${LAUNCH//__PIAGENTDIR__/"$(shell_quote "$PI_AGENT_DIR")"}
     ;;
   esac
