@@ -143,7 +143,22 @@
 #   same path. It adds --tui-mode regular only when that help advertises the flag;
 #   a failed or inconclusive probe omits it so older Pi versions remain launchable.
 #   A missing selected executable refuses before endpoint creation, and pi-signed
-#   never falls back to pi.
+#   never falls back to pi. A pi/pi-signed crewmate or scout (never a
+#   --secondmate) additionally runs isolated from the operator's global Pi
+#   state: PI_CODING_AGENT_DIR points at the seeded state/pi-worker-agent dir
+#   (pi_seed_worker_agent_dir below: a symlinked auth.json, plus models.json
+#   and the herdr integration when present), --approve grants project trust for
+#   this run only, --append-system-prompt carries the same first-party
+#   task-channel trust statement claude workers get, PI_TELEMETRY=0 and
+#   PI_SKIP_VERSION_CHECK=1 silence telemetry and the version check, and the
+#   spawn reports success only after the worker extension itself records
+#   agent_start (pi_wait_for_working below; FM_PI_READY_POLLS and
+#   FM_PI_POLL_INTERVAL bound that wait). Two Pi launches are refused: a model
+#   that is empty or "default" (`fm-harness.sh validate-worker-model`, because
+#   the seed carries no saved default) refuses before any endpoint or per-task
+#   state exists, and an operator auth store that is missing or holds no
+#   provider entry refuses when the launch line is assembled. The
+#   harness-adapters skill's pi reference owns the knowledge half.
 #   For omp (Oh My Pi), fm-spawn resolves the `omp` executable from PATH once and
 #   refuses when it is absent. Every omp launch clears the foreign harness
 #   markers (omp publishes none of its own), sets the Firstmate-owned
@@ -329,7 +344,7 @@
 # resolver because `cursor` is not the CLI name. A cursor SECONDMATE instead runs
 # the tracked project-scope .cursor/hooks.json in its own home, whose stop-hook
 # park owns that home's supervision (docs/supervision-protocols/cursor.md).
-# claude is the one harness whose pre-launch setup can REFUSE the spawn: before
+# claude's pre-launch setup can also REFUSE the spawn, like pi's above: before
 # any per-task state exists, and before its worktree .claude/settings.local.json
 # hooks are written, every claude launch pre-registers the directory the pane
 # starts in - the task worktree, or the secondmate home for a --secondmate spawn -

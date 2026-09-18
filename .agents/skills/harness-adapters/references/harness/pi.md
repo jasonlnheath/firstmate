@@ -12,7 +12,7 @@ Worker launch facts re-verified on 2026-09-17 against installed Pi 0.85.1 (help,
 | Exit command | `/quit`. |
 | Interrupt | Single Escape; a manual interrupt fires `turn_end` and `agent_settled` (live-verified 2026-09-17 on 0.85.1), so unlike Claude the busy record closes natively on interrupt. |
 | Skill invocation | `/skill:<name>`, for example `/skill:no-mistakes`; live-verified 2026-09-17 on 0.85.1 that the command loads and the model begins executing the named skill (this is what `enableSkillCommands` registers by default). |
-| Model flag | `--model <model>`. |
+| Model flag | `--model <model>`; omitting it on a crewmate or scout launch is refused rather than left to Pi's own default (see Task-worker launch hardening below), while a secondmate may omit it. |
 | Effort flag | `--thinking <low\|medium\|high\|xhigh\|max>`; 0.85.1 also accepts `off` and `minimal`, which sit below the shared vocabulary's floor and are deliberately unreachable rather than remapped onto low, and both identities expose the same levels and completed the same model-qualified max-thinking smoke. |
 | Model discovery | Run the selected executable as `<executable> --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
 

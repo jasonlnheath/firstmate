@@ -218,6 +218,8 @@ Each pass polled `state/<id>.busy-state` while a real turn ran.
 | Kimi (standalone) | not installed | None usable | No binary on `PATH`, so the gate stays closed and it classifies `unknown kimi-unverified`. |
 | Grok | 0.2.112 | Isolated rendered-tail fallback | Retained unconverted; the approved audit could not credit a live structured-lifecycle run. |
 
+The Pi worker extension additionally closes busy on `session_shutdown` since 2026-09-17, so every orderly end (`/quit`, process exit, same-process replacement) releases the record the way Claude's `SessionEnd` does; that event was live-verified on Pi 0.85.1 to fire on `/quit` and not on process death, and `tests/fm-busy-adapter-wiring.test.sh` (`test_pi_extension_shutdown_releases_busy`) pins the wiring.
+
 Codex was probed two ways, both refused:
 
 ```sh
