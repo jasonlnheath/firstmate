@@ -747,6 +747,38 @@ test_model_less_pi_relaunch_refuses_before_stop() {
   pass "fm-control relaunch: a model-less pi crewmate relaunch refuses before the agent is stopped"
 }
 
+# The second launch-side Pi refusal, no credential the operator's Pi could
+# use for the pinned provider, is mirrored on the same pre-stop side; so is
+# a pin that names no provider, which the credential check cannot scope.
+test_credential_less_pi_relaunch_refuses_before_stop() {
+  local dir out rc
+  dir=$(new_case picred rl-picred)
+  add_ship_task "$dir" rl-picred claude
+  printf 'pi' > "$dir/fake/becomes"
+  printf '#!/usr/bin/env bash\nprintf "Options: --tui-mode\\n"\n' > "$dir/fakebin/pi"
+  chmod +x "$dir/fakebin/pi"
+  out=$(CEREBRAS_API_KEY='' run_control "$dir" rl-picred relaunch --harness pi --model cerebras/fm-test --note "switching runtime"); rc=$?
+  expect_code 1 "$rc" "a switch onto pi pinning a provider the operator has no credential for should refuse"
+  assert_contains "$out" "no Pi credentials" "the refusal should name the missing credentials"
+  assert_contains "$out" "CEREBRAS_API_KEY" "the refusal should name the variable Pi would have read"
+  [ "$(cat "$dir/fake/command")" = claude ] \
+    || fail "the credential refusal must land before the running agent is stopped"
+  [ -z "$(cat "$dir/fake/literal")" ] && [ -z "$(cat "$dir/fake/keys")" ] \
+    || fail "a refused credential-less pi relaunch must deliver no lifecycle input"
+  [ "$(meta_field "$dir" rl-picred harness)" = claude ] \
+    || fail "a refused relaunch must leave the durable record on the recorded harness"
+  out=$(run_control "$dir" rl-picred relaunch --harness pi --model fm-test --note "switching runtime"); rc=$?
+  expect_code 1 "$rc" "a switch onto pi with a provider-less pin should refuse"
+  assert_contains "$out" "<provider>/<id>" "the refusal should name the pin shape"
+  [ "$(cat "$dir/fake/command")" = claude ] \
+    || fail "the shape refusal must land before the running agent is stopped"
+  out=$(CEREBRAS_API_KEY=fm-test-env run_control "$dir" rl-picred relaunch --harness pi --model cerebras/fm-test --note "switching runtime"); rc=$?
+  expect_code 0 "$rc" "the same switch with the provider's credential variable set should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" rl-picred model)" = cerebras/fm-test ] \
+    || fail "the explicit model should be recorded"
+  pass "fm-control relaunch: a credential-less or provider-less pi crewmate relaunch refuses before the agent is stopped"
+}
+
 test_relaunch_onto_an_unverified_harness_is_refused() {
   local dir out rc
   dir=$(new_case badharness rl8)
@@ -1730,6 +1762,7 @@ test_same_harness_relaunch_keeps_the_profile_axes
 test_native_ultra_relaunch_preserves_profile_and_rejects_before_stop
 test_explicit_model_wins_over_the_recorded_one
 test_model_less_pi_relaunch_refuses_before_stop
+test_credential_less_pi_relaunch_refuses_before_stop
 test_relaunch_onto_an_unverified_harness_is_refused
 test_prior_harness_turnend_registry_entry_is_cleared
 test_wiring_removal_failure_refuses_before_replacement_arm

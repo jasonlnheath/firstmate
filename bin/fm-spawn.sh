@@ -153,15 +153,17 @@
 #   PI_SKIP_VERSION_CHECK=1 silence telemetry and the version check, and the
 #   spawn reports success only after the worker extension itself records
 #   agent_start (pi_wait_for_working below; FM_PI_READY_POLLS and
-#   FM_PI_POLL_INTERVAL bound that wait). Two Pi launches are refused: a model
-#   that is empty or "default" (`fm-harness.sh validate-worker-model`, because
-#   the seed carries no saved default) refuses before any endpoint or per-task
-#   state exists, and a launch with no credential source Pi could use for
-#   the pinned model's provider - no entry for it in the operator auth
-#   store, no apiKey of its own on it in the operator models.json, and no
-#   credential variable Pi reads for it (codex-native exempt: it
-#   authenticates through Codex) - refuses when the launch line is
-#   assembled. A start-gate failure records the pane's last output on its
+#   FM_PI_POLL_INTERVAL bound that wait). Two Pi launches are refused, both
+#   before any endpoint or per-task state exists: a model that is empty,
+#   "default", or not of the <provider>/<id> shape (`fm-harness.sh
+#   validate-worker-model`, because the seed carries no saved default and
+#   the credential check is scoped to the named provider), and a launch with
+#   no credential source Pi could use for the pinned model's provider - no
+#   entry for it in the operator auth store, no apiKey of its own on it in
+#   the operator models.json, and no credential variable Pi reads for it
+#   (codex-native exempt: it authenticates through Codex) - (`fm-harness.sh
+#   validate-worker-credentials`). A start-gate failure records the pane's
+#   last output on its
 #   failed: status event before the endpoint is closed. The
 #   harness-adapters skill's pi reference owns the knowledge half.
 #   For omp (Oh My Pi), fm-spawn resolves the `omp` executable from PATH once and
@@ -1642,25 +1644,17 @@ pi_supports_tui_mode() {
 # stays off). The home-level ~/.agents/skills directory is outside
 # PI_CODING_AGENT_DIR's reach by Pi's own discovery design, which is
 # load-bearing rather than a leak: the no-mistakes skill a Pi worker must
-# invoke for validation lives there. Fails closed - refuses the launch - when
-# no credential source Pi could use for the pinned model's provider is
-# present (pi_worker_credential_present below), because a Pi worker without
-# credentials would only wedge its pane.
-# "No provider entry" rather than "no file" for the auth store: the TUI-mode
-# probe above runs `pi --help` in the operator's context first, and Pi 0.85.1
-# initializes a missing agent dir on --help with auth.json = {}, so a
-# never-authenticated operator reaches this guard with a present, non-empty,
-# credential-less store.
-pi_seed_worker_agent_dir() {  # <model>
+# invoke for validation lives there. The credential guard that keeps a Pi
+# worker without credentials from wedging its pane is not here: it runs as
+# `fm-harness.sh validate-worker-credentials` in the pre-endpoint block
+# below, beside validate-worker-model, so a refusal costs no window,
+# worktree slot, or task record.
+pi_seed_worker_agent_dir() {
   local seed="$STATE/pi-worker-agent"
   local src_dir="${PI_CODING_AGENT_DIR:-${HOME:-}/.pi/agent}"
   local src_auth="$src_dir/auth.json" src_models="$src_dir/models.json"
   local src_herdr="$src_dir/extensions/herdr-agent-state.ts"
   mkdir -p "$seed/extensions" || return 1
-  if ! pi_worker_credential_present "$src_auth" "$src_models" "$1"; then
-    echo "error: no Pi credentials for a $HARNESS worker: $(pi_credential_refusal_detail "$src_auth" "$src_models" "$1"); refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness" >&2
-    return 1
-  fi
   ln -sfn "$src_auth" "$seed/auth.json" || return 1
   if [ ! -r "$seed/auth.json" ]; then
     echo "error: $seed/auth.json is not readable through its symlink to $src_auth" >&2
@@ -1677,94 +1671,6 @@ pi_seed_worker_agent_dir() {  # <model>
     rm -f "$seed/extensions/herdr-agent-state.ts"
   fi
   printf '%s\n' "$seed"
-}
-
-# The credential sources Pi 0.85.1 resolves a model through, any one of which
-# lets a worker run, every one scoped to the provider the pin names so a pin
-# nothing keys refuses up front instead of dying in the pane: that provider's
-# entry in auth.json (/login or `pi auth`), that provider carrying its own
-# apiKey in models.json (a literal, a dummy value for a keyless local server,
-# $ENV interpolation, or a !command - Pi's docs/models.md), or the
-# environment variable Pi reads for it when it is built in. The variable is
-# checked in this process's environment, which the launched pane's login
-# shell shares on a normally configured host. codex-native is the one
-# provider outside Pi's credential model: the pi-codex-native adapter
-# authenticates through the Codex App Server's own login and never touches
-# auth.json (the verified lab in tests/fm-pi-codex-native.test.sh runs it on
-# an agent dir with no auth store at all), so it is not gated here.
-pi_worker_credential_present() {  # <auth.json> <models.json> <model>
-  local provider name
-  case "$3" in */*) provider=${3%%/*} ;; *) return 1 ;; esac
-  [ "$provider" != codex-native ] || return 0
-  if [ -s "$1" ] && jq -e --arg p "$provider" 'type == "object" and has($p)' "$1" >/dev/null 2>&1; then
-    return 0
-  fi
-  if [ -f "$2" ] && jq -e --arg p "$provider" '(.providers // {})[$p]? | type == "object" and ((.apiKey // "") | tostring) != ""' "$2" >/dev/null 2>&1; then
-    return 0
-  fi
-  for name in $(pi_provider_env_credentials "$provider"); do
-    [ -z "${!name:-}" ] || return 0
-  done
-  return 1
-}
-
-pi_credential_refusal_detail() {  # <auth.json> <models.json> <model>
-  local provider names
-  case "$3" in
-  */*) provider=${3%%/*} ;;
-  *) printf 'model %s names no provider, so no auth.json entry, models.json apiKey, or credential variable can be matched to it; pin --model <provider>/<id>' "$3"; return 0 ;;
-  esac
-  printf '%s holds no %s entry, %s declares no %s provider with its own apiKey, and ' "$1" "$provider" "$2" "$provider"
-  names=$(pi_provider_env_credentials "$provider" | paste -sd ',' -)
-  if [ -n "$names" ]; then
-    printf "provider %s's credential variable (%s) is unset in this environment" "$provider" "$names"
-  else
-    printf 'Pi reads no credential variable for provider %s' "$provider"
-  fi
-}
-
-# The environment variables Pi 0.85.1 reads as a built-in provider's
-# credential, one per line (pi-ai dist/env-api-keys.js getApiKeyEnvVars plus
-# its google-vertex and amazon-bedrock alternatives); nothing for a provider
-# Pi reads no variable for, custom models.json providers included.
-pi_provider_env_credentials() {  # <provider>
-  case "$1" in
-  anthropic) printf '%s\n' ANTHROPIC_AUTH_TOKEN ANTHROPIC_OAUTH_TOKEN ANTHROPIC_API_KEY ;;
-  github-copilot) printf '%s\n' COPILOT_GITHUB_TOKEN ;;
-  ant-ling) printf '%s\n' ANT_LING_API_KEY ;;
-  qwen-token-plan | qwen-token-plan-individual) printf '%s\n' QWEN_TOKEN_PLAN_API_KEY ;;
-  qwen-token-plan-cn) printf '%s\n' QWEN_TOKEN_PLAN_CN_API_KEY ;;
-  openai) printf '%s\n' OPENAI_API_KEY ;;
-  azure-openai-responses) printf '%s\n' AZURE_OPENAI_API_KEY ;;
-  nvidia) printf '%s\n' NVIDIA_API_KEY ;;
-  deepseek) printf '%s\n' DEEPSEEK_API_KEY ;;
-  google) printf '%s\n' GEMINI_API_KEY ;;
-  google-vertex) printf '%s\n' GOOGLE_CLOUD_API_KEY GOOGLE_APPLICATION_CREDENTIALS ;;
-  groq) printf '%s\n' GROQ_API_KEY ;;
-  cerebras) printf '%s\n' CEREBRAS_API_KEY ;;
-  xai) printf '%s\n' XAI_API_KEY ;;
-  radius) printf '%s\n' RADIUS_API_KEY ;;
-  openrouter) printf '%s\n' OPENROUTER_API_KEY ;;
-  vercel-ai-gateway) printf '%s\n' AI_GATEWAY_API_KEY ;;
-  zai) printf '%s\n' ZAI_API_KEY ;;
-  zai-coding-cn) printf '%s\n' ZAI_CODING_CN_API_KEY ;;
-  mistral) printf '%s\n' MISTRAL_API_KEY ;;
-  minimax) printf '%s\n' MINIMAX_API_KEY ;;
-  minimax-cn) printf '%s\n' MINIMAX_CN_API_KEY ;;
-  moonshotai | moonshotai-cn) printf '%s\n' MOONSHOT_API_KEY ;;
-  huggingface) printf '%s\n' HF_TOKEN ;;
-  fireworks) printf '%s\n' FIREWORKS_API_KEY ;;
-  together) printf '%s\n' TOGETHER_API_KEY ;;
-  baseten) printf '%s\n' BASETEN_API_KEY ;;
-  opencode | opencode-go) printf '%s\n' OPENCODE_API_KEY ;;
-  kimi-coding) printf '%s\n' KIMI_API_KEY ;;
-  cloudflare-workers-ai | cloudflare-ai-gateway) printf '%s\n' CLOUDFLARE_API_KEY ;;
-  xiaomi) printf '%s\n' XIAOMI_API_KEY ;;
-  xiaomi-token-plan-cn) printf '%s\n' XIAOMI_TOKEN_PLAN_CN_API_KEY ;;
-  xiaomi-token-plan-ams) printf '%s\n' XIAOMI_TOKEN_PLAN_AMS_API_KEY ;;
-  xiaomi-token-plan-sgp) printf '%s\n' XIAOMI_TOKEN_PLAN_SGP_API_KEY ;;
-  amazon-bedrock) printf '%s\n' AWS_PROFILE AWS_ACCESS_KEY_ID AWS_BEARER_TOKEN_BEDROCK AWS_CONTAINER_CREDENTIALS_RELATIVE_URI AWS_CONTAINER_CREDENTIALS_FULL_URI AWS_WEB_IDENTITY_TOKEN_FILE ;;
-  esac
 }
 
 # omp pre-launch model validation. `omp models --json` (omp 18.1.11) prints
@@ -2264,9 +2170,16 @@ if [ "$EFFORT" = ultra ]; then
     exit 1
   }
 fi
+# Both Pi worker refusals land here, before any endpoint, worktree slot, or
+# task record exists; fm-control.sh mirrors them on the pre-stop side of a
+# relaunch. The TUI-mode probe above has already run `pi --help` in the
+# operator's context, and Pi 0.85.1 initializes a missing agent dir on --help
+# with auth.json = {}, so a never-authenticated operator reaches the
+# credential guard with a present, credential-less store rather than none.
 case "$LAUNCH" in
 *__PIAGENTDIR__*)
   "$SCRIPT_DIR/fm-harness.sh" validate-worker-model "$HARNESS" "$KIND" "$MODEL" || exit 1
+  "$SCRIPT_DIR/fm-harness.sh" validate-worker-credentials "$HARNESS" "$KIND" "$MODEL" || exit 1
   ;;
 esac
 if [ "$HARNESS" = omp ]; then
@@ -4642,7 +4555,7 @@ pi | pi-signed)
   LAUNCH=${LAUNCH//__PIBIN__/"$(shell_quote "$PI_BIN")"}
   case "$LAUNCH" in
   *__PIAGENTDIR__*)
-    PI_AGENT_DIR=$(pi_seed_worker_agent_dir "$MODEL") || exit 1
+    PI_AGENT_DIR=$(pi_seed_worker_agent_dir) || exit 1
     LAUNCH=${LAUNCH//__PIAGENTDIR__/"$(shell_quote "$PI_AGENT_DIR")"}
     ;;
   esac

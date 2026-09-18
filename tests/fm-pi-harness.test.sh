@@ -15,9 +15,11 @@
 #      pinned provider (no entry for it in the operator store, no apiKey of
 #      its own on it in models.json, no credential variable for it; the
 #      Codex-authenticated codex-native provider exempt) refuses before any
-#      endpoint exists, and so does a launch without a
-#      concrete model, because the seed carries no saved default for Pi to
-#      fall back on.
+#      endpoint or per-task state exists (state/<id>.pi-ext.ts is written
+#      only after the window, so its absence is the evidence), and so does
+#      a launch without a concrete <provider>/<id> model, because the seed
+#      carries no saved default for Pi to fall back on and the credential
+#      guard is scoped to the named provider.
 #   3. The post-launch gate passes only on the worker extension's own busy
 #      record: a worker that boots after the launch line passes once its
 #      agent_start lands, and a worker that never starts fails the spawn with
@@ -178,6 +180,7 @@ test_pi_seed_fails_closed_without_operator_credentials() {
   [ "$(cat "$HOME_DIR/user-home/.pi/agent/auth.json" 2>/dev/null)" = '{}' ] \
     || fail "the --help probe must have initialized an empty auth store before the guard ran"
   [ -e "$HOME_DIR/state/$id.meta" ] && fail "a refused launch must not publish task metadata"
+  [ -e "$HOME_DIR/state/$id.pi-ext.ts" ] && fail "a credential refusal must land before any endpoint or per-task state exists"
   [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
   pass "fm-spawn: pi crewmate launch refuses when the operator auth store is missing"
 }
@@ -200,6 +203,7 @@ test_pi_seed_requires_the_auth_entry_for_the_pinned_provider() {
   expect_code 1 "$rc" "another provider's login must not key the pinned provider: $out"
   assert_contains "$out" "no Pi credentials" "the refusal must name the missing credentials"
   assert_contains "$out" "holds no cerebras entry" "the refusal must name the auth entry it looked for"
+  [ -e "$HOME_DIR/state/$id.pi-ext.ts" ] && fail "a credential refusal must land before any endpoint or per-task state exists"
   [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
   pass "fm-spawn: pi seed refuses when the auth store keys only another provider"
 }
@@ -411,21 +415,27 @@ test_pi_gate_fails_when_the_worker_never_starts() {
   pass "fm-spawn: pi gate fails the spawn with a status event carrying the pane's last output"
 }
 
+# A bare id or id:level pattern is one Pi 0.85.1 would resolve against its
+# own catalog, but it names no provider for the credential guard to scope
+# to, so a crewmate/scout pin must be <provider>/<id>.
 test_pi_worker_launch_refuses_without_a_concrete_model() {
-  local id rec out rc model
-  for model in '' default; do
-    id="pi-nomodel-${model:-empty}-z1-$$"
-    rec=$(make_pi_spawn_case "nomodel-${model:-empty}" "$id")
+  local id rec out rc model tag
+  for model in '' default glm-5.3 sonnet:high; do
+    tag=${model:-empty}; tag=${tag//:/-}
+    id="pi-nomodel-$tag-z1-$$"
+    rec=$(make_pi_spawn_case "nomodel-$tag" "$id")
     read_pi_spawn_record "$rec"
     out=$(FM_TEST_PI_MODEL="$model" run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
     rc=$?
     expect_code 1 "$rc" "a pi crewmate launch with model '${model:-<empty>}' must be refused: $out"
     assert_contains "$out" "config/crew-dispatch.json" "the refusal must name the dispatch pin as the fix"
     assert_contains "$out" "--model" "the refusal must name the explicit flag as the fix"
+    assert_contains "$out" "<provider>/<id>" "the refusal must name the pin shape"
     [ -e "$HOME_DIR/state/$id.meta" ] && fail "a refused launch must not publish task metadata"
+    [ -e "$HOME_DIR/state/$id.pi-ext.ts" ] && fail "a model refusal must land before any endpoint or per-task state exists"
     [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
   done
-  pass "fm-spawn: pi crewmate launch refuses when no concrete model resolves"
+  pass "fm-spawn: pi crewmate launch refuses when no concrete <provider>/<id> model resolves"
 }
 
 test_pi_crewmate_launch_never_strips_project_reach() {

@@ -699,6 +699,7 @@ resolve_relaunch_profile() {
     "$SCRIPT_DIR/fm-harness.sh" validate-native-effort "$TARGET_HARNESS" "$TARGET_MODEL" "$TARGET_EFFORT" || return 1
   fi
   "$SCRIPT_DIR/fm-harness.sh" validate-worker-model "$TARGET_HARNESS" "$KIND" "$TARGET_MODEL" || return 1
+  "$SCRIPT_DIR/fm-harness.sh" validate-worker-credentials "$TARGET_HARNESS" "$KIND" "$TARGET_MODEL" || return 1
 }
 
 # safe_checkpoint: prove, before anything is stopped, that the work a relaunch
