@@ -56,6 +56,15 @@ make_pi_fakebin() {
 #!/usr/bin/env bash
 set -u
 if [ "${1:-}" = --help ]; then
+  # Real Pi 0.85.1 initializes a missing agent dir even on --help: it writes
+  # auth.json = {} and models-store.json = {} before printing usage, so the
+  # spawn's TUI-mode probe leaves a never-authenticated operator with an
+  # empty-but-present store by the time the seed guard runs.
+  agent_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+  mkdir -p "$agent_dir"
+  for f in auth.json models-store.json; do
+    [ -e "$agent_dir/$f" ] || printf '{}' >"$agent_dir/$f"
+  done
   printf '%s\n' 'pi 0.85.1' 'Options: --help --tui-mode <mode> --approve, -a --append-system-prompt <text> --offline'
   exit 0
 fi
@@ -77,7 +86,8 @@ make_pi_spawn_case() {
   fm_git_worktree "$proj" "$wt" "wt-$name"
   fm_test_spawn_brief "$home" "$id"
   # The operator Pi auth store every real crewmate machine has; the noauth
-  # case deletes it to prove the fail-closed refusal.
+  # case removes the whole agent dir to prove the fail-closed refusal on a
+  # never-authenticated operator.
   mkdir -p "$home/user-home/.pi/agent"
   printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
     >"$home/user-home/.pi/agent/auth.json"
@@ -152,11 +162,16 @@ test_pi_seed_fails_closed_without_operator_credentials() {
   id="pi-noauth-z1-$$"
   rec=$(make_pi_spawn_case noauth "$id")
   read_pi_spawn_record "$rec"
-  rm -f "$HOME_DIR/user-home/.pi/agent/auth.json"
+  # A never-authenticated operator has no ~/.pi/agent at all; the spawn's own
+  # `pi --help` probe then creates it with auth.json = {} (fake mirrors real
+  # 0.85.1), which the seed guard must still treat as no credentials.
+  rm -rf "$HOME_DIR/user-home/.pi/agent"
   out=$(run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
   rc=$?
-  expect_code 1 "$rc" "a missing operator Pi auth store must refuse the launch"
+  expect_code 1 "$rc" "a never-authenticated operator Pi must refuse the launch"
   assert_contains "$out" "no Pi credentials" "the refusal must name the missing store"
+  [ "$(cat "$HOME_DIR/user-home/.pi/agent/auth.json" 2>/dev/null)" = '{}' ] \
+    || fail "the --help probe must have initialized an empty auth store before the guard ran"
   [ -e "$HOME_DIR/state/$id.meta" ] && fail "a refused launch must not publish task metadata"
   [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
   pass "fm-spawn: pi crewmate launch refuses when the operator auth store is missing"

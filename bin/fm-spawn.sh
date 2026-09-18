@@ -1623,15 +1623,19 @@ pi_supports_tui_mode() {
 # PI_CODING_AGENT_DIR's reach by Pi's own discovery design, which is
 # load-bearing rather than a leak: the no-mistakes skill a Pi worker must
 # invoke for validation lives there. Fails closed - refuses the launch - when
-# the operator auth store is missing or empty, because a Pi worker without
-# credentials would only wedge its pane.
+# the operator auth store is missing or holds no provider entry, because a Pi
+# worker without credentials would only wedge its pane. "No provider entry"
+# rather than "no file": the TUI-mode probe above runs `pi --help` in the
+# operator's context first, and Pi 0.85.1 initializes a missing agent dir on
+# --help with auth.json = {}, so a never-authenticated operator reaches this
+# guard with a present, non-empty, credential-less store.
 pi_seed_worker_agent_dir() {
   local seed="$STATE/pi-worker-agent"
   local src_dir="${PI_CODING_AGENT_DIR:-${HOME:-}/.pi/agent}"
   local src_auth="$src_dir/auth.json" src_models="$src_dir/models.json"
   local src_herdr="$src_dir/extensions/herdr-agent-state.ts"
   mkdir -p "$seed/extensions" || return 1
-  if [ ! -s "$src_auth" ]; then
+  if [ ! -s "$src_auth" ] || [ "$(tr -d '[:space:]' <"$src_auth")" = '{}' ]; then
     echo "error: no Pi credentials at $src_auth; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi (pi auth) or select another crew harness" >&2
     return 1
   fi
