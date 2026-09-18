@@ -8,7 +8,7 @@
 #      first-party task-channel statement through --append-system-prompt, and
 #      the -e worker extension.
 #   2. The seeded agent dir is created under state/ with auth.json symlinked
-#      to the operator's own auth store and a telemetry-off settings.json; the
+#      to the operator's own auth store and no settings.json of its own; the
 #      operator's models.json and herdr-managed Pi integration are linked
 #      across when present and dropped again when absent, re-established on
 #      every launch; a missing or empty operator store refuses the launch
@@ -127,16 +127,15 @@ test_pi_crewmate_launch_carries_the_ported_hardening() {
   assert_contains "$launch" "-e '$HOME_DIR/state/$id.pi-ext.ts'" "pi launch did not carry its worker extension"
   assert_not_contains "$launch" "__PI" "pi launch left a Pi placeholder unsubstituted"
   assert_not_contains "$launch" "__MODELFLAG__" "pi launch left its model placeholder unsubstituted"
-  # The seed dir: auth symlink to the throwaway operator store, telemetry-off
-  # settings, and no provider catalog or herdr integration link when the
-  # operator has neither.
+  # The seed dir: auth symlink to the throwaway operator store, no seeded
+  # settings (PI_TELEMETRY=0 on the launch line owns telemetry), and no
+  # provider catalog or herdr integration link when the operator has neither.
   seed="$HOME_DIR/state/pi-worker-agent"
   assert_present "$seed/auth.json" "pi seed did not link an auth store"
   [ -L "$seed/auth.json" ] || fail "pi seed auth.json must be a symlink, never a secret copy"
   [ "$(readlink "$seed/auth.json")" = "$HOME_DIR/user-home/.pi/agent/auth.json" ] \
     || fail "pi seed auth.json must point at the operator's own store"
-  [ "$(cat "$seed/settings.json")" = '{"enableInstallTelemetry":false}' ] \
-    || fail "pi seed settings.json must be the minimal telemetry-off seed"
+  assert_absent "$seed/settings.json" "pi seed must not carry a settings.json; PI_TELEMETRY=0 on the launch line owns telemetry"
   assert_absent "$seed/models.json" "pi seed must not carry a models.json when the operator has none"
   assert_absent "$seed/extensions/herdr-agent-state.ts" \
     "pi seed must not carry a herdr integration the operator never installed"

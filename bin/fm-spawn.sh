@@ -1614,9 +1614,9 @@ pi_supports_tui_mode() {
 #                  to `herdr agent get`, which the herdr backend's liveness and
 #                  submit checks read, and it disables itself outside a herdr
 #                  pane, so carrying it never wakes anything on tmux.
-#   settings.json  seeded once with install telemetry off, defense in depth
-#                  behind the PI_TELEMETRY=0 launch env
-# Session transcripts land under <seed>/sessions by design: worker sessions are
+# Telemetry is silenced by the PI_TELEMETRY=0 launch env alone: Pi consults
+# settings.json only when that variable is unset, so the seed carries none and
+# Pi writes its own on first run. Session transcripts land under <seed>/sessions by design: worker sessions are
 # machine-local records outside the operator's ~/.pi/agent, retained for
 # inspection rather than auto-deleted (Pi's retention policy is opt-in and
 # stays off). The home-level ~/.agents/skills directory is outside
@@ -1649,9 +1649,6 @@ pi_seed_worker_agent_dir() {
     ln -sfn "$src_herdr" "$seed/extensions/herdr-agent-state.ts" || return 1
   else
     rm -f "$seed/extensions/herdr-agent-state.ts"
-  fi
-  if [ ! -e "$seed/settings.json" ]; then
-    printf '{"enableInstallTelemetry":false}\n' >"$seed/settings.json" || return 1
   fi
   printf '%s\n' "$seed"
 }
