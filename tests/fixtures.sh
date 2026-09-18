@@ -338,7 +338,8 @@ make_spawn_fakebin() {
 # Write the minimal fake Pi auth store a crewmate/scout spawn seeds its
 # isolated agent dir from, at the path bin/fm-spawn.sh resolves when
 # PI_CODING_AGENT_DIR is blank (${HOME}/.pi/agent/auth.json). Every machine
-# that launches Pi workers has one; a spawn refuses the launch without it.
+# that launches Pi workers has one; a spawn refuses the launch when it holds
+# no entry for the pinned model's provider, so suites pin test-provider/....
 fm_test_pi_auth_home() {
   mkdir -p "$1/.pi/agent"
   printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \

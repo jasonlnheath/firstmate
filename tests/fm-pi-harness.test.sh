@@ -11,10 +11,11 @@
 #      to the operator's own auth store and no settings.json of its own; the
 #      operator's models.json and herdr-managed Pi integration are linked
 #      across when present and dropped again when absent, re-established on
-#      every launch; a launch with no credential source Pi could use (no
-#      provider entry in the operator store, no apiKey of its own on the
-#      pinned provider in models.json, no credential variable for it)
-#      refuses before any endpoint exists, and so does a launch without a
+#      every launch; a launch with no credential source Pi could use for the
+#      pinned provider (no entry for it in the operator store, no apiKey of
+#      its own on it in models.json, no credential variable for it; the
+#      Codex-authenticated codex-native provider exempt) refuses before any
+#      endpoint exists, and so does a launch without a
 #      concrete model, because the seed carries no saved default for Pi to
 #      fall back on.
 #   3. The post-launch gate passes only on the worker extension's own busy
@@ -187,6 +188,39 @@ test_pi_seed_fails_closed_without_operator_credentials() {
 # its environment variable. Either lets the worker run when it keys the
 # provider the pin names, so the fail-closed guard must stand aside for
 # them and refuse only a pin nothing keys.
+test_pi_seed_requires_the_auth_entry_for_the_pinned_provider() {
+  local id rec out rc agent
+  id="pi-authother-z1-$$"
+  rec=$(make_pi_spawn_case authother "$id")
+  read_pi_spawn_record "$rec"
+  agent="$HOME_DIR/user-home/.pi/agent"
+  printf '%s\n' '{"anthropic":{"type":"oauth","refresh":"r","access":"a","expires":0}}' >"$agent/auth.json"
+  out=$(CEREBRAS_API_KEY='' FM_TEST_PI_MODEL=cerebras/fm-test run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 1 "$rc" "another provider's login must not key the pinned provider: $out"
+  assert_contains "$out" "no Pi credentials" "the refusal must name the missing credentials"
+  assert_contains "$out" "holds no cerebras entry" "the refusal must name the auth entry it looked for"
+  [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
+  pass "fm-spawn: pi seed refuses when the auth store keys only another provider"
+}
+
+# The pi-codex-native adapter authenticates through the Codex App Server's
+# own login and never reads Pi's auth store (the verified lab in
+# tests/fm-pi-codex-native.test.sh runs it on an agent dir with none), so a
+# codex-native pin is the one the guard must not gate.
+test_pi_seed_exempts_codex_native_from_the_credential_guard() {
+  local id rec out rc
+  id="pi-codexnative-z1-$$"
+  rec=$(make_pi_spawn_case codexnative "$id")
+  read_pi_spawn_record "$rec"
+  printf '{}' >"$HOME_DIR/user-home/.pi/agent/auth.json"
+  out=$(FM_TEST_PI_MODEL=codex-native/gpt-6-astra run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" --effort ultra)
+  rc=$?
+  expect_code 0 "$rc" "a codex-native pin must launch without a Pi auth entry: $out"
+  assert_contains "$(cat "$CASE_DIR/launch.log")" "--model 'codex-native/gpt-6-astra'" "the launch must carry the native pin"
+  pass "fm-spawn: pi seed leaves codex-native to the Codex login"
+}
+
 test_pi_seed_accepts_models_json_provider_with_its_own_api_key() {
   local id rec out rc agent
   id="pi-modelkey-z1-$$"
@@ -410,6 +444,8 @@ test_pi_crewmate_launch_never_strips_project_reach() {
 
 test_pi_crewmate_launch_carries_the_ported_hardening
 test_pi_seed_fails_closed_without_operator_credentials
+test_pi_seed_requires_the_auth_entry_for_the_pinned_provider
+test_pi_seed_exempts_codex_native_from_the_credential_guard
 test_pi_seed_accepts_models_json_provider_with_its_own_api_key
 test_pi_seed_refuses_models_json_provider_without_api_key
 test_pi_seed_accepts_env_credential_for_the_pinned_provider
