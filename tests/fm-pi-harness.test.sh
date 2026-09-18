@@ -12,7 +12,9 @@
 #      operator's models.json and herdr-managed Pi integration are linked
 #      across when present and dropped again when absent, re-established on
 #      every launch; a missing or empty operator store refuses the launch
-#      before any endpoint exists.
+#      before any endpoint exists, and so does a launch without a concrete
+#      model, because the seed carries no saved default for Pi to fall back
+#      on.
 #   3. The post-launch gate passes only on the worker extension's own busy
 #      record: a worker that boots after the launch line passes once its
 #      agent_start lands, and a worker that never starts fails the spawn with
@@ -92,6 +94,8 @@ EOF
 run_pi_spawn() {
   local case_dir=$1 home=$2 wt=$3 fakebin=$4 id=$5
   shift 5
+  local model=${FM_TEST_PI_MODEL-test-provider/fm-test}
+  [ -z "$model" ] || set -- --model "$model" "$@"
   FM_ROOT_OVERRIDE='' FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
@@ -125,6 +129,7 @@ test_pi_crewmate_launch_carries_the_ported_hardening() {
   assert_contains "$launch" "first-party task instructions" "the task-channel statement lost its two-channel wording"
   assert_contains "$launch" "does not grant merge, destructive, security-sensitive" "the task-channel statement lost its authority disclaimer"
   assert_contains "$launch" "-e '$HOME_DIR/state/$id.pi-ext.ts'" "pi launch did not carry its worker extension"
+  assert_contains "$launch" "--model 'test-provider/fm-test'" "pi launch did not pin the requested model"
   assert_not_contains "$launch" "__PI" "pi launch left a Pi placeholder unsubstituted"
   assert_not_contains "$launch" "__MODELFLAG__" "pi launch left its model placeholder unsubstituted"
   # The seed dir: auth symlink to the throwaway operator store, no seeded
@@ -241,6 +246,23 @@ test_pi_gate_fails_when_the_worker_never_starts() {
   pass "fm-spawn: pi gate fails the spawn with a status event when the worker never starts"
 }
 
+test_pi_worker_launch_refuses_without_a_concrete_model() {
+  local id rec out rc model
+  for model in '' default; do
+    id="pi-nomodel-${model:-empty}-z1-$$"
+    rec=$(make_pi_spawn_case "nomodel-${model:-empty}" "$id")
+    read_pi_spawn_record "$rec"
+    out=$(FM_TEST_PI_MODEL="$model" run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+    rc=$?
+    expect_code 1 "$rc" "a pi crewmate launch with model '${model:-<empty>}' must be refused: $out"
+    assert_contains "$out" "config/crew-dispatch.json" "the refusal must name the dispatch pin as the fix"
+    assert_contains "$out" "--model" "the refusal must name the explicit flag as the fix"
+    [ -e "$HOME_DIR/state/$id.meta" ] && fail "a refused launch must not publish task metadata"
+    [ -s "$CASE_DIR/launch.log" ] && fail "a refused launch must never compose a launch command"
+  done
+  pass "fm-spawn: pi crewmate launch refuses when no concrete model resolves"
+}
+
 test_pi_crewmate_launch_never_strips_project_reach() {
   local id rec out rc launch
   id="pi-reach-z1-$$"
@@ -260,6 +282,7 @@ test_pi_seed_fails_closed_without_operator_credentials
 test_pi_seed_links_operator_models_and_herdr_integration_per_launch
 test_pi_gate_waits_for_the_worker_extension_start
 test_pi_gate_fails_when_the_worker_never_starts
+test_pi_worker_launch_refuses_without_a_concrete_model
 test_pi_crewmate_launch_never_strips_project_reach
 
 echo "all fm-pi-harness tests passed"
