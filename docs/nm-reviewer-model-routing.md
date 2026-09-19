@@ -19,18 +19,27 @@ of inheriting the operator's global Claude Code `model: opus` pin.
 
 ## Configuration
 
-The model pin lives in the no-mistakes global config:
+The pin lives in the no-mistakes global config (`~/.no-mistakes/config.yaml`) and has
+two parts that must both be present:
 
 ```yaml
+# Tiered reviewer: use claude-glm wrapper (sets ANTHROPIC_BASE_URL=Z.AI)
+# so no-mistakes never inherits the operator's global "model": "opus" pin.
+agent_path_override:
+  claude: claude-glm
+
 agent_config:
   claude:
-    model: glm-5.3
+    model: glm-5.3[1m]
     effort: xhigh
 ```
 
-This overrides the operator's global Claude Code settings pin (`~/.claude/settings.json`
-`"model": "opus"`) for all no-mistakes Claude Code invocations. The operator's global
-pin is left untouched — it still applies to interactive Claude Code sessions.
+The `claude-glm` wrapper is the load-bearing half: it launches Claude Code against
+the Z.AI endpoint, so no-mistakes invocations never inherit the operator's global
+Claude Code settings pin (`~/.claude/settings.json` `"model": "opus"`) or its
+Anthropic routing. The `agent_config` pin then selects `glm-5.3[1m]` at `xhigh`
+effort for all no-mistakes Claude Code invocations. The operator's global pin is
+left untouched — it still applies to interactive Claude Code sessions.
 
 **Zero Anthropic quota consumed by standard runs.**
 
@@ -76,8 +85,10 @@ When the captain authorizes a risk-gated opus final pass:
 
 1. Complete the standard no-mistakes run with the GLM find-and-fix loop.
 2. The GLM pass writes the handoff file (see below).
-3. The operator runs a separate no-mistakes invocation with `agent_config.claude.model`
-   set to `claude-opus-5` (via `agent_args_override` or a temporary config swap).
+3. The operator runs a separate no-mistakes invocation via a temporary config swap
+   that sets `agent_config.claude.model` to `claude-opus-5` and removes the
+   `agent_path_override.claude: claude-glm` entry, so the invocation uses the
+   native Claude binary and reaches Anthropic instead of the Z.AI-routed wrapper.
 4. The opus pass reads the handoff file to start warm and short.
 
 ## Handoff File
@@ -97,16 +108,16 @@ and short. The opus pass reads this file before reviewing the diff.
 run_id: <no-mistakes run ID>
 branch: <feature branch name>
 base: <base branch>
-model: glm-5.3
+model: glm-5.3[1m]
 effort: xhigh
 risk_assessment: low|medium|high
 findings:
   - id: <finding ID>
-    severity: critical|high|medium|low|warning
+    severity: error|warning|info
     file: <file path>
     line: <line number>
     description: <what the reviewer found>
-    action: fix|ask-user|pass|defer
+    action: no-op|auto-fix|ask-user
     status: fixed|open|resolved|escalated
     ruling: <if resolved, the captain's or reviewer's ruling>
 open_questions:
@@ -128,12 +139,14 @@ summary: <one-line summary of what the GLM pass did and what it found>
 ## Implementation Notes
 
 - No-mistakes 1.75.2 does not have native per-round reviewer model configuration.
-  This tiered architecture is implemented at the run level via global `agent_config`.
+  This tiered architecture is implemented at the run level via the global
+  `agent_path_override` and `agent_config` settings.
 - The `agent_config.claude` setting applies to ALL Claude Code invocations by
   no-mistakes, not just the reviewer. This is intentional — the entire pipeline
   benefits from the cheaper, faster glm-5.3 model.
-- For the opus final pass, the operator must temporarily override the model setting.
-  This is a manual step that requires captain authorization.
+- For the opus final pass, the operator must temporarily swap both the model
+  setting and the `claude-glm` path override. This is a manual step that
+  requires captain authorization.
 - The operator's global Claude Code settings pin (`~/.claude/settings.json`
   `"model": "opus"`) is never modified. It still applies to interactive Claude Code
   sessions and any tool that does not use no-mistakes' `agent_config` override.
