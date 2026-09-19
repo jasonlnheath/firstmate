@@ -8,6 +8,7 @@ Stops the no-mistakes reviewer from burning Claude session quota by routing all 
 |-------|-------|--------|---------|
 | Review (find-and-fix loop) | glm-5.3 | xhigh | Code review, finding, fixing |
 | Fix auto-apply | glm-5.3 | xhigh | Automated fix commits |
+| Rebase | glm-5.3 | xhigh | Base-advance conflict resolution |
 | Document | glm-5.3 | xhigh | Documentation updates |
 | Lint | glm-5.3 | xhigh | Lint fixes |
 | Test | glm-5.3 | xhigh | Test execution and fixes |
