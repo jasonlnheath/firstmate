@@ -1,0 +1,11 @@
+# claude-glm wrapper facts (~/.local/bin/claude-glm) — no secrets, key stays in ~/.config/zai/env
+export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="glm-5.3-flash[1m]"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="glm-5.3[1m]"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.3[1m]"
+exec claude "$@"
+
+# Doc contract (docs/nm-reviewer-model-routing.md) vs deployed values
+doc snippet     = {'agent_path_override': {'claude': 'claude-glm'}, 'agent_config': {'claude': {'model': 'glm-5.3[1m]', 'effort': 'xhigh'}}}
+deployed values = {'agent_path_override': {'claude': 'claude-glm'}, 'agent_config': {'claude': {'model': 'glm-5.3[1m]', 'effort': 'xhigh'}}}
+match: True

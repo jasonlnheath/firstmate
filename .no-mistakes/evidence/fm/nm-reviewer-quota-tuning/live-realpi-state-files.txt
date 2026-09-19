@@ -1,0 +1,6 @@
+-- /tmp/nmlive/real/home/state/live-deadpi-3337028.status
+failed: pi did not start processing its brief: its worker extension never reported agent_start; last pane output: me/state/pi-worker-agent' '/home/jason/.local/share/mise/installs/node/26.8.1/bin/pi' --tui-mode regular --model 'flashnext/Qwen3.8-Flash-Next' --approve --append-system-prompt 'You are a task worker|launched by Firstmate, your supervising orchestrator for the same human operator. The 
+-- /tmp/nmlive/real/home/state/pi-worker-agent/auth.json
+symlink -> /tmp/nmlive/real/home/user-home/.pi/agent/auth.json
+-- /tmp/nmlive/real/home/state/pi-worker-agent/models.json
+symlink -> /tmp/nmlive/real/home/user-home/.pi/agent/models.json

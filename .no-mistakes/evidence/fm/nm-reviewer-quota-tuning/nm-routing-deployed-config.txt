@@ -1,0 +1,43 @@
+# Deployed no-mistakes reviewer routing (~/.no-mistakes/config.yaml, 2026-09-19)
+
+$ sed -n '/Tiered reviewer: use claude-glm/,/effort: xhigh/p' ~/.no-mistakes/config.yaml
+# Tiered reviewer: use claude-glm wrapper (sets ANTHROPIC_BASE_URL=Z.AI)
+# so no-mistakes never inherits the operator's global "model": "opus" pin.
+agent_path_override:
+  claude: claude-glm
+
+# Model and reasoning effort per agent, in one common spelling (optional, global
+# only). no-mistakes maps these down to whatever the harness actually uses:
+# --model/--effort for claude and copilot, -m plus -c model_reasoning_effort for
+# codex, --model/--reasoning-effort for grok, --model/--thinking for pi, the
+# session-message body for opencode (its model needs the provider/model form),
+# and acpx --model for cursor and acp:<target>. Effort is one of
+# minimal, low, medium, high, xhigh, max; a harness rejects any level it does not
+# implement. rovodev and antigravity expose no mechanism no-mistakes can set, so
+# agent_config is refused for them; agent_args_override remains an escape hatch
+# only if your installed CLI build accepts a suitable flag.
+# agent_config:
+#   codex:
+#     model: gpt-5.4
+#     effort: low
+#   claude:
+#     model: sonnet
+#     effort: high
+#   opencode:
+#     model: openai/gpt-5
+#
+# Tiered reviewer model routing (nm-reviewer-quota-tuning):
+# Standard runs use glm-5.3 xhigh for all Claude Code invocations
+# (review, fix, document, test, lint, pr, ci) to prevent the
+# operator's global Claude settings "model": "opus" pin from
+# burning Anthropic session quota. See docs/nm-reviewer-model-routing.md.
+agent_config:
+  claude:
+    model: glm-5.3[1m]
+    effort: xhigh
+
+## Effective keys (parsed with python yaml, values only for these two stanzas)
+agent_path_override.claude = claude-glm
+agent_config.claude.model  = glm-5.3[1m]
+agent_config.claude.effort = xhigh
+opus anywhere in agent_config = False

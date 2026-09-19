@@ -1,0 +1,16 @@
+total 12
+drwxr-xr-x 3 jason jason  140 Sep 19 16:14 .
+drwxr-xr-x 7 jason jason  140 Sep 19 16:13 ..
+-rw------- 1 jason jason 1362 Sep 19 16:13 home-summary.json
+-rw-r--r-- 1 jason jason    0 Sep 19 16:13 .last-watcher-beat
+-rw-r--r-- 1 jason jason 2577 Sep 19 16:13 live-deadpi-3337028.pi-ext.ts
+-rw-r--r-- 1 jason jason 1269 Sep 19 16:14 live-deadpi-3337028.status
+drwxr-xr-x 4 jason jason  140 Sep 19 16:13 pi-worker-agent
+total 4
+drwxr-xr-x 4 jason jason 140 Sep 19 16:13 .
+drwxr-xr-x 3 jason jason 140 Sep 19 16:14 ..
+lrwxrwxrwx 1 jason jason  51 Sep 19 16:13 auth.json -> /tmp/nmlive/real/home/user-home/.pi/agent/auth.json
+drwxr-xr-x 2 jason jason  40 Sep 19 16:13 extensions
+lrwxrwxrwx 1 jason jason  53 Sep 19 16:13 models.json -> /tmp/nmlive/real/home/user-home/.pi/agent/models.json
+-rw------- 1 jason jason   2 Sep 19 16:13 models-store.json
+drwxr-xr-x 3 jason jason  60 Sep 19 16:13 sessions

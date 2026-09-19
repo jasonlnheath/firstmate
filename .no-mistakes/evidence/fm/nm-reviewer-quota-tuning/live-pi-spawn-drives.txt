@@ -1,0 +1,101 @@
+# Live Pi spawn drives — real bin/fm-spawn.sh, real tmux server (isolated
+# TMUX_TMPDIR socket), real pi 0.85.1, real treehouse pool, real local model
+# server (llama-server :8036, provider qwen36) — 2026-09-19, worktree
+# 01M2XJ3X9WPB93CC70N3DWY550, branch fm/nm-reviewer-quota-tuning @ 5b7803e.
+# Consolidated from the run transcript (each successive drive rebuilt the
+# fixture, so per-run files were overwritten; outputs below are the actual
+# command outputs of this test run).
+
+## Drive 1 — fully-real successful crewmate spawn (rc=0)
+
+Command shape: fm-spawn.sh <id> <fixture-project> --harness pi --mode
+no-mistakes --yolo off --model qwen36/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf,
+run inside a real tmux pane (backend auto-detects tmux via $TMUX).
+
+  spawned live-realpi-3307939 harness=pi kind=ship mode=no-mistakes yolo=off
+    window=driver:fm-live-realpi-3307939
+    worktree=/home/jason/.treehouse/project-08a56b/1/project
+  inner: spawn rc=0 id=live-realpi-3307939
+
+- Start gate passed: spawn reported success only after the worker extension
+  wrote its own busy record (fm_busy_classify -> "busy pi-ext").
+- Worker completed its brief turn on the local model (turn-ended marker
+  present; pane showed the reply "READY").
+- Busy lifecycle closed by the NEW session_shutdown handler when the server
+  was killed:
+  busy-state: v1 gen=g1789848649.3311067.9507 seq=4 state=idle
+              source=pi-ext event=session-shutdown ts=1789848655
+- Seeded agent dir (state/pi-worker-agent), no secret copies, all symlinks:
+    auth.json   -> <fixture user-home>/.pi/agent/auth.json
+    models.json -> <fixture user-home>/.pi/agent/models.json
+    models-store.json  10316 bytes (refreshed by the worker itself)
+    sessions/          (worker session transcript, machine-local)
+    settings.json      (written by pi on first run; seed carries none)
+- meta recorded: harness=pi model=qwen36/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+  window + worktree + busy_gen + spawn_gen. No .status failure event.
+- Zero external quota: model served by the local llama-server on 127.0.0.1:8036.
+
+## Drive 2 — unknown model id under a known custom provider (rc=0, informative)
+
+--model qwen36/model-that-does-not-exist: real pi 0.85.1 passes an unknown
+model id under a KNOWN custom provider straight to the provider endpoint, and
+llama-server serves the loaded model regardless of id. Pane status bar:
+  (qwen36) model-that-does-not-exist • medium
+Worker booted, agent_start fired, gate passed, turn completed ("READY").
+(The pane capture live-realpi-pane-driver-1.txt is this drive's capture:
+a real pi TUI rendering the launch brief in a real tmux pane.)
+
+## Drive 3 — dead worker: provider pin absent from the catalog (rc=1, gate failure)
+
+auth.json keys flashnext (guard passes: auth entry for the pinned provider),
+models.json holds only provider deadstart -> real pi exits at startup:
+  Error: Model "flashnext/Qwen3.8-Flash-Next" not found. Use --list-models
+  to see available models.
+
+Spawn result (exactly the pi_spawn_fail contract):
+  error: pi did not start processing its brief: its worker extension never
+  reported agent_start; last pane output: ...|Error: Model
+  "flashnext/Qwen3.8-Flash-Next" not found. ...|project HEAD ✗
+  inner: spawn rc=1 id=live-deadpi-3337028
+
+state/<id>.status carries the one-line failed event with the pane's last
+output (launch-line echo + pi's error, blank lines dropped, |-joined).
+No busy-state file exists for this id: the extension never ran, so nothing
+but the gate could have failed the spawn. Seed's models-store.json stayed
+2 bytes ({}): pi died before refreshing the catalog — contrast with Drive 1.
+
+## Refusal drives — real spawn path, real pi --help probe (pre-endpoint)
+
+Real pi 0.85.1 --help initializes a missing agent dir with auth.json={}
+(confirming the fail-closed ordering the code comments rely on), then the
+guards refuse with rc=1 and NO state/<id>.meta, NO state/<id>.pi-ext.ts,
+and an empty launch log (refusal lands before any endpoint/task state):
+
+  no --model            -> "error: a pi crewmate/scout runs in an isolated
+                            agent dir that carries no saved default model;
+                            pin one via config/crew-dispatch.json or pass
+                            --model <provider>/<id> explicitly"
+  --model default       -> same refusal
+  --model glm-5.3       -> "error: a pi crewmate/scout model pin must name
+                            its provider as <provider>/<id> (got 'glm-5.3')"
+  --model qwen36/<id> with empty store
+                        -> "error: no Pi credentials for a pi worker:
+                            <auth.json> holds no qwen36 entry, <models.json>
+                            declares no qwen36 provider with its own apiKey,
+                            and Pi reads no credential variable for provider
+                            qwen36; refusing to launch a Pi worker whose
+                            model calls could only fail..."
+
+Direct validator drives (bin/fm-harness.sh validate-worker-model /
+validate-worker-credentials, fixture agent dirs): 8/8 model-guard cases and
+10/10 credential-source cases behaved exactly per spec, including the three
+legitimate credential sources (auth entry, models.json apiKey, provider env
+var), wrong-provider/wrong-env refusals, codex-native exemption, and the
+secondmate / non-pi-harness bypasses.
+
+## Cleanup
+
+tmux servers killed (isolated sockets), fixture treehouse pool destroyed
+(~/.treehouse back to the operator's 4 pre-existing entries), /tmp fixtures
+removed. No writes to the operator's real ~/.pi, ~/.claude, or ~/.no-mistakes
+config; the only outside-worktree writes are these evidence files.
