@@ -1,0 +1,15 @@
+ok - fm-spawn: pi crewmate launch carries suppression, isolation, trust grant, task-channel statement, and a seeded agent dir
+ok - fm-spawn: pi crewmate launch refuses when the operator auth store is missing
+ok - fm-spawn: pi seed refuses when the auth store keys only another provider
+ok - fm-spawn: pi seed leaves codex-native to the Codex login
+ok - fm-spawn: pi seed lets a models.json provider's own apiKey stand in for an empty auth store
+ok - fm-spawn: pi seed drops the auth.json link when the operator store is absent
+ok - fm-spawn: pi seed still refuses a models.json provider that carries no apiKey
+ok - fm-spawn: pi seed lets the pinned provider's credential variable stand in for an empty auth store
+ok - fm-spawn: pi seed refuses when the pinned provider's credential variable is unset
+ok - fm-spawn: pi seed links the operator's models.json and herdr integration and re-establishes both per launch
+ok - fm-spawn: pi gate waits past the pre-launch seed for the worker extension's agent_start
+ok - fm-spawn: pi gate fails the spawn with a status event carrying the pane's last output
+ok - fm-spawn: pi crewmate launch refuses when no concrete <provider>/<id> model resolves
+ok - fm-spawn: pi isolation never strips project context files or project skills
+all fm-pi-harness tests passed

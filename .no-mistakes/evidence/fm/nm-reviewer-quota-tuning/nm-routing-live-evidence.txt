@@ -1,0 +1,45 @@
+# Live routing evidence, captured during this no-mistakes test phase (run 2026-09-19T22:15:48Z)
+
+== 1. Process chain: this run's agent is a child of the no-mistakes daemon ==
+pid 557962: /home/jason/.no-mistakes/bin/no-mistakes daemon run --root /home/jason/.no-mistakes
+pid 579832 (child, this test-phase agent) argv:
+claude
+--model
+glm-5.3[1m]
+--effort
+xhigh
+-p
+--verbose
+--output-format
+(...then the structured-output JSON schema and --dangerously-skip-permissions)
+
+== 2. Agent process env: routed to Z.AI (GLM), not Anthropic ==
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5.3[1m]
+ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5.3[1m]
+ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-5.3-flash[1m]
+
+== 3. Deployed no-mistakes config pins (the doc's two-part mechanism, ~/.no-mistakes/config.yaml) ==
+
+# Tiered reviewer: use claude-glm wrapper (sets ANTHROPIC_BASE_URL=Z.AI)
+agent_path_override:
+  claude: claude-glm
+agent_config:
+  claude:
+    model: glm-5.3[1m]
+    effort: xhigh
+
+== 4. claude-glm wrapper (~/.local/bin/claude-glm) sets the Z.AI base URL and execs claude ==
+export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="glm-5.3[1m]"
+exec claude "$@"
+
+== 5. Operator global pin untouched (~/.claude/settings.json still pins opus for interactive sessions) ==
+45:  "model": "opus"
+
+== 6. The no-mistakes config sets no opus model: every 'opus' occurrence in it is a ==
+   comment describing the operator's GLOBAL pin that the tiered routing avoids:
+83:# so no-mistakes never inherits the operator's global "model": "opus" pin.
+110:# operator's global Claude settings "model": "opus" pin from
+   active settings are agent_path_override.claude=claude-glm and agent_config.claude=glm-5.3[1m]/xhigh (section 3)

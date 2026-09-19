@@ -1,0 +1,11 @@
+# Same regression test run against the BASE commit's bin/fm-spawn.sh (7392dc7):
+# the guard-blessed keyless-store launch aborts mid-delivery exactly as reported.
+
+ok - fm-spawn: pi crewmate launch carries suppression, isolation, trust grant, task-channel statement, and a seeded agent dir
+ok - fm-spawn: pi crewmate launch refuses when the operator auth store is missing
+ok - fm-spawn: pi seed refuses when the auth store keys only another provider
+ok - fm-spawn: pi seed leaves codex-native to the Codex login
+ok - fm-spawn: pi seed lets a models.json provider's own apiKey stand in for an empty auth store
+not ok - a guard-blessed apiKey launch must not die on an absent auth store: warning: /tmp/fm-pi-harness.5YeJIy/noauthstore/home/data/pi-noauthstore-z1-637551/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: /tmp/fm-pi-harness.5YeJIy/noauthstore/home/state/pi-worker-agent/auth.json is not readable through its symlink to /tmp/fm-pi-harness.5YeJIy/noauthstore/agent/auth.json: expected exit 0, got 1
+suite-rc=1
