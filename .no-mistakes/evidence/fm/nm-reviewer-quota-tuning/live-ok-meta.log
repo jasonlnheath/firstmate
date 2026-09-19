@@ -1,0 +1,13 @@
+window=firstmate:fm-pi-live-ok-4004926
+endpoint_task_id=pi-live-ok-4004926
+worktree=/tmp/fm-live-ok/user-home/.treehouse/proj-f811d9/1/proj
+project=/tmp/fm-live-ok/proj
+harness=pi
+kind=ship
+mode=no-mistakes
+yolo=off
+tasktmp=/tmp/fm-pi-live-ok-4004926
+model=qwen36/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+effort=default
+busy_gen=g1789852536.4005427.4563
+spawn_gen=s1789852536.4004941.10546

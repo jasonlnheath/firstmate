@@ -1,0 +1,2 @@
+warning: /tmp/fm-live-ok/home/data/pi-live-ok-4004926/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned pi-live-ok-4004926 harness=pi kind=ship mode=no-mistakes yolo=off window=firstmate:fm-pi-live-ok-4004926 worktree=/tmp/fm-live-ok/user-home/.treehouse/proj-f811d9/1/proj

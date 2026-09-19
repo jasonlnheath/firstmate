@@ -1,0 +1,1 @@
+error: a pi crewmate/scout model pin must name its provider as <provider>/<id> (got 'glm-5.3') so the launch can be checked against that provider's credentials; pin it that way in config/crew-dispatch.json or via --model

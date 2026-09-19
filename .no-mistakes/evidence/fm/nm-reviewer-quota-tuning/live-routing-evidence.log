@@ -1,0 +1,25 @@
+# Live routing evidence: no-mistakes agent_invocations (this machine, last ~24h)
+
+```
+claude-opus-5|2026-09-18 23:11:16|2026-09-19 04:43:08|13
+glm-5.3|2026-09-19 19:26:13|2026-09-19 21:00:15|10
+```
+
+Every standard pipeline phase after the tiered-routing deployment
+(runs 01M2XJ3X9WPB93CC70N3DWY550 and this run 01M2XPMGMS979B3VMJ4MDJZDBR:
+document, pr, ci, review, review-fix) ran agent=claude model=glm-5.3.
+All 13 claude-opus-5 invocations predate the deployment (last 2026-09-19 04:43);
+opus remains reachable only via the documented captain-authorized risk-gate swap.
+
+Deployed config (~/.no-mistakes/config.yaml) matches docs/nm-reviewer-model-routing.md:
+```yaml
+# Tiered reviewer: use claude-glm wrapper (sets ANTHROPIC_BASE_URL=Z.AI)
+# so no-mistakes never inherits the operator's global "model": "opus" pin.
+agent_path_override:
+  claude: claude-glm
+# burning Anthropic session quota. See docs/nm-reviewer-model-routing.md.
+agent_config:
+  claude:
+    model: glm-5.3[1m]
+    effort: xhigh
+```

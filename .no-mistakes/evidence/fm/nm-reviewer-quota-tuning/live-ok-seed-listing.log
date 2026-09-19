@@ -1,0 +1,9 @@
+total 8
+drwxr-xr-x 4 jason jason 160 Sep 19 17:15 .
+drwxr-xr-x 3 jason jason 180 Sep 19 17:15 ..
+lrwxrwxrwx 1 jason jason  45 Sep 19 17:15 auth.json -> /tmp/fm-live-ok/user-home/.pi/agent/auth.json
+drwxr-xr-x 2 jason jason  40 Sep 19 17:15 extensions
+lrwxrwxrwx 1 jason jason  47 Sep 19 17:15 models.json -> /tmp/fm-live-ok/user-home/.pi/agent/models.json
+-rw------- 1 jason jason   2 Sep 19 17:15 models-store.json
+drwxr-xr-x 3 jason jason  60 Sep 19 17:15 sessions
+-rw-r--r-- 1 jason jason  38 Sep 19 17:15 settings.json
