@@ -7,11 +7,12 @@
 #      PI_CODING_AGENT_DIR, --approve for per-run project trust, the
 #      first-party task-channel statement through --append-system-prompt, and
 #      the -e worker extension.
-#   2. The seeded agent dir is created under state/ with auth.json symlinked
-#      to the operator's own auth store and no settings.json of its own; the
-#      operator's models.json and herdr-managed Pi integration are linked
-#      across when present and dropped again when absent, re-established on
-#      every launch; a launch with no credential source Pi could use for the
+#   2. The seeded agent dir is created under state/ with no settings.json of
+#      its own; the operator's auth store, models.json, and herdr-managed Pi
+#      integration are linked across when present and dropped again when
+#      absent, re-established on every launch, so a launch the guard blessed
+#      through a models.json apiKey or a provider variable succeeds with no
+#      auth store at all; a launch with no credential source Pi could use for the
 #      pinned provider (no entry for it in the operator store, no apiKey of
 #      its own on it in models.json, no credential variable for it; the
 #      Codex-authenticated codex-native provider exempt) refuses before any
@@ -120,7 +121,7 @@ run_pi_spawn() {
     FM_FAKE_LAUNCH_LOG="$case_dir/launch.log" \
     FM_FAKE_PI_START="${FM_FAKE_PI_START:-now}" \
     FM_PI_READY_POLLS="${FM_PI_READY_POLLS:-40}" FM_PI_POLL_INTERVAL=0.05 \
-    PI_CODING_AGENT_DIR='' \
+    PI_CODING_AGENT_DIR="${FM_TEST_PI_AGENT_DIR:-}" \
     HOME="$home/user-home" \
     PATH="$fakebin:$BASE_PATH" \
     "$SPAWN" "$id" "$PROJ_DIR" --harness pi --mode no-mistakes --yolo off "$@" 2>&1
@@ -240,6 +241,39 @@ test_pi_seed_accepts_models_json_provider_with_its_own_api_key() {
   assert_contains "$(cat "$CASE_DIR/launch.log")" "--model 'flashnext/Qwen3.8-Flash-Next'" \
     "the launch must carry the custom-provider pin"
   pass "fm-spawn: pi seed lets a models.json provider's own apiKey stand in for an empty auth store"
+}
+
+# The guard blesses a models.json apiKey with no auth store at all, so the
+# seed must not refuse that same launch after the window, worktree, and busy
+# record already exist. An agent dir the operator keeps no auth store in -
+# read-only here so even the --help probe cannot initialize {} into it - is
+# that machine: the auth link is dropped like a removed models.json instead
+# of aborting the delivery, and a stale auth link from an earlier launch
+# goes with it.
+test_pi_seed_drops_the_auth_link_when_the_operator_store_is_absent() {
+  local id rec out rc agent seed
+  id="pi-noauthstore-z1-$$"
+  rec=$(make_pi_spawn_case noauthstore "$id")
+  read_pi_spawn_record "$rec"
+  agent="$CASE_DIR/agent"
+  mkdir -p "$agent"
+  printf '%s\n' '{"providers":{"flashnext":{"baseUrl":"http://127.0.0.1:8039/v1","api":"openai-completions","apiKey":"dummy","models":[{"id":"Qwen3.8-Flash-Next"}]}}}' \
+    >"$agent/models.json"
+  chmod 555 "$agent"
+  seed="$HOME_DIR/state/pi-worker-agent"
+  mkdir -p "$seed"
+  ln -s "$CASE_DIR/gone-auth.json" "$seed/auth.json"
+  out=$(FM_TEST_PI_AGENT_DIR="$agent" FM_TEST_PI_MODEL=flashnext/Qwen3.8-Flash-Next \
+    run_pi_spawn "$CASE_DIR" "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  chmod 755 "$agent"
+  expect_code 0 "$rc" "a guard-blessed apiKey launch must not die on an absent auth store: $out"
+  [ ! -L "$seed/auth.json" ] && [ ! -e "$seed/auth.json" ] \
+    || fail "pi seed must drop the auth.json link once the operator has no store"
+  [ -L "$seed/models.json" ] || fail "pi seed must still link the operator's models.json"
+  assert_contains "$(cat "$CASE_DIR/launch.log")" "--model 'flashnext/Qwen3.8-Flash-Next'" \
+    "the launch must carry the custom-provider pin"
+  pass "fm-spawn: pi seed drops the auth.json link when the operator store is absent"
 }
 
 test_pi_seed_refuses_models_json_provider_without_api_key() {
@@ -457,6 +491,7 @@ test_pi_seed_fails_closed_without_operator_credentials
 test_pi_seed_requires_the_auth_entry_for_the_pinned_provider
 test_pi_seed_exempts_codex_native_from_the_credential_guard
 test_pi_seed_accepts_models_json_provider_with_its_own_api_key
+test_pi_seed_drops_the_auth_link_when_the_operator_store_is_absent
 test_pi_seed_refuses_models_json_provider_without_api_key
 test_pi_seed_accepts_env_credential_for_the_pinned_provider
 test_pi_seed_refuses_env_credential_that_is_unset_or_for_another_provider

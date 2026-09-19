@@ -146,8 +146,9 @@
 #   never falls back to pi. A pi/pi-signed crewmate or scout (never a
 #   --secondmate) additionally runs isolated from the operator's global Pi
 #   state: PI_CODING_AGENT_DIR points at the seeded state/pi-worker-agent dir
-#   (pi_seed_worker_agent_dir below: a symlinked auth.json, plus models.json
-#   and the herdr integration when present), --approve grants project trust for
+#   (pi_seed_worker_agent_dir below: symlinks to the operator's auth store,
+#   models.json, and herdr integration, each when present), --approve grants
+#   project trust for
 #   this run only, --append-system-prompt carries the same first-party
 #   task-channel trust statement claude workers get, PI_TELEMETRY=0 and
 #   PI_SKIP_VERSION_CHECK=1 silence telemetry and the version check, and the
@@ -1618,9 +1619,15 @@ pi_supports_tui_mode() {
 # carried as PI_CODING_AGENT_DIR). The operator's real agent dir keeps its
 # AGENTS.md, global skills, extensions, settings, and session history; a
 # worker gets a deliberately seeded directory instead:
-#   auth.json      symlink to the operator's own auth store, re-established on
-#                  every launch, so the worker always reads current credentials
-#                  and no secret copy is ever written under state/
+#   auth.json      symlink to the operator's own auth store when one exists,
+#                  re-established on every launch, so a keyed worker reads
+#                  current credentials and no secret copy is ever written
+#                  under state/; a store absent at seed time is one the
+#                  pre-endpoint credential guard already accepted a
+#                  models.json apiKey or provider variable in place of, so
+#                  like models.json's link it is simply dropped, and a store
+#                  that proves unreadable only at runtime is the start gate's
+#                  to fail on
 #   models.json    symlink to the operator's custom provider catalog when one
 #                  exists, re-established the same way: Pi reads models.json
 #                  from the agent dir only, and a crew-dispatch rule naming a
@@ -1655,10 +1662,10 @@ pi_seed_worker_agent_dir() {
   local src_auth="$src_dir/auth.json" src_models="$src_dir/models.json"
   local src_herdr="$src_dir/extensions/herdr-agent-state.ts"
   mkdir -p "$seed/extensions" || return 1
-  ln -sfn "$src_auth" "$seed/auth.json" || return 1
-  if [ ! -r "$seed/auth.json" ]; then
-    echo "error: $seed/auth.json is not readable through its symlink to $src_auth" >&2
-    return 1
+  if [ -f "$src_auth" ]; then
+    ln -sfn "$src_auth" "$seed/auth.json" || return 1
+  else
+    rm -f "$seed/auth.json"
   fi
   if [ -f "$src_models" ]; then
     ln -sfn "$src_models" "$seed/models.json" || return 1
