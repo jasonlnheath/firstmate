@@ -1,0 +1,35 @@
+# Live lab: real pi 0.85.1, real tmux (private socket fmlive), isolated FM_HOME, throwaway HOME.
+# Operator store: auth.json = {} ; models.json = {providers:{qwen36:{... apiKey:"qwen36-local"}}}
+
+### Scenario: credential-less pin (no cerebras entry/apiKey/CEREBRAS_API_KEY) -> refused before any window
+$ fm-spawn.sh live-nocred <project> --harness pi --mode no-mistakes --yolo off --model cerebras/llama-3.3-70b
+error: no Pi credentials for a pi worker: /tmp/fm-pi-live/lab/user-home/.pi/agent/auth.json holds no cerebras entry, /tmp/fm-pi-live/lab/user-home/.pi/agent/models.json declares no cerebras provider with its own apiKey, and provider cerebras's credential variable (CEREBRAS_API_KEY) is unset in this environment; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness
+exit=1
+--- tmux windows after refusal:
+0:bash
+--- state/ after refusal:
+.last-watcher-beat
+
+### Scenario: provider-less pin (--model glm-5.3) -> refused with <provider>/<id> shape rule
+$ fm-spawn.sh live-noprov <project> --harness pi ... --model glm-5.3
+error: a pi crewmate/scout model pin must name its provider as <provider>/<id> (got 'glm-5.3') so the launch can be checked against that provider's credentials; pin it that way in config/crew-dispatch.json or via --model
+exit=1
+--- tmux windows:
+0:bash
+
+### Scenario: --model default -> refused (isolated seed carries no saved default)
+error: a pi crewmate/scout runs in an isolated agent dir that carries no saved default model; pin one via config/crew-dispatch.json or pass --model <provider>/<id> explicitly
+exit=1
+
+### Scenario: no --model at all (no crew-dispatch pin) -> refused
+error: a pi crewmate/scout runs in an isolated agent dir that carries no saved default model; pin one via config/crew-dispatch.json or pass --model <provider>/<id> explicitly
+exit=1
+--- tmux windows:
+0:bash
+--- state/:
+.last-watcher-beat
+--- operator agent dir after the pi --help probe:
+auth.json
+models.json
+models-store.json
+{}

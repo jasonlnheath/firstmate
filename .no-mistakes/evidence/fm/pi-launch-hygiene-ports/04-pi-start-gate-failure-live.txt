@@ -1,0 +1,23 @@
+# Same live lab. CEREBRAS_API_KEY=fm-dummy is exported so the env leg of the credential guard passes for the
+# built-in cerebras provider, but the pin names a model id absent from Pi 0.85.1 catalog for that provider.
+
+### Scenario: Pi cannot resolve the pin and never fires agent_start -> spawn fails, failed: status event carries the pane tail, window is closed
+$ CEREBRAS_API_KEY=fm-dummy FM_PI_READY_POLLS=20 fm-spawn.sh live-nostart <project> --harness pi --mode no-mistakes --yolo off --model cerebras/no-such-model
+warning: /tmp/fm-pi-live/lab/home/data/live-nostart/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: pi did not start processing its brief: its worker extension never reported agent_start; last pane output:  Use /login to log into a provider via OAuth or API key. See:|   /home/jason/.local/share/mise/installs/node/26.8.1/lib/node_modules/@earendil-works/pi-coding-agent/docs/providers.md|   /home/jason/.local/share/mise/installs/node/26.8.1/lib/node_modules/@earendil-works/pi-coding-agent/docs/models.md| Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────|/tmp/fm-pi-live/lab/wt2 (wt-live2)|0.0%/131k (auto)                                                                                                                                                                  no-such-model • medium
+exit=1  (took 13s)
+
+--- tmux windows after failure (fm-live-nostart must be gone; fm-live-ok untouched):
+0:bash cmd=bash
+1:fm-live-ok cmd=pi
+--- state/live-nostart.status:
+failed: pi did not start processing its brief: its worker extension never reported agent_start; last pane output:  Use /login to log into a provider via OAuth or API key. See:|   /home/jason/.local/share/mise/installs/node/26.8.1/lib/node_modules/@earendil-works/pi-coding-agent/docs/providers.md|   /home/jason/.local/share/mise/installs/node/26.8.1/lib/node_modules/@earendil-works/pi-coding-agent/docs/models.md| Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────|────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────|/tmp/fm-pi-live/lab/wt2 (wt-live2)|0.0%/131k (auto)                                                                                                                                                                  no-such-model • medium
+--- status event line count: 1
+--- state/live-nostart.meta present after rollback? no
+
+# Note: in this lab the tmux server was started before CEREBRAS_API_KEY existed, so the pane's Pi saw no key
+# for cerebras and parked its TUI on "No API key found ... Use /login" without ever running the agent - a real
+# never-started worker, which is exactly what the gate has to catch. (A direct probe with the key in the pane
+# showed Pi 0.85.1 instead warns 'Model "no-such-model" not found for provider "cerebras". Using custom model id.'
+# and then fails the call with 401.) Either way: exit 1, one-line failed: event with the pane tail, window closed,
+# task record rolled back, the sibling live-ok worker untouched.

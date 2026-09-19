@@ -1,0 +1,51 @@
+# bin/fm-harness.sh validate-worker-model / validate-worker-credentials, the shared pre-endpoint + pre-stop validators,
+# run against the lab operator store (auth.json = {}, models.json keys qwen36 with apiKey).
+
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship codex-native/gpt-6-astra
+exit=0
+
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi-signed scout qwen36/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+exit=0
+
+$ env CEREBRAS_API_KEY=fm-env /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship cerebras/llama-3.3-70b
+exit=0
+
+$ env CEREBRAS_API_KEY= /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship cerebras/llama-3.3-70b
+error: no Pi credentials for a pi worker: /tmp/fm-pi-live/lab/user-home/.pi/agent/auth.json holds no cerebras entry, /tmp/fm-pi-live/lab/user-home/.pi/agent/models.json declares no cerebras provider with its own apiKey, and provider cerebras's credential variable (CEREBRAS_API_KEY) is unset in this environment; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness
+exit=1
+
+$ env GROQ_API_KEY=fm-env /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship cerebras/llama-3.3-70b
+error: no Pi credentials for a pi worker: /tmp/fm-pi-live/lab/user-home/.pi/agent/auth.json holds no cerebras entry, /tmp/fm-pi-live/lab/user-home/.pi/agent/models.json declares no cerebras provider with its own apiKey, and provider cerebras's credential variable (CEREBRAS_API_KEY) is unset in this environment; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness
+exit=1
+
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship customprov/x
+error: no Pi credentials for a pi worker: /tmp/fm-pi-live/lab/user-home/.pi/agent/auth.json holds no customprov entry, /tmp/fm-pi-live/lab/user-home/.pi/agent/models.json declares no customprov provider with its own apiKey, and Pi reads no credential variable for provider customprov; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness
+exit=1
+
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi secondmate 
+exit=0
+
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials claude ship 
+exit=0
+
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-model pi ship sonnet:high
+error: a pi crewmate/scout model pin must name its provider as <provider>/<id> (got 'sonnet:high') so the launch can be checked against that provider's credentials; pin it that way in config/crew-dispatch.json or via --model
+exit=1
+
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-model pi-signed scout 
+error: a pi-signed crewmate/scout runs in an isolated agent dir that carries no saved default model; pin one via config/crew-dispatch.json or pass --model <provider>/<id> explicitly
+exit=1
+
+--- adversarial: auth.json with the pinned provider present passes; a malformed auth.json (array) does not
+$ env CEREBRAS_API_KEY= /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship cerebras/llama-3.3-70b
+exit=0
+
+$ env CEREBRAS_API_KEY= /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship cerebras/llama-3.3-70b
+error: no Pi credentials for a pi worker: /tmp/fm-pi-live/lab/user-home/.pi/agent/auth.json holds no cerebras entry, /tmp/fm-pi-live/lab/user-home/.pi/agent/models.json declares no cerebras provider with its own apiKey, and provider cerebras's credential variable (CEREBRAS_API_KEY) is unset in this environment; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness
+exit=1
+
+--- adversarial: models.json provider with an EMPTY apiKey string must not key the provider
+$ /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-harness.sh validate-worker-credentials pi ship qwen36/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+error: no Pi credentials for a pi worker: /tmp/fm-pi-live/lab/user-home/.pi/agent/auth.json holds no qwen36 entry, /tmp/fm-pi-live/lab/user-home/.pi/agent/models.json declares no qwen36 provider with its own apiKey, and Pi reads no credential variable for provider qwen36; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness
+exit=1
+

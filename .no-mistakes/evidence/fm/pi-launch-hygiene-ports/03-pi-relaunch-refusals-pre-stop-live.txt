@@ -1,0 +1,26 @@
+# Against the live-ok worker spawned in 02 (real pi in tmux window firstmate:fm-live-ok), pane pid 552814
+
+### Scenario: relaunch onto a provider the operator has no credential for -> refused BEFORE the running worker is stopped
+$ fm-control.sh live-ok relaunch --model cerebras/llama-3.3-70b --note "switch"
+error: no Pi credentials for a pi worker: /tmp/fm-pi-live/lab/user-home/.pi/agent/auth.json holds no cerebras entry, /tmp/fm-pi-live/lab/user-home/.pi/agent/models.json declares no cerebras provider with its own apiKey, and provider cerebras's credential variable (CEREBRAS_API_KEY) is unset in this environment; refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness
+exit=1
+--- pane after: cmd=pi pid=552814 (unchanged pid => never stopped)
+--- meta model still: model=qwen36/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+
+### Scenario: relaunch onto a provider-less pin -> refused before stop
+$ fm-control.sh live-ok relaunch --model glm-5.3 --note "switch"
+error: a pi crewmate/scout model pin must name its provider as <provider>/<id> (got 'glm-5.3') so the launch can be checked against that provider's credentials; pin it that way in config/crew-dispatch.json or via --model
+exit=1
+--- pane after: cmd=pi pid=552814
+
+### Scenario: relaunch onto --model default -> refused before stop
+error: a pi crewmate/scout runs in an isolated agent dir that carries no saved default model; pin one via config/crew-dispatch.json or pass --model <provider>/<id> explicitly
+exit=1
+--- pane after: cmd=pi pid=552814
+--- pi process still alive under the pane:
+--- busy-state untouched:
+v1 gen=g1789792232.553810.2515 seq=2 state=busy source=pi-ext event=agent-start ts=1789792233
+--- status file (no stop/relaunch events):
+(absent)
+    PID    PPID     ELAPSED CMD
+ 552902  552814       03:08 bash

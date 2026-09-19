@@ -1,0 +1,6 @@
+# Live worker live-badmodel (real pi, tmux window fm-live-badmodel) is mid-turn (busy pi-ext agent-start).
+### Scenario: operator interrupts (Escape) then /quit -> extension closes busy on session_shutdown, never a stale busy record
+before: v1 gen=g1789792439.588846.17949 seq=2 state=busy source=pi-ext event=agent-start ts=1789792440
+after Escape (agent_settled): v1 gen=g1789792439.588846.17949 seq=3 state=idle source=pi-ext event=agent-settled ts=1789792465
+after /quit: v1 gen=g1789792439.588846.17949 seq=4 state=idle source=pi-ext event=session-shutdown ts=1789792469
+--- pane command now: bash

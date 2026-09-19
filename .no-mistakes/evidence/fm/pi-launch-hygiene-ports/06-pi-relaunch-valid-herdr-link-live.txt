@@ -1,0 +1,31 @@
+# Live lab. The operator (throwaway HOME) now also has the real herdr-managed Pi integration installed at
+# ~/.pi/agent/extensions/herdr-agent-state.ts (copied from this host). The idle live-ok worker is relaunched
+# onto the same qwen36 pin through fm-control.sh; the replacement must pass the same start gate and the seed
+# must now carry the herdr link (re-established per launch, never copied).
+
+### Scenario: valid pi relaunch -> old worker stopped, replacement passes agent_start gate, seed links herdr integration
+$ fm-control.sh live-ok relaunch --note "same pin, herdr now installed"
+warning: /tmp/fm-pi-live/lab/home/data/live-ok/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+relaunched live-ok harness=pi from=pi model=qwen36/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf effort=default backend=tmux endpoint=firstmate:fm-live-ok worktree=/tmp/fm-pi-live/lab/wt
+exit=0  (took 5s)
+--- pane: cmd=pi pid_before=552814 pid_now=552814
+--- busy-state (new gen, extension-confirmed):
+v1 gen=g1789792571.612949.10263 seq=2 state=busy source=pi-ext event=agent-start ts=1789792573
+--- seed extensions dir:
+total 0
+lrwxrwxrwx herdr-agent-state.ts -> <lab>/user-home/.pi/agent/extensions/herdr-agent-state.ts
+--- status events:
+--- pane [Extensions] block:
+[Extensions]
+  live-ok.pi-ext.ts
+
+
+--
+11:p/fm-pi-live/lab/home/state/live-ok.pi-ext.ts' "$('/home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-operational-input.sh' encode launch-brief < '/tmp/fm-pi-live/lab/ho
+14: pi v0.85.1
+20:[Extensions]
+21:  live-ok.pi-ext.ts
+81:the brief.' -e '/tmp/fm-pi-live/lab/home/state/live-ok.pi-ext.ts' "$('/home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M2VXY6R34HD40X43P2EDYVDD/bin/fm-operational-input.sh' encode launch-brief < '/tm
+84: pi v0.85.1
+90:[Extensions]
+91:  herdr-agent-state.ts, live-ok.pi-ext.ts
