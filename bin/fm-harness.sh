@@ -19,6 +19,30 @@
 #                                        codex-native/<id>. Other efforts retain
 #                                        their adapter's existing policy. Native
 #                                        Codex validates model support at startup.
+#        fm-harness.sh validate-worker-model <harness> <kind> <model>
+#                                        Refuse a pi or pi-signed crewmate/scout
+#                                        launch whose model is empty, "default", or
+#                                        not of the <provider>/<id> shape: the
+#                                        worker's isolated agent dir carries no
+#                                        saved default, so the launch needs a pin
+#                                        from config/crew-dispatch.json or --model,
+#                                        and the pin must name its provider so the
+#                                        credential check below can be scoped to it.
+#                                        Secondmates and other harnesses pass.
+#        fm-harness.sh validate-worker-credentials <harness> <kind> <model>
+#                                        Refuse a pi or pi-signed crewmate/scout
+#                                        launch when no credential source Pi could
+#                                        use for the pinned model's provider is
+#                                        present in the operator's agent dir
+#                                        (${PI_CODING_AGENT_DIR:-~/.pi/agent}) or
+#                                        this environment: no auth.json entry for
+#                                        it, no apiKey of its own on it in
+#                                        models.json, and no credential variable Pi
+#                                        reads for it (codex-native exempt). Both
+#                                        validators run before any endpoint exists
+#                                        on spawn and before the running agent is
+#                                        stopped on relaunch, so a launch that would
+#                                        be refused never costs a pane or a worker.
 #        fm-harness.sh ancestry [<pid>] print "<strength> <harness>" for the nearest
 #                                        harness process at or above <pid> (default this
 #                                        process), or nothing when the walk finds none.
@@ -496,8 +520,136 @@ validate_native_effort() {
   return 1
 }
 
+validate_worker_model() {
+  local harness=${1:-} kind=${2:-} model=${3:-}
+  [ "$kind" != secondmate ] || return 0
+  case "$harness" in
+    pi|pi-signed)
+      if [ -z "$model" ] || [ "$model" = default ]; then
+        echo "error: a $harness crewmate/scout runs in an isolated agent dir that carries no saved default model; pin one via config/crew-dispatch.json or pass --model <provider>/<id> explicitly" >&2
+        return 1
+      fi
+      case "$model" in
+        ?*/?*) ;;
+        *)
+          echo "error: a $harness crewmate/scout model pin must name its provider as <provider>/<id> (got '$model') so the launch can be checked against that provider's credentials; pin it that way in config/crew-dispatch.json or via --model" >&2
+          return 1
+          ;;
+      esac
+      ;;
+  esac
+  return 0
+}
+
+# Refuse a pi/pi-signed crewmate/scout launch that no credential source could
+# serve. Runs the model validation first so the provider it scopes to is
+# always the one a well-formed pin names.
+validate_worker_credentials() {
+  local harness=${1:-} kind=${2:-} model=${3:-} agent_dir auth models
+  validate_worker_model "$harness" "$kind" "$model" || return 1
+  [ "$kind" != secondmate ] || return 0
+  case "$harness" in pi|pi-signed) ;; *) return 0 ;; esac
+  agent_dir="${PI_CODING_AGENT_DIR:-${HOME:-}/.pi/agent}"
+  auth="$agent_dir/auth.json"
+  models="$agent_dir/models.json"
+  if ! pi_worker_credential_present "$auth" "$models" "$model"; then
+    echo "error: no Pi credentials for a $harness worker: $(pi_credential_refusal_detail "$auth" "$models" "$model"); refusing to launch a Pi worker whose model calls could only fail; authenticate the operator's Pi for that provider (pi auth), give it an apiKey in models.json, export its credential variable, or select another crew harness" >&2
+    return 1
+  fi
+  return 0
+}
+
+# The credential sources Pi 0.85.1 resolves a model through, any one of which
+# lets a worker run, every one scoped to the provider the pin names (the
+# <provider>/<id> shape validate_worker_model enforces) so a pin nothing keys
+# refuses up front instead of dying in the pane: that provider's
+# entry in auth.json (/login or `pi auth`), that provider carrying its own
+# apiKey in models.json (a literal, a dummy value for a keyless local server,
+# $ENV interpolation, or a !command - Pi's docs/models.md), or the
+# environment variable Pi reads for it when it is built in. The variable is
+# checked in this process's environment, which the launched pane's login
+# shell shares on a normally configured host. codex-native is the one
+# provider outside Pi's credential model: the pi-codex-native adapter
+# authenticates through the Codex App Server's own login and never touches
+# auth.json (the verified lab in tests/fm-pi-codex-native.test.sh runs it on
+# an agent dir with no auth store at all), so it is not gated here.
+pi_worker_credential_present() {  # <auth.json> <models.json> <model>
+  local provider name
+  provider=${3%%/*}
+  [ "$provider" != codex-native ] || return 0
+  if [ -s "$1" ] && jq -e --arg p "$provider" 'type == "object" and has($p)' "$1" >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -f "$2" ] && jq -e --arg p "$provider" '(.providers // {})[$p]? | type == "object" and ((.apiKey // "") | tostring) != ""' "$2" >/dev/null 2>&1; then
+    return 0
+  fi
+  for name in $(pi_provider_env_credentials "$provider"); do
+    [ -z "${!name:-}" ] || return 0
+  done
+  return 1
+}
+
+pi_credential_refusal_detail() {  # <auth.json> <models.json> <model>
+  local provider names
+  provider=${3%%/*}
+  printf '%s holds no %s entry, %s declares no %s provider with its own apiKey, and ' "$1" "$provider" "$2" "$provider"
+  names=$(pi_provider_env_credentials "$provider" | paste -sd ',' -)
+  if [ -n "$names" ]; then
+    printf "provider %s's credential variable (%s) is unset in this environment" "$provider" "$names"
+  else
+    printf 'Pi reads no credential variable for provider %s' "$provider"
+  fi
+}
+
+# The environment variables Pi 0.85.1 reads as a built-in provider's
+# credential, one per line (pi-ai dist/env-api-keys.js getApiKeyEnvVars plus
+# its google-vertex and amazon-bedrock alternatives); nothing for a provider
+# Pi reads no variable for, custom models.json providers included.
+pi_provider_env_credentials() {  # <provider>
+  case "$1" in
+  anthropic) printf '%s\n' ANTHROPIC_AUTH_TOKEN ANTHROPIC_OAUTH_TOKEN ANTHROPIC_API_KEY ;;
+  github-copilot) printf '%s\n' COPILOT_GITHUB_TOKEN ;;
+  ant-ling) printf '%s\n' ANT_LING_API_KEY ;;
+  qwen-token-plan | qwen-token-plan-individual) printf '%s\n' QWEN_TOKEN_PLAN_API_KEY ;;
+  qwen-token-plan-cn) printf '%s\n' QWEN_TOKEN_PLAN_CN_API_KEY ;;
+  openai) printf '%s\n' OPENAI_API_KEY ;;
+  azure-openai-responses) printf '%s\n' AZURE_OPENAI_API_KEY ;;
+  nvidia) printf '%s\n' NVIDIA_API_KEY ;;
+  deepseek) printf '%s\n' DEEPSEEK_API_KEY ;;
+  google) printf '%s\n' GEMINI_API_KEY ;;
+  google-vertex) printf '%s\n' GOOGLE_CLOUD_API_KEY GOOGLE_APPLICATION_CREDENTIALS ;;
+  groq) printf '%s\n' GROQ_API_KEY ;;
+  cerebras) printf '%s\n' CEREBRAS_API_KEY ;;
+  xai) printf '%s\n' XAI_API_KEY ;;
+  radius) printf '%s\n' RADIUS_API_KEY ;;
+  openrouter) printf '%s\n' OPENROUTER_API_KEY ;;
+  vercel-ai-gateway) printf '%s\n' AI_GATEWAY_API_KEY ;;
+  zai) printf '%s\n' ZAI_API_KEY ;;
+  zai-coding-cn) printf '%s\n' ZAI_CODING_CN_API_KEY ;;
+  mistral) printf '%s\n' MISTRAL_API_KEY ;;
+  minimax) printf '%s\n' MINIMAX_API_KEY ;;
+  minimax-cn) printf '%s\n' MINIMAX_CN_API_KEY ;;
+  moonshotai | moonshotai-cn) printf '%s\n' MOONSHOT_API_KEY ;;
+  huggingface) printf '%s\n' HF_TOKEN ;;
+  fireworks) printf '%s\n' FIREWORKS_API_KEY ;;
+  together) printf '%s\n' TOGETHER_API_KEY ;;
+  baseten) printf '%s\n' BASETEN_API_KEY ;;
+  opencode | opencode-go) printf '%s\n' OPENCODE_API_KEY ;;
+  kimi-coding) printf '%s\n' KIMI_API_KEY ;;
+  cloudflare-workers-ai | cloudflare-ai-gateway) printf '%s\n' CLOUDFLARE_API_KEY ;;
+  xiaomi) printf '%s\n' XIAOMI_API_KEY ;;
+  xiaomi-token-plan-cn) printf '%s\n' XIAOMI_TOKEN_PLAN_CN_API_KEY ;;
+  xiaomi-token-plan-ams) printf '%s\n' XIAOMI_TOKEN_PLAN_AMS_API_KEY ;;
+  xiaomi-token-plan-sgp) printf '%s\n' XIAOMI_TOKEN_PLAN_SGP_API_KEY ;;
+  amazon-bedrock) printf '%s\n' AWS_PROFILE AWS_ACCESS_KEY_ID AWS_BEARER_TOKEN_BEDROCK AWS_CONTAINER_CREDENTIALS_RELATIVE_URI AWS_CONTAINER_CREDENTIALS_FULL_URI AWS_WEB_IDENTITY_TOKEN_FILE ;;
+  esac
+}
+
+
 case "${1:-}" in
   validate-native-effort) shift; validate_native_effort "$@" ;;
+  validate-worker-model) shift; validate_worker_model "$@" ;;
+  validate-worker-credentials) shift; validate_worker_credentials "$@" ;;
   ancestry)
     case "${2:-}" in
       ''|*[!0-9]*) [ -z "${2:-}" ] || { echo "error: ancestry takes a numeric pid" >&2; exit 2; } ;;

@@ -158,6 +158,7 @@ test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
   id=profile-relative-paths-z1b
   rec=$(make_spawn_case profile-relative-paths pi "$id")
   read_case_record "$rec"
+  fm_test_pi_auth_home "$CASE_DIR/user-home"
   home_real=$(cd "$HOME_DIR" && pwd -P)
   mkdir -p "$CASE_DIR/cdpath/home/state" "$CASE_DIR/cdpath/home/data"
   : > "$LAUNCH_LOG"
@@ -169,8 +170,9 @@ test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
       FM_PROJECTS_OVERRIDE=home/projects FM_CONFIG_OVERRIDE=home/config \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME=home/grok-home PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with relative home overrides should succeed"
@@ -188,6 +190,7 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
   absolute_id=profile-absolute-home-defaults-z1d
   rec=$(make_spawn_case profile-home-defaults pi "$relative_id" "$absolute_id")
   read_case_record "$rec"
+  fm_test_pi_auth_home "$CASE_DIR/user-home"
   home_real=$(cd "$HOME_DIR" && pwd -P)
 
   : > "$LAUNCH_LOG"
@@ -198,8 +201,9 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
       FM_PROJECTS_OVERRIDE=home/projects FM_CONFIG_OVERRIDE=home/config \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME=home/grok-home PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$relative_id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$relative_id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with relative FM_HOME defaults should succeed"
@@ -218,8 +222,9 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
       FM_PROJECTS_OVERRIDE="$linked_home/projects" FM_CONFIG_OVERRIDE="$linked_home/config" \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME="$linked_home/grok-home" PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$absolute_id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$absolute_id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with absolute symlink-spelled FM_HOME defaults should succeed"
@@ -236,6 +241,7 @@ test_absolute_override_spelling_is_preserved_in_launch_paths() {
   id=profile-absolute-paths-z1c
   rec=$(make_spawn_case profile-absolute-paths pi "$id")
   read_case_record "$rec"
+  fm_test_pi_auth_home "$CASE_DIR/user-home"
   linked_home="$CASE_DIR/home-link"
   ln -s "$HOME_DIR" "$linked_home"
   : > "$LAUNCH_LOG"
@@ -246,8 +252,9 @@ test_absolute_override_spelling_is_preserved_in_launch_paths() {
       FM_PROJECTS_OVERRIDE="$linked_home/projects" FM_CONFIG_OVERRIDE="$linked_home/config" \
       FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
       CLAUDE_CONFIG_DIR='' FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" \
+      HOME="$CASE_DIR/user-home" PI_CODING_AGENT_DIR='' \
       GROK_HOME="$linked_home/grok-home" PATH="$FAKEBIN_DIR:$PATH" \
-      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off 2>&1
+      "$SPAWN" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off --model test-provider/fm-test 2>&1
   )
   status=$?
   expect_code 0 "$status" "spawn with absolute symlink-spelled overrides should succeed"
@@ -716,12 +723,12 @@ test_pi_threads_model_and_max_effort() {
   read_case_record "$rec"
 
   out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
-    --model openai-codex/gpt-5.6-sol --effort max)
+    --model test-provider/gpt-5.6-sol --effort max)
   status=$?
   expect_code 0 "$status" "pi spawn with max effort should succeed"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" pi openai-codex/gpt-5.6-sol max
+  assert_meta_profile "$HOME_DIR/state/$id.meta" pi test-provider/gpt-5.6-sol max
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "FM_PI_HARNESS=pi '$FAKEBIN_DIR/pi' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
+  assert_contains "$launch" "FM_PI_HARNESS=pi PI_TELEMETRY=0 PI_SKIP_VERSION_CHECK=1 PI_CODING_AGENT_DIR='$HOME_DIR/state/pi-worker-agent' '$FAKEBIN_DIR/pi' --tui-mode regular --model 'test-provider/gpt-5.6-sol' --thinking 'max' --approve --append-system-prompt" \
     "pi launch did not force the regular TUI while threading the requested model and max thinking level"
   assert_not_contains "$launch" "FM_FIRSTMATE_PI_LAUNCH_BRIEF=" \
     "pi launch still exports the removed Calm input-reroute binding"
@@ -737,20 +744,20 @@ test_pi_signed_threads_shared_pi_profile_and_preserves_identity() {
   read_case_record "$rec"
 
   out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" \
-    --model openai-codex/gpt-5.6-sol --effort max)
+    --model test-provider/gpt-5.6-sol --effort max)
   status=$?
   expect_code 0 "$status" "pi-signed spawn with max effort should succeed"
   assert_contains "$out" "spawned $id harness=pi-signed" "pi-signed spawn did not preserve its visible identity"
-  assert_meta_profile "$HOME_DIR/state/$id.meta" pi-signed openai-codex/gpt-5.6-sol max
+  assert_meta_profile "$HOME_DIR/state/$id.meta" pi-signed test-provider/gpt-5.6-sol max
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
+  assert_contains "$launch" "FM_PI_HARNESS=pi-signed PI_TELEMETRY=0 PI_SKIP_VERSION_CHECK=1 PI_CODING_AGENT_DIR='$HOME_DIR/state/pi-worker-agent' '$FAKEBIN_DIR/pi-signed' --tui-mode regular --model 'test-provider/gpt-5.6-sol' --thinking 'max' --approve --append-system-prompt" \
     "pi-signed launch did not force the regular TUI with Pi's model, thinking, and extension semantics"
   assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
     "pi-signed launch lost the canonical typed launch-brief envelope"
   assert_present "$HOME_DIR/state/$id.pi-ext.ts" "pi-signed launch did not install Pi's turn-end extension"
   assert_present "$HOME_DIR/state/$id.busy-gen" "pi-signed spawn did not arm the busy-state contract"
-  assert_contains "$(cat "$HOME_DIR/state/$id.busy-state")" "state=busy source=fm-spawn" \
-    "pi-signed spawn did not seed the busy-state record from the launch brief"
+  assert_contains "$(cat "$HOME_DIR/state/$id.busy-state")" "state=busy source=pi-ext" \
+    "pi-signed spawn reported success without the worker extension confirming agent_start"
   local ext gen
   ext=$(cat "$HOME_DIR/state/$id.pi-ext.ts")
   gen=$(cat "$HOME_DIR/state/$id.busy-gen")
@@ -773,7 +780,7 @@ test_pi_tui_mode_probe_is_safe_for_old_and_new_pi() {
 
       out=$(FM_TEST_PI_VERSION="$version" \
         run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" \
-        "$id" "$PROJ_DIR")
+        "$id" "$PROJ_DIR" --model test-provider/fm-test)
       status=$?
       expect_code 0 "$status" "$harness $version spawn should succeed"
       launch=$(cat "$LAUNCH_LOG")
@@ -839,7 +846,7 @@ test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   assert_absent "$HOME_DIR/data/$id/launch-brief.md" "secondmate launch received a worker overlay"
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "< '$sm/data/charter.md'" "secondmate launch lost its original charter"
-  assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular -e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts'" \
+  assert_contains "$launch" "FM_PI_HARNESS=pi-signed PI_TELEMETRY=0 PI_SKIP_VERSION_CHECK=1 '$FAKEBIN_DIR/pi-signed' --tui-mode regular -e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts'" \
     "pi-signed secondmate did not force the regular TUI with Pi's primary extension launch shape"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
     printf '# evidence begin: persistent secondmate\n%s\n' "$out"

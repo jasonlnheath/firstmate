@@ -2503,6 +2503,37 @@ test_config_reread_bootstrap_path_and_spawn_flexibility() {
   pass "B18 bootstrap config reread path works; spawn flexibility remains defaults-only"
 }
 
+# The Pi task-worker hardening (suppression env, agent-dir isolation, per-run
+# trust, first-party statement) is crewmate/scout-only: a secondmate is a
+# primary under its own supervisor contract, so its launch carries the
+# suppression variables and nothing else from that port.
+test_pi_secondmate_launch_suppresses_without_the_task_worker_shape() {
+  local w sm launchlog launch out status
+  w="$TMP_ROOT/pi-secondmate-shape"
+  sm="$w/sm"
+  mkdir -p "$w/home/config"
+  make_seeded_home "$sm" sm
+  mkdir -p "$sm/.pi/extensions"
+  : > "$sm/.pi/extensions/fm-primary-turnend-guard.ts"
+  : > "$sm/.pi/extensions/fm-primary-pi-watch.ts"
+  launchlog="$w/launch.log"
+  out=$(FM_PI_HARNESS='' spawn_secondmate_capture "$w" sm "$sm" "$launchlog" --harness pi 2>&1)
+  status=$?
+  expect_code 0 "$status" "pi secondmate spawn should succeed: $out"
+  launch=$(cat "$launchlog")
+  assert_contains "$launch" "PI_TELEMETRY=0 PI_SKIP_VERSION_CHECK=1" \
+    "pi secondmate launch did not suppress telemetry and the version check"
+  assert_not_contains "$launch" "PI_OFFLINE" \
+    "pi secondmate launch must not cut off catalog refresh or tool download"
+  assert_not_contains "$launch" "PI_CODING_AGENT_DIR" \
+    "a pi secondmate is a primary and must read its own home, not a seeded worker dir"
+  assert_not_contains "$launch" "--approve" \
+    "a pi secondmate launch must not carry the task-worker per-run trust grant"
+  assert_not_contains "$launch" "--append-system-prompt" \
+    "a pi secondmate launch must not carry the task-worker first-party statement"
+  pass "pi secondmate launch carries suppression only; no task-worker isolation, trust grant, or statement"
+}
+
 test_bootstrap_respawns_before_config_reread() {
   local w head fakebin log report stale
   w=$(new_world config-reread-respawn-order)
@@ -2676,6 +2707,7 @@ test_config_reread_cleanup_runs_after_mixed_delivery_failure
 test_config_reread_stops_after_failed_generation
 test_config_reread_skips_when_unchanged_and_reads_after_push
 test_config_reread_bootstrap_path_and_spawn_flexibility
+test_pi_secondmate_launch_suppresses_without_the_task_worker_shape
 test_bootstrap_respawns_before_config_reread
 test_spawn_quarantines_pending_rereads_on_cleanup_failure
 test_bootstrap_detect_only_does_not_create_state

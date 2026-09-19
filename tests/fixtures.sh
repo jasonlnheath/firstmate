@@ -97,13 +97,15 @@ fm_test_fake_gh_axi() {
 # set, each send-keys -l payload is appended one per line. When FM_FAKE_PANE_LOG
 # is set, each send-keys TEXT-LINE payload (the pre-launch pane exports, which
 # carry no -l) is appended there instead, one per line in send order. Optional
-# FM_FAKE_DUPLICATE_WINDOW is printed from list-windows.
+# FM_FAKE_DUPLICATE_WINDOW is printed from list-windows, and capture-pane
+# prints FM_FAKE_PANE_CAPTURE (the pane's scrollback) when it is set.
 #
 # The pane path defaults to empty when FM_FAKE_PANE_PATH is unset. Window
 # cleanup and option operations are no-ops. Launch logging is env-gated, so
 # suites that do not set FM_FAKE_LAUNCH_LOG keep a silent send-keys.
 fm_test_fake_tmux_spawn() {
   local fakebin=$1
+  fm_test_fake_pi_start "$fakebin"
   cat > "$fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -119,16 +121,21 @@ case "${1:-}" in
     exit 0
     ;;
   has-session|new-session|new-window|kill-window|set-window-option) exit 0 ;;
+  capture-pane)
+    [ -z "${FM_FAKE_PANE_CAPTURE:-}" ] || printf '%s\n' "$FM_FAKE_PANE_CAPTURE"
+    exit 0
+    ;;
   send-keys)
-    if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
-      prev=
-      for a in "$@"; do
-        if [ "$prev" = "-l" ]; then
+    prev=
+    for a in "$@"; do
+      if [ "$prev" = "-l" ]; then
+        if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
           printf '%s\n' "$a" >> "$FM_FAKE_LAUNCH_LOG"
         fi
-        prev=$a
-      done
-    fi
+        "$(dirname "$0")/fm-fake-pi-start" "$a"
+      fi
+      prev=$a
+    done
     # The pre-launch pane exports ride the text-line form
     # (`send-keys -t <target> <text> Enter`), which carries no -l flag, so a
     # suite that asserts on what the pane shell received opts in with its own
@@ -154,6 +161,44 @@ esac
 exit 0
 SH
   chmod +x "$fakebin/tmux"
+}
+
+# fm_test_fake_pi_start <fakebin>
+# Writes <fakebin>/fm-fake-pi-start, the stand-in for a launched Pi worker's
+# generated extension firing agent_start. A fake tmux hands it every typed
+# launch literal; a Pi crewmate launch (one carrying -e '<state>/<id>.pi-ext.ts')
+# makes it write the busy record exactly the way the real extension does -
+# through the real bin/fm-busy-event.sh writer, with the gen embedded in the
+# generated extension file - so bin/fm-spawn.sh's post-launch start gate
+# reads extension-confirmed busy. Any other literal is ignored. Env knobs:
+#   FM_FAKE_PI_START=never    the worker never starts (a Pi that dies on
+#                             boot or never fires agent_start); nothing is
+#                             written and the gate must time out
+#   FM_FAKE_PI_START=delayed  the worker boots after the launch: the record
+#                             lands 0.2s later, so the gate's first polls see
+#                             only the spawn's own pre-launch seed
+fm_test_fake_pi_start() {
+  local fakebin=$1
+  {
+    printf '#!/usr/bin/env bash\nset -u\nFM_BUSY_EVENT=%q\n' "$ROOT/bin/fm-busy-event.sh"
+    cat <<'SH'
+[ "${FM_FAKE_PI_START:-now}" != never ] || exit 0
+ext=$(printf '%s\n' "${1:-}" | sed -n "s/.*-e '\([^']*\.pi-ext\.ts\)'.*/\1/p" | head -1)
+[ -n "$ext" ] && [ -f "$ext" ] || exit 0
+gen=$(sed -n 's/.*"--gen", "\([^"]*\)".*/\1/p' "$ext" | head -1)
+apply() {
+  "$FM_BUSY_EVENT" apply "$(dirname "$ext")" "$(basename "$ext" .pi-ext.ts)" busy \
+    --gen "$gen" --source pi-ext --event agent-start >/dev/null 2>&1
+}
+if [ "${FM_FAKE_PI_START:-now}" = delayed ]; then
+  ( /bin/sleep 0.2; apply ) &
+else
+  apply
+fi
+exit 0
+SH
+  } > "$fakebin/fm-fake-pi-start"
+  chmod +x "$fakebin/fm-fake-pi-start"
 }
 
 # fm_test_fake_tmux_send <fakebin>
@@ -289,6 +334,18 @@ make_spawn_fakebin() {
   fm_test_make_spawn_fakebin "$@"
 }
 
+# fm_test_pi_auth_home <user-home>
+# Write the minimal fake Pi auth store a crewmate/scout spawn seeds its
+# isolated agent dir from, at the path bin/fm-spawn.sh resolves when
+# PI_CODING_AGENT_DIR is blank (${HOME}/.pi/agent/auth.json). Every machine
+# that launches Pi workers has one; a spawn refuses the launch when it holds
+# no entry for the pinned model's provider, so suites pin test-provider/....
+fm_test_pi_auth_home() {
+  mkdir -p "$1/.pi/agent"
+  printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
+    >"$1/.pi/agent/auth.json"
+}
+
 # fm_test_run_spawn <home> <pane-path> <fakebin> [fm-spawn args...]
 # Common spawn env. Extra variables in the caller (GROK_HOME, FM_FAKE_LAUNCH_LOG,
 # CLAUDE_CONFIG_DIR, ...) are inherited. Does not add --mode/--yolo; ship tests
@@ -306,10 +363,15 @@ fm_test_run_spawn() {
   # because bin/fm-spawn.sh prefixes the launch only when the value is non-empty,
   # so every launch-shape assertion in the suite keeps reading the same command.
   # A test that needs the set case opts in through FM_TEST_CLAUDE_CONFIG_DIR.
+  # A Pi crewmate spawn seeds its isolated agent dir from the operator's auth
+  # store, so the throwaway HOME carries the fake one (fm_test_pi_auth_home)
+  # and any inherited PI_CODING_AGENT_DIR is blanked so the store path is
+  # deterministic.
   local spawn_home=$home/user-home
-  mkdir -p "$spawn_home"
+  fm_test_pi_auth_home "$spawn_home"
   FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$spawn_home" \
     CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
+    PI_CODING_AGENT_DIR='' \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$pane" TMUX="${TMUX:-fake,1,0}" \

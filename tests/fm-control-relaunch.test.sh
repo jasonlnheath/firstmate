@@ -19,8 +19,8 @@
 #      agent exited.
 set -u
 
-# shellcheck source=tests/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-control-lib.sh"
 # shellcheck source=/dev/null
@@ -53,6 +53,10 @@ trap relaunch_cleanup EXIT
 make_tmux_stub() {  # <dir>
   local fb="$1/fakebin"
   mkdir -p "$fb"
+  # A Pi crewmate relaunch passes bin/fm-spawn.sh's post-launch start gate
+  # only on the worker extension's own busy record; the shared fake models
+  # that extension firing agent_start when the launch literal lands.
+  fm_test_fake_pi_start "$fb"
   cat > "$fb/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -79,6 +83,7 @@ case "${1:-}" in
         *'encode launch-brief'*)
           cat "$D/becomes" > "$D/command"
           [ -z "${FM_FAKE_LAUNCH_TRANSPORT_FAIL_AFTER_START:-}" ] || exit 1
+          "$(dirname "$0")/fm-fake-pi-start" "$payload"
           ;;
       esac
     else
@@ -181,9 +186,11 @@ run_control() {  # <case-dir> <args...>
   # A claude spawn pre-registers workspace trust in the launching user's own
   # store (bin/fm-claude-trust.sh), and a relaunch reaches it through fm-control.sh, so this runs against a throwaway HOME;
   # without it this suite would write the developer's real ~/.claude.json.
-  mkdir -p "$dir/user-home"
+  # A Pi relaunch seeds its isolated agent dir from the operator's auth store,
+  # so the throwaway HOME carries the fake one.
+  fm_test_pi_auth_home "$dir/user-home"
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
-    HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' \
+    HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' PI_CODING_AGENT_DIR='' \
     FM_SPAWN_NO_GUARD=1 GROK_HOME="$dir/grokhome" \
     FM_CONTROL_POLL=0.01 FM_CONTROL_EXIT_WAIT=0.05 FM_CONTROL_LAUNCH_WAIT=0.05 \
     FM_REAL_GIT="${FM_REAL_GIT:-}" FM_FAKE_GIT_FAILURE="${FM_FAKE_GIT_FAILURE:-}" \
@@ -201,9 +208,10 @@ run_spawn() {  # <case-dir> <args...>
   # A claude spawn pre-registers workspace trust in the launching user's own
   # store (bin/fm-claude-trust.sh), so it runs against a throwaway HOME;
   # without it this suite would write the developer's real ~/.claude.json.
-  mkdir -p "$dir/user-home"
+  # A Pi crewmate spawn seeds from the same store, so it is provided here.
+  fm_test_pi_auth_home "$dir/user-home"
   env PATH="$dir/fakebin:$PATH" FM_HOME="$dir/home" FM_FAKE_DIR="$dir/fake" \
-    HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' \
+    HOME="$dir/user-home" CLAUDE_CONFIG_DIR='' PI_CODING_AGENT_DIR='' \
     FM_SPAWN_NO_GUARD=1 GROK_HOME="$dir/grokhome" \
     "$SPAWN" "$@" 2>&1
 }
@@ -713,6 +721,62 @@ test_explicit_model_wins_over_the_recorded_one() {
   [ "$(meta_field "$dir" rl7 model)" = sonnet ] || fail "an explicit model should be recorded"
   [ "$(meta_field "$dir" rl7 effort)" = low ] || fail "an explicit effort should be recorded"
   pass "fm-control relaunch: explicit model and effort win over the recorded ones"
+}
+
+test_model_less_pi_relaunch_refuses_before_stop() {
+  local dir out rc
+  dir=$(new_case pimodel rl-pimodel)
+  add_ship_task "$dir" rl-pimodel claude
+  printf 'pi' > "$dir/fake/becomes"
+  printf '#!/usr/bin/env bash\nprintf "Options: --tui-mode\\n"\n' > "$dir/fakebin/pi"
+  chmod +x "$dir/fakebin/pi"
+  out=$(run_control "$dir" rl-pimodel relaunch --harness pi --note "switching runtime"); rc=$?
+  expect_code 1 "$rc" "a harness switch onto pi without a model should refuse"
+  assert_contains "$out" "--model" "the refusal should name the explicit model flag as the fix"
+  assert_contains "$out" "config/crew-dispatch.json" "the refusal should name the dispatch pin as the fix"
+  [ "$(cat "$dir/fake/command")" = claude ] \
+    || fail "the refusal must land before the running agent is stopped"
+  [ -z "$(cat "$dir/fake/literal")" ] && [ -z "$(cat "$dir/fake/keys")" ] \
+    || fail "a refused model-less pi relaunch must deliver no lifecycle input"
+  [ "$(meta_field "$dir" rl-pimodel harness)" = claude ] \
+    || fail "a refused relaunch must leave the durable record on the recorded harness"
+  out=$(run_control "$dir" rl-pimodel relaunch --harness pi --model test-provider/fm-test --note "switching runtime"); rc=$?
+  expect_code 0 "$rc" "the same switch with a model should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" rl-pimodel model)" = test-provider/fm-test ] \
+    || fail "the explicit model should be recorded"
+  pass "fm-control relaunch: a model-less pi crewmate relaunch refuses before the agent is stopped"
+}
+
+# The second launch-side Pi refusal, no credential the operator's Pi could
+# use for the pinned provider, is mirrored on the same pre-stop side; so is
+# a pin that names no provider, which the credential check cannot scope.
+test_credential_less_pi_relaunch_refuses_before_stop() {
+  local dir out rc
+  dir=$(new_case picred rl-picred)
+  add_ship_task "$dir" rl-picred claude
+  printf 'pi' > "$dir/fake/becomes"
+  printf '#!/usr/bin/env bash\nprintf "Options: --tui-mode\\n"\n' > "$dir/fakebin/pi"
+  chmod +x "$dir/fakebin/pi"
+  out=$(CEREBRAS_API_KEY='' run_control "$dir" rl-picred relaunch --harness pi --model cerebras/fm-test --note "switching runtime"); rc=$?
+  expect_code 1 "$rc" "a switch onto pi pinning a provider the operator has no credential for should refuse"
+  assert_contains "$out" "no Pi credentials" "the refusal should name the missing credentials"
+  assert_contains "$out" "CEREBRAS_API_KEY" "the refusal should name the variable Pi would have read"
+  [ "$(cat "$dir/fake/command")" = claude ] \
+    || fail "the credential refusal must land before the running agent is stopped"
+  [ -z "$(cat "$dir/fake/literal")" ] && [ -z "$(cat "$dir/fake/keys")" ] \
+    || fail "a refused credential-less pi relaunch must deliver no lifecycle input"
+  [ "$(meta_field "$dir" rl-picred harness)" = claude ] \
+    || fail "a refused relaunch must leave the durable record on the recorded harness"
+  out=$(run_control "$dir" rl-picred relaunch --harness pi --model fm-test --note "switching runtime"); rc=$?
+  expect_code 1 "$rc" "a switch onto pi with a provider-less pin should refuse"
+  assert_contains "$out" "<provider>/<id>" "the refusal should name the pin shape"
+  [ "$(cat "$dir/fake/command")" = claude ] \
+    || fail "the shape refusal must land before the running agent is stopped"
+  out=$(CEREBRAS_API_KEY=fm-test-env run_control "$dir" rl-picred relaunch --harness pi --model cerebras/fm-test --note "switching runtime"); rc=$?
+  expect_code 0 "$rc" "the same switch with the provider's credential variable set should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" rl-picred model)" = cerebras/fm-test ] \
+    || fail "the explicit model should be recorded"
+  pass "fm-control relaunch: a credential-less or provider-less pi crewmate relaunch refuses before the agent is stopped"
 }
 
 test_relaunch_onto_an_unverified_harness_is_refused() {
@@ -1697,6 +1761,8 @@ test_prefixed_recorded_harness_requires_explicit_replacement
 test_same_harness_relaunch_keeps_the_profile_axes
 test_native_ultra_relaunch_preserves_profile_and_rejects_before_stop
 test_explicit_model_wins_over_the_recorded_one
+test_model_less_pi_relaunch_refuses_before_stop
+test_credential_less_pi_relaunch_refuses_before_stop
 test_relaunch_onto_an_unverified_harness_is_refused
 test_prior_harness_turnend_registry_entry_is_cleared
 test_wiring_removal_failure_refuses_before_replacement_arm
