@@ -1,0 +1,22 @@
+# Regression proof: pi seed no longer aborts mid-delivery when the operator auth store is absent (2026-09-19T21:52:50Z)
+
+Method: the branch's new test test_pi_seed_drops_the_auth_link_when_the_operator_store_is_absent
+(tests/fm-pi-harness.test.sh) run against two versions of bin/fm-spawn.sh in this worktree:
+1. PRE-FIX  = base commit 7392dc70e9812b058b8760da5fcc7943428e4aa9 (git show > bin/fm-spawn.sh, restored after)
+2. POST-FIX = target commit 2f067458ffd2c3189523d743f32f538631dc77db (restored via git checkout)
+
+## PRE-FIX run (verbatim output)
+```
+not ok - a guard-blessed apiKey launch must not die on an absent auth store: warning: /tmp/fm-pi-harness.qJAded/noauthstore/home/data/pi-noauthstore-z1-442881/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: /tmp/fm-pi-harness.qJAded/noauthstore/home/state/pi-worker-agent/auth.json is not readable through its symlink to /tmp/fm-pi-harness.qJAded/noauthstore/agent/auth.json: expected exit 0, got 1
+```
+The mid-delivery abort is reproduced: the launch already passed the pre-endpoint credential guard
+(models.json apiKey), acquired the worktree and window, then died at the seed's auth.json check.
+
+## POST-FIX run (verbatim output)
+```
+ok - fm-spawn: pi seed drops the auth.json link when the operator store is absent
+regression proof done
+```
+
+Worktree verified clean afterwards (git status --porcelain empty, bin/fm-spawn.sh md5 695fbd78ac90a5884b712fa4421dc3e7 = target commit).

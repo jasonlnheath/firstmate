@@ -1,0 +1,49 @@
+# Tiered reviewer model routing - live evidence (2026-09-19T21:52:30Z)
+
+## Deployed no-mistakes global config (~/.no-mistakes/config.yaml) matches docs/nm-reviewer-model-routing.md
+```yaml
+agent_path_override:
+  claude: claude-glm
+
+agent_config:
+  claude:
+    model: glm-5.3[1m]
+    effort: xhigh
+```
+
+## claude-glm wrapper exists and routes away from Anthropic
+```
+export ANTHROPIC_BASE_URL="https://api.z.ai/api/anthropic"
+exec claude "$@"
+```
+
+## Operator global pin that the wrapper bypasses (~/.claude/settings.json)
+```
+  "model": "opus"
+```
+
+## Persisted no-mistakes state: every agent invocation on branch fm/nm-reviewer-quota-tuning
+## (review rounds 1+2, test, document, pr, ci) ran model=glm-5.3 - zero opus/Anthropic-model invocations
+```
+          run_id            step_name  round  agent    model   exit_status
+--------------------------  ---------  -----  ------  -------  -----------
+01M2XJ3X9WPB93CC70N3DWY550  review         1  claude  glm-5.3  ok
+01M2XJ3X9WPB93CC70N3DWY550  review         2  claude  glm-5.3  ok
+01M2XJ3X9WPB93CC70N3DWY550  review         2  claude  glm-5.3  ok
+01M2XJ3X9WPB93CC70N3DWY550  test           1  claude  glm-5.3  ok
+01M2XJ3X9WPB93CC70N3DWY550  document       1  claude  glm-5.3  ok
+01M2XJ3X9WPB93CC70N3DWY550  pr             1  claude  glm-5.3  ok
+01M2XJ3X9WPB93CC70N3DWY550  ci             2  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  review         1  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  review         2  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  review         2  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  test           1  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  test           1  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  document       1  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  pr             1  claude  glm-5.3  ok
+01M2XPMGMS979B3VMJ4MDJZDBR  ci             2  claude  glm-5.3  ok
+01M2XT1065BDFH19SM4Q00593T  review         1  claude  glm-5.3  ok
+```
+
+## The test-phase agent of the live run 01M2XT1065BDFH19SM4Q00593T is itself powered by glm-5.3[1m]
+## via the claude-glm wrapper (session environment header), i.e. this run burns no Anthropic session quota.
