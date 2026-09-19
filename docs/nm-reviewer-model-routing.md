@@ -65,14 +65,14 @@ Do **not** trigger the opus final pass for:
 When the captain authorizes a risk-gated opus final pass:
 
 1. Complete the standard no-mistakes run with the GLM find-and-fix loop.
-2. The GLM pass writes the handoff file (see below).
+2. Compose the handoff file (see below) from the finished run's findings table and gate decisions.
 3. The operator runs a separate no-mistakes invocation via a temporary config swap that sets `agent_config.claude.model` to `claude-opus-5` with `effort: high` and removes the `agent_path_override.claude: claude-glm` entry, so the invocation uses the native Claude binary and reaches Anthropic instead of the Z.AI-routed wrapper.
 4. The opus pass reads the handoff file to start warm and short.
 
 ## Handoff File
 
-The GLM find-and-fix loop writes a handoff file so the opus final pass starts warm and short.
-The opus pass reads this file before reviewing the diff.
+A handoff file lets the opus final pass start warm and short; the opus pass reads it before reviewing the diff.
+No-mistakes 1.75.2 has no native handoff writer, so the operator composes it by hand from the finished run's findings table and gate decisions, using the schema below.
 
 ### Location
 
@@ -107,7 +107,7 @@ summary: <one-line summary of what the GLM pass did and what it found>
 
 ### Handoff File Lifecycle
 
-1. **Written**: The GLM find-and-fix loop writes the handoff file at the end of the standard run, before the PR is opened.
+1. **Written**: The operator composes the handoff file once the standard run's review gates have settled, before the opus pass starts.
 2. **Read**: The opus final pass reads the handoff file as its first action, using it to scope its review to the GLM's findings and open questions.
 3. **Archived**: After the opus pass completes (or is skipped), the handoff file is archived under `.no-mistakes/handoff-archived/` with the date appended.
 
