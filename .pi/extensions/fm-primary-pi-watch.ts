@@ -148,6 +148,11 @@ const armReadyTimeoutMs = positiveInteger(
   process.platform === "win32" ? 35000 : 12000,
 );
 const armRetireTimeoutMs = positiveInteger("FM_WATCH_ARM_RETIRE_TIMEOUT_MS", 1000);
+// A branch-eligible wake's settlement includes the branch's whole model turn,
+// which serialized behind every earlier branch wake made it minutes long under
+// load. Main delivery after this bound is safe: the durable wake queue plus the
+// branch's own grant reconciliation deduplicate a wake both actors then handle.
+const branchSettlementTimeoutMs = positiveInteger("FM_WATCH_BRANCH_SETTLEMENT_TIMEOUT_MS", 45000);
 const repairOnlyHint = "call fm_watch_arm_pi again only after a later notification says the cycle is missing, failed, or unhealthy";
 const shuttingDownMessage = "watcher: not armed - Pi session is shutting down";
 
@@ -632,6 +637,28 @@ export default function (pi: ExtensionAPI) {
     return offer.accepted ? offer.settlement : null;
   }
 
+  // Resolve "settled" when the branch finishes handling the wake, "fallback"
+  // when it rejects its settlement or the bound below expires first. A late
+  // settlement after a fallback expiry is intentionally dropped here: main has
+  // already been handed the wake, and the durable queue plus branch-grant
+  // reconciliation deduplicate the double handling.
+  function raceBranchSettlement(branchDelivery: Promise<void>): Promise<"settled" | "fallback"> {
+    return new Promise((resolveRace) => {
+      const timer = setTimeout(() => resolveRace("fallback"), branchSettlementTimeoutMs);
+      timer.unref();
+      void branchDelivery.then(
+        () => {
+          clearTimeout(timer);
+          resolveRace("settled");
+        },
+        () => {
+          clearTimeout(timer);
+          resolveRace("fallback");
+        },
+      );
+    });
+  }
+
   async function deliverActionableWake(
     owner: SessionGeneration,
     message: string,
@@ -653,13 +680,65 @@ export default function (pi: ExtensionAPI) {
     if (!repairFailed) {
       const branchDelivery = offerWakeToBranch(message);
       if (branchDelivery) {
-        try {
-          await branchDelivery;
-          return true;
-        } catch {}
+        const outcome = await raceBranchSettlement(branchDelivery);
+        if (outcome === "settled") return true;
+        // Rejected settlement or expired bound: main owns delivery now. On the
+        // expiry path the branch may still be settling this same wake, which
+        // the durable queue plus grant reconciliation deduplicate.
+        return await sendWake(owner, message, pending);
       }
     }
     return await sendWake(owner, message, pending);
+  }
+
+  // Backgrounded per-wake delivery: the restoration pipeline never awaits it,
+  // so the next close's successor is never behind this wake's settlement, and
+  // a failure here surfaces out-of-band instead of failing the pipeline loop.
+  async function deliverPendingActionable(
+    owner: SessionGeneration,
+    delivery: {
+      message: string;
+      repairFailed: boolean;
+      pending: PendingActionableClose;
+      recovery?: { generation: string; watcherPid: string };
+      settleClaim: (settlement: "delivered" | "failed") => void;
+      releaseClaim: () => void;
+    },
+  ): Promise<void> {
+    const { message, repairFailed, pending, recovery, settleClaim, releaseClaim } = delivery;
+    try {
+      const delivered = await deliverActionableWake(owner, message, repairFailed, pending, recovery);
+      if (!delivered) {
+        settleClaim("failed");
+        releaseClaim();
+        return;
+      }
+      const awaitingConsumption = owner.unconsumedWakes.has(pending.token);
+      if (awaitingConsumption && !generationIsLive(owner)) {
+        // Pi accepted the follow-up, then the session was replaced before
+        // this continuation ran: the shutdown persisted the still-pending
+        // record, so a replacement waiting on this claim must replay it.
+        settleClaim("failed");
+        releaseClaim();
+        return;
+      }
+      settleClaim("delivered");
+      if (!awaitingConsumption) {
+        // The branch handled it, or Pi consumed it before this ran.
+        pending.delivered = true;
+        try {
+          finishPendingActionable(owner, pending);
+        } catch (error) {
+          surfaceCleanupFailure(owner, error);
+        }
+      }
+      releaseClaim();
+    } catch (error) {
+      settleClaim("failed");
+      releaseClaim();
+      const detail = error instanceof Error ? error.message : String(error);
+      surfaceFailure(owner, `watcher: FAILED - Pi extension could not deliver an actionable wake\n${detail}`);
+    }
   }
 
   function surfaceFailure(owner: SessionGeneration, message: string): void {
@@ -736,9 +815,14 @@ export default function (pi: ExtensionAPI) {
         }
         // A record Pi has accepted but not consumed is neither redelivered
         // nor finished here: consumption finishes it, replacement replays it.
-        const pending = owner.pendingActionables.find(
-          (item) => !item.delivered && !owner.unconsumedWakes.has(item.token),
-        );
+        // A record this generation is already delivering in the background is
+        // likewise left alone. A record claimed by an earlier generation IS
+        // picked: its claim settlement below decides replay versus skip.
+        const pending = owner.pendingActionables.find((item) => {
+          if (item.delivered || owner.unconsumedWakes.has(item.token)) return false;
+          const claim = replacementCoordinator.deliveries.get(item.token);
+          return !claim || claim.owner !== owner;
+        });
         if (!pending) break;
         const existingClaim = replacementCoordinator.deliveries.get(pending.token);
         if (existingClaim && existingClaim.owner !== owner) {
@@ -767,6 +851,11 @@ export default function (pi: ExtensionAPI) {
           // A new restoration supersedes whatever became of the previous
           // successor; only a failure during this delivery is retried after it.
           owner.deferredClose = null;
+          // Restore this wake's successor first (Option B per wake), then hand
+          // delivery to a background task instead of awaiting it here: an
+          // awaited delivery serialized the NEXT close's restoration behind
+          // this wake's branch settlement - minutes under load - and left the
+          // fleet unwatched the whole time.
           const restoration = await restoreAfterActionableClose(owner, pending.predecessorArmPid);
           if (!generationIsLive(owner)) {
             settleClaim("failed");
@@ -774,32 +863,14 @@ export default function (pi: ExtensionAPI) {
             return;
           }
           const message = restoration.failure ? `${pending.message}\n\n${restoration.failure}` : pending.message;
-          const delivered = await deliverActionableWake(owner, message, Boolean(restoration.failure), pending, restoration.recovery);
-          if (!delivered) {
-            settleClaim("failed");
-            releaseClaim();
-            return;
-          }
-          const awaitingConsumption = owner.unconsumedWakes.has(pending.token);
-          if (awaitingConsumption && !generationIsLive(owner)) {
-            // Pi accepted the follow-up, then the session was replaced before
-            // this continuation ran: the shutdown persisted the still-pending
-            // record, so a replacement waiting on this claim must replay it.
-            settleClaim("failed");
-            releaseClaim();
-            return;
-          }
-          settleClaim("delivered");
-          if (!awaitingConsumption) {
-            // The branch handled it, or Pi consumed it before this ran.
-            pending.delivered = true;
-            try {
-              finishPendingActionable(owner, pending);
-            } catch (error) {
-              surfaceCleanupFailure(owner, error);
-            }
-          }
-          releaseClaim();
+          void deliverPendingActionable(owner, {
+            message,
+            repairFailed: Boolean(restoration.failure),
+            pending,
+            recovery: restoration.recovery,
+            settleClaim,
+            releaseClaim,
+          });
         } catch (error) {
           settleClaim("failed");
           releaseClaim();
