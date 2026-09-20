@@ -855,6 +855,10 @@ test_arm_waits_for_peer_beacon_after_child_stands_down() {
     i=$((i + 1))
   done
   grep -qF "watcher: attached pid=$peer" "$armout" || fail "arm did not wait for and attach to the peer watcher: $(cat "$armout")"
+  # The stood-down child's dispatch verdict must name the winner, so a
+  # double-start is one-look diagnosable in the lifecycle ledger.
+  grep -q "arm_pid=$armpid.*reason=double-start-lost.*successor=lost-to:$peer" "$state/.watch-cycle-exits.log" \
+    || fail "double-start loser did not mark the winning watcher in the ledger"
   ! grep -qF 'watcher: FAILED' "$armout" || fail "arm falsely reported FAILED during peer startup race"
   is_live_non_zombie "$armpid" || fail "arm exited while the peer was still healthy"
   # After the peer dies without a successor, the attached arm must fail loudly.
@@ -934,6 +938,8 @@ SH
     || fail "predecessor ledger record was not linked to its verified successor"
   kill -HUP "$successor_arm" 2>/dev/null || true
   wait "$successor_arm" 2>/dev/null || true
+  grep -q "arm_pid=$successor_arm.*predecessor=$first_arm" "$state/.watch-cycle-exits.log" \
+    || fail "successor ledger rows do not record the predecessor arm pid"
   # The forced interruption is a watcher-down interval. Consume the prior
   # delivered wake before beginning independent ledger cycles, just as the
   # recovery handling turn does, so this fixture does not intentionally carry a
@@ -962,9 +968,39 @@ SH
   done
   size=$(wc -c < "$state/.watch-cycle-exits.log" | tr -d '[:space:]')
   [ "$size" -le 1400 ] || fail "cycle ledger exceeded its configured cap ($size bytes)"
-  ! grep -v '^arm_pid=.*watcher_pid=.*started_at=.*ended_at=.*exit_code=.*signal=.*reason=.*beacon_age=.*lock_before=.*lock_after=.*successor=' "$state/.watch-cycle-exits.log" | grep . >/dev/null \
+  ! grep -v '^arm_pid=.*watcher_pid=.*started_at=.*ended_at=.*exit_code=.*signal=.*reason=.*beacon_age=.*lock_before=.*lock_after=.*predecessor=.*successor=' "$state/.watch-cycle-exits.log" | grep . >/dev/null \
     || fail "bounded lifecycle ledger contains a partial or malformed record"
   pass "cycle-exit ledger links a verified successor and remains size-capped"
+}
+
+# The report's F2 blind spot: a TERM landing in the arm's setup window (before
+# its full trap handlers exist) used to kill the arm with no cycle record at
+# all, so the interrupted cycles' ledger rows permanently read successor=none
+# with no evidence of the interruption.
+test_arm_records_a_term_that_lands_during_startup() {
+  local dir state fakebin armout armpid real_uname
+  dir=$(make_case arm-pretrap-term)
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  real_uname=$(command -v uname)
+  # A slow uname freezes the arm inside library sourcing - squarely in the
+  # pre-full-trap window - so the TERM below lands where the old script was
+  # invisible: after the early interruption ledger, before the full handlers.
+  cat > "$fakebin/uname" <<SH
+#!/usr/bin/env bash
+sleep 0.5
+exec "$real_uname" "\$@"
+SH
+  chmod +x "$fakebin/uname"
+  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH_ARM" > "$armout" 2>&1 &
+  armpid=$!
+  sleep 0.1
+  kill -TERM "$armpid" 2>/dev/null || fail "could not signal the arm during startup"
+  wait_for_exit "$armpid" 40 || true
+  grep -q "arm_pid=$armpid.*origin=pre-trap.*signal=TERM.*reason=arm-interrupted.*predecessor=none" "$state/.watch-cycle-exits.log" \
+    || fail "a TERM during arm startup left no lifecycle row"
+  pass "arm records a TERM that lands before its full trap setup"
 }
 
 test_stopped_watcher_is_live_but_stale_then_exit_is_classified() {
@@ -1191,4 +1227,5 @@ test_arm_propagates_immediate_wake_before_confirmation
 test_arm_waits_for_peer_beacon_after_child_stands_down
 test_arm_fails_loud_when_no_fresh_watcher_confirmable
 test_cycle_exit_ledger_links_successor_and_stays_bounded
+test_arm_records_a_term_that_lands_during_startup
 test_stopped_watcher_is_live_but_stale_then_exit_is_classified

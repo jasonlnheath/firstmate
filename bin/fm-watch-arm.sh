@@ -46,8 +46,12 @@
 #
 # Every observed watcher cycle appends one tab-separated lifecycle record to
 # state/.watch-cycle-exits.log. The arm layer owns that bounded ledger; it records
-# arm/watcher identities, timestamps, exit/signal classification, beacon age,
-# lock identity before and after close, and successor disposition. The separate
+# arm/watcher identities, the spawn's predecessor arm pid, timestamps, exit/signal
+# classification, beacon age, lock identity before and after close, and successor
+# disposition, plus one-off rows in the same shape for a restart's TERM outcome
+# (origin=restart-term) and a lost double-start's winner (reason=double-start-lost).
+# A signal landing before the full trap handlers exist still records an
+# origin=pre-trap interrupted row. The separate
 # state/.watch-triage.log remains exclusively the watcher's absorbed-wake debug
 # log and is never written here.
 #
@@ -60,7 +64,40 @@
 # (secondmate homes run the same script) and would kill siblings.
 set -u
 
+# The interruption ledger must be reachable before anything that can delay
+# execution, so a TERM landing inside library sourcing or profile work still
+# leaves a cycle record (it previously killed the arm invisibly). These minimal
+# handlers are replaced by the full handlers below once the arm's real state is
+# up; the early row is a best-effort unlocked append - one short line, atomic
+# on local filesystems - and records no cycle the arm never began.
+ARM_PID=${BASHPID:-$$}
+CYCLE_PREDECESSOR=${FM_WATCH_PREDECESSOR_ARM_PID:-none}
+case "$CYCLE_PREDECESSOR" in ''|*[!0-9]*) CYCLE_PREDECESSOR=none ;; esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_FMW_SETUP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+_FMW_SETUP_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$_FMW_SETUP_ROOT}}"
+CYCLE_LOG="${FM_STATE_OVERRIDE:-${STATE:-$_FMW_SETUP_HOME/state}}/.watch-cycle-exits.log"
+
+# shellcheck disable=SC2329 # Invoked indirectly by the signal traps below.
+handle_prelib_signal() {
+  local signal=$1 rc=$2
+  trap - HUP TERM INT
+  if [ -n "$CYCLE_LOG" ]; then
+    printf 'arm_pid=%s\twatcher_pid=none\torigin=pre-trap\tstarted_at=unknown\tended_at=%s\texit_code=%s\tsignal=%s\treason=arm-interrupted\tbeacon_age=unknown\tlock_before=unknown\tlock_after=unknown\tpredecessor=%s\tsuccessor=none\n' \
+      "$ARM_PID" "$(date +%s)" "$rc" "$signal" "$CYCLE_PREDECESSOR" >> "$CYCLE_LOG" 2>/dev/null || true
+  fi
+  if [ -n "${child:-}" ]; then
+    kill -TERM "$child" 2>/dev/null || true
+  fi
+  if [ -n "${child_out:-}" ]; then
+    rm -f "$child_out" 2>/dev/null || true
+  fi
+  exit "$rc"
+}
+trap 'handle_prelib_signal HUP 129' HUP
+trap 'handle_prelib_signal TERM 143' TERM
+trap 'handle_prelib_signal INT 130' INT
+
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 
@@ -83,7 +120,6 @@ CYCLE_LOG="$STATE/.watch-cycle-exits.log"
 CYCLE_LOG_LOCK="$STATE/.watch-cycle-exits.lock"
 CYCLE_LOG_MAX_BYTES=${FM_WATCH_CYCLE_LOG_MAX_BYTES:-262144}
 CYCLE_LOG_KEEP_LINES=${FM_WATCH_CYCLE_LOG_KEEP_LINES:-1000}
-ARM_PID=${BASHPID:-$$}
 case "$CYCLE_LOG_MAX_BYTES" in ''|*[!0-9]*|0) CYCLE_LOG_MAX_BYTES=262144 ;; esac
 case "$CYCLE_LOG_KEEP_LINES" in ''|*[!0-9]*|0) CYCLE_LOG_KEEP_LINES=1000 ;; esac
 
@@ -138,9 +174,13 @@ cycle_signal_name() {
   kill -l "$signal_number" 2>/dev/null || printf '%s' "$signal_number"
 }
 
-cycle_log_append() {
-  local exit_code=$1 signal=$2 reason=$3 successor=$4 ended_at beacon_age lock_after size tmp raw i
-  [ "$cycle_active" -eq 1 ] || return 0
+# Core best-effort ledger append under the cycle-log lock, with bounded
+# compaction. All fields arrive pre-classified so one-off diagnostic rows (a
+# restart TERM outcome, a lost double-start) can share the exact record shape
+# without beginning or closing a cycle.
+cycle_log_write() {
+  local watcher_pid=$1 origin=$2 started_at=$3 exit_code=$4 signal=$5 reason=$6 successor=$7 lock_before=$8
+  local ended_at beacon_age lock_after size tmp raw i
   ended_at=$(date +%s)
   beacon_age=$(fm_path_age "$BEAT")
   lock_after=$(lock_snapshot)
@@ -151,18 +191,19 @@ cycle_log_append() {
     sleep 0.02
     i=$((i + 1))
   done
-  printf 'arm_pid=%s\twatcher_pid=%s\torigin=%s\tstarted_at=%s\tended_at=%s\texit_code=%s\tsignal=%s\treason=%s\tbeacon_age=%s\tlock_before=%s\tlock_after=%s\tsuccessor=%s\n' \
+  printf 'arm_pid=%s\twatcher_pid=%s\torigin=%s\tstarted_at=%s\tended_at=%s\texit_code=%s\tsignal=%s\treason=%s\tbeacon_age=%s\tlock_before=%s\tlock_after=%s\tpredecessor=%s\tsuccessor=%s\n' \
     "$ARM_PID" \
-    "$(cycle_clean_field "$cycle_watcher_pid")" \
-    "$(cycle_clean_field "$cycle_origin")" \
-    "$cycle_started_at" \
+    "$(cycle_clean_field "$watcher_pid")" \
+    "$(cycle_clean_field "$origin")" \
+    "$(cycle_clean_field "$started_at")" \
     "$ended_at" \
     "$(cycle_clean_field "$exit_code")" \
     "$(cycle_clean_field "$signal")" \
     "$(cycle_clean_field "$reason")" \
     "$beacon_age" \
-    "$(cycle_clean_field "$cycle_lock_before")" \
+    "$(cycle_clean_field "$lock_before")" \
     "$(cycle_clean_field "$lock_after")" \
+    "$CYCLE_PREDECESSOR" \
     "$(cycle_clean_field "$successor")" >> "$CYCLE_LOG" 2>/dev/null || true
 
   size=$(wc -c < "$CYCLE_LOG" 2>/dev/null | tr -d '[:space:]')
@@ -181,6 +222,12 @@ cycle_log_append() {
       ;;
   esac
   fm_lock_release "$CYCLE_LOG_LOCK"
+}
+
+cycle_log_append() {
+  local exit_code=$1 signal=$2 reason=$3 successor=$4
+  [ "$cycle_active" -eq 1 ] || return 0
+  cycle_log_write "$cycle_watcher_pid" "$cycle_origin" "$cycle_started_at" "$exit_code" "$signal" "$reason" "$successor" "$cycle_lock_before"
   cycle_active=0
 }
 
@@ -421,6 +468,13 @@ if [ "$mode" = restart ]; then
         sleep 0.1
         i=$((i + 1))
       done
+      # Record the TERM outcome against the predecessor watcher so a hung or
+      # slow exit is one-look diagnosable in the lifecycle ledger.
+      if fm_pid_alive "$lock_pid"; then
+        cycle_log_write "$lock_pid" restart-term unknown none TERM predecessor-term-survived none "$(lock_snapshot)"
+      else
+        cycle_log_write "$lock_pid" restart-term unknown none TERM "predecessor-term-exited-after-$((i * 100))ms" none "$(lock_snapshot)"
+      fi
     else
       if ! clear_stale_recorded_watcher_lock; then
         echo "watcher: FAILED - stale watcher recovery state could not be persisted" >&2
@@ -568,7 +622,10 @@ while :; do
       owned_child_finished "$rc"
       exit $?
     fi
-    # Another watcher won the singleton; our child stood down.
+    # Another watcher won the singleton; our child stood down. Mark the loss
+    # and the winner so a double-start is one-look diagnosable in the ledger;
+    # cycle_log_write keeps the cycle active for the child-close row below.
+    cycle_log_write "$child" started "$cycle_started_at" 0 none double-start-lost "lost-to:$HEALTHY_PID" "$cycle_lock_before"
     wait "$child"
     rc=$?
     owned_child_finished "$rc"
