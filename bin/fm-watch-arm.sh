@@ -50,7 +50,7 @@
 # classification, beacon age, lock identity before and after close, and successor
 # disposition, plus one-off rows in the same shape for a restart's TERM outcome
 # (origin=restart-term) and a lost double-start's winner (reason=double-start-lost).
-# A signal landing before the full trap handlers exist still records an
+# A signal landing before a cycle has begun still records an
 # origin=pre-trap interrupted row. The separate
 # state/.watch-triage.log remains exclusively the watcher's absorbed-wake debug
 # log and is never written here.
@@ -75,7 +75,7 @@ CYCLE_PREDECESSOR=${FM_WATCH_PREDECESSOR_ARM_PID:-none}
 case "$CYCLE_PREDECESSOR" in ''|*[!0-9]*) CYCLE_PREDECESSOR=none ;; esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _FMW_SETUP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-_FMW_SETUP_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$_FMW_SETUP_ROOT}}"
+_FMW_SETUP_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-${FM_ROOT:-$_FMW_SETUP_ROOT}}}"
 CYCLE_LOG="${FM_STATE_OVERRIDE:-${STATE:-$_FMW_SETUP_HOME/state}}/.watch-cycle-exits.log"
 
 # shellcheck disable=SC2329 # Invoked indirectly by the signal traps below.
@@ -389,8 +389,11 @@ attach_and_wait() {
 handle_attached_signal() {
   local signal=$1 rc=$2
   trap - HUP TERM INT
-  cycle_log_append "$rc" "$signal" arm-interrupted none
-  exit "$rc"
+  if [ "$cycle_active" -eq 1 ]; then
+    cycle_log_append "$rc" "$signal" arm-interrupted none
+    exit "$rc"
+  fi
+  handle_prelib_signal "$signal" "$rc"
 }
 
 trap 'handle_attached_signal HUP 129' HUP
@@ -519,7 +522,11 @@ handle_arm_signal() {
     kill -TERM "$child" 2>/dev/null || true
     wait "$child" 2>/dev/null || true
   fi
-  cycle_log_append "$rc" "$signal" arm-interrupted none
+  if [ "$cycle_active" -eq 1 ]; then
+    cycle_log_append "$rc" "$signal" arm-interrupted none
+  else
+    handle_prelib_signal "$signal" "$rc"
+  fi
   cleanup_child
   exit "$rc"
 }

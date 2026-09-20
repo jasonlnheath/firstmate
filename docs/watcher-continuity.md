@@ -107,7 +107,7 @@ Only a cycle with no matching delivery record emits `watcher: FAILED - cycle end
 
 The arm layer appends one tab-separated record per observed cycle to `state/.watch-cycle-exits.log`.
 Each record includes arm and watcher PIDs, the spawn's predecessor arm pid, start and end timestamps, exit code and signal, classified reason, beacon age, lock identity before and after close, and successor disposition.
-A signal landing before the full trap handlers exist still records an `origin=pre-trap` interrupted row, and a restart's TERM outcome and a lost double-start's winner are recorded as one-off rows in the same shape.
+A signal landing before a cycle has begun still records an `origin=pre-trap` interrupted row, and a restart's TERM outcome and a lost double-start's winner are recorded as one-off rows in the same shape.
 The file is size-capped through `FM_WATCH_CYCLE_LOG_MAX_BYTES` and `FM_WATCH_CYCLE_LOG_KEEP_LINES`.
 `state/.watch-triage.log` remains only the watcher's bounded absorbed-wake debug log and carries no lifecycle semantics.
 
