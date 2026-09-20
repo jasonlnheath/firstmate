@@ -373,6 +373,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/nm-reviewer-model-routing.md",
+      "audience": "operator-current"
+    },
+    {
       "path": "docs/orca-backend.md",
       "audience": "operator-current"
     },
