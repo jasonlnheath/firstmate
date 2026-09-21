@@ -1,0 +1,44 @@
+=== case A: --restart TERMs a live, TERM-resistant predecessor watcher ===
+PASS: restart-term row records the surviving predecessor watcher pid
+PASS: stood-down double start marks the losing row and names the winning watcher
+--- case A arm output ---
+--- case A ledger ---
+arm_pid=2105685	watcher_pid=2105655	origin=restart-term	started_at=unknown	ended_at=1789948093	exit_code=none	signal=TERM	reason=predecessor-term-survived	beacon_age=5	lock_before=pid:2105655|identity:linux-starttime=20808207 cmdline-hex=6e6f6465002d650070726f636573732e6f6e28225349475445524d222c202829203d3e207b7d293b20736574496e74657276616c282829203d3e207b7d2c20313030302900	lock_after=pid:2105655|identity:linux-starttime=20808207 cmdline-hex=6e6f6465002d650070726f636573732e6f6e28225349475445524d222c202829203d3e207b7d293b20736574496e74657276616c282829203d3e207b7d2c20313030302900	predecessor=none	successor=none
+arm_pid=2105685	watcher_pid=2106178	origin=started	started_at=1789948093	ended_at=1789948093	exit_code=0	signal=none	reason=double-start-lost	beacon_age=5	lock_before=pid:2105655|identity:linux-starttime=20808207 cmdline-hex=6e6f6465002d650070726f636573732e6f6e28225349475445524d222c202829203d3e207b7d293b20736574496e74657276616c282829203d3e207b7d2c20313030302900	lock_after=pid:2105655|identity:linux-starttime=20808207 cmdline-hex=6e6f6465002d650070726f636573732e6f6e28225349475445524d222c202829203d3e207b7d293b20736574496e74657276616c282829203d3e207b7d2c20313030302900	predecessor=none	successor=lost-to:2105655
+arm_pid=2105685	watcher_pid=2106178	origin=started	started_at=1789948093	ended_at=1789948093	exit_code=143	signal=TERM	reason=arm-interrupted	beacon_age=5	lock_before=pid:2105655|identity:linux-starttime=20808207 cmdline-hex=6e6f6465002d650070726f636573732e6f6e28225349475445524d222c202829203d3e207b7d293b20736574496e74657276616c282829203d3e207b7d2c20313030302900	lock_after=pid:2105655|identity:linux-starttime=20808207 cmdline-hex=6e6f6465002d650070726f636573732e6f6e28225349475445524d222c202829203d3e207b7d293b20736574496e74657276616c282829203d3e207b7d2c20313030302900	predecessor=none	successor=none
+
+=== case B: --restart TERMs a predecessor that exits ~300ms later ===
+PASS: restart-term row records the bounded exit of the TERM-ed predecessor
+--- case B arm output ---
+watcher: started pid=2107617 (beacon fresh)
+check: rearm-resurface
+--- case B ledger ---
+arm_pid=2107426	watcher_pid=2107404	origin=restart-term	started_at=unknown	ended_at=1789948095	exit_code=none	signal=TERM	reason=predecessor-term-exited-after-500ms	beacon_age=999999	lock_before=pid:2107404|identity:linux-starttime=20808854 cmdline-hex=62617368002d6300747261702022736c65657020302e333b2065786974203022205445524d3b207768696c65203a3b20646f20736c65657020302e353b20646f6e6500	lock_after=pid:2107404|identity:linux-starttime=20808854 cmdline-hex=62617368002d6300747261702022736c65657020302e333b2065786974203022205445524d3b207768696c65203a3b20646f20736c65657020302e353b20646f6e6500	predecessor=none	successor=none
+arm_pid=2107426	watcher_pid=2107617	origin=started	started_at=1789948095	ended_at=1789948095	exit_code=0	signal=none	reason=actionable-check	beacon_age=0	lock_before=pid:2107617|identity:linux-starttime=20808940 cmdline-hex=62617368002f686f6d652f6a61736f6e2f2e6e6f2d6d697374616b65732f776f726b74726565732f3561346263353862636164372f30314d33304847544b344657564d3037394554565056345257432f62696e2f666d2d77617463682e736800	lock_after=pid:none|identity:none	predecessor=none	successor=none
+
+=== case C: TERM lands while the arm is still sourcing its libraries ===
+PASS: pre-trap interrupted arm exited 143
+PASS: pre-trap TERM leaves an origin=pre-trap arm-interrupted ledger row
+--- case C ledger ---
+arm_pid=2112346	watcher_pid=none	origin=pre-trap	started_at=unknown	ended_at=1789948096	exit_code=143	signal=TERM	reason=arm-interrupted	beacon_age=unknown	lock_before=unknown	lock_after=unknown	predecessor=none	successor=none
+sweeping leftover case process pid=2112366
+sweeping leftover case process pid=2112368
+sweeping leftover case process pid=2112374
+
+=== case D: pre-trap TERM with a bare FM_ROOT home (no FM_HOME/STATE overrides) ===
+PASS: pre-trap row lands in the bare FM_ROOT home's state ledger
+--- case D ledger (/tmp/fm-pretrap-fmroot.qBPY7N/fleet-home/state/.watch-cycle-exits.log) ---
+arm_pid=2114499	watcher_pid=none	origin=pre-trap	started_at=unknown	ended_at=1789948097	exit_code=143	signal=TERM	reason=arm-interrupted	beacon_age=unknown	lock_before=unknown	lock_after=unknown	predecessor=none	successor=none
+sweeping leftover case process pid=2114507
+sweeping leftover case process pid=2114508
+sweeping leftover case process pid=2114509
+
+=== case E: TERM lands mid-cycle after a confirmed watcher start ===
+PASS: mid-cycle interrupted arm exited 143
+PASS: mid-cycle TERM records an arm-interrupted row on the started cycle, predecessor field present
+--- case E arm output ---
+watcher: started pid=2115519 (beacon fresh)
+--- case E ledger ---
+arm_pid=2115504	watcher_pid=2115519	origin=started	started_at=1789948098	ended_at=1789948103	exit_code=143	signal=TERM	reason=arm-interrupted	beacon_age=5	lock_before=pid:2115519|identity:linux-starttime=20809265 cmdline-hex=62617368002f686f6d652f6a61736f6e2f2e6e6f2d6d697374616b65732f776f726b74726565732f3561346263353862636164372f30314d33304847544b344657564d3037394554565056345257432f62696e2f666d2d77617463682e736800	lock_after=pid:none|identity:none	predecessor=none	successor=none
+
+RESULT: all manual ledger drive assertions passed

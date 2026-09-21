@@ -1,0 +1,1 @@
+arm_pid=2114499	watcher_pid=none	origin=pre-trap	started_at=unknown	ended_at=1789948097	exit_code=143	signal=TERM	reason=arm-interrupted	beacon_age=unknown	lock_before=unknown	lock_after=unknown	predecessor=none	successor=none
