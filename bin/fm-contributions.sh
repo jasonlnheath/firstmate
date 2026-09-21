@@ -38,8 +38,11 @@
 # final observation applies to every owner without another forge read. When
 # the budget runs out mid-observation, the poll ends with that URL's records
 # untouched; only a genuine forge failure or head change records an error.
-# API failure leaves error evidence; an expired or absent observation is not
-# silence. FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
+# A failed observation is retried once within the poll's remaining budget
+# before its error is recorded, so a transient forge blip that recovers on
+# the retry leaves no error evidence. API failure leaves error evidence; an
+# expired or absent observation is not silence.
+# FM_CONTRIBUTIONS_MAX_AGE (default 900 seconds) bounds freshness.
 # A URL whose last good observation is merged or closed is final: it is
 # never re-read, stays fresh, and a stale error beside it is cleared once.
 # A genuine failure prints its unavailable line only when it starts an episode
@@ -291,7 +294,7 @@ settle_final() { # canonical-url task... : copy the URL's final observation to e
 }
 
 poll() {
-  local task url old kind error observed
+  local task url old kind error observed outcome
   local -a row
   acquire
   get_input
@@ -320,6 +323,18 @@ poll() {
     # An observation the budget cut short is unmeasured, not unavailable: keep
     # every owner's prior record so the URL is observed first next poll.
     [ "$BUDGET_EXHAUSTED" -eq 0 ] || break
+    # One bounded retry absorbs a transient forge blip: gh measured healthy
+    # moments after each real-world failure, so a single failed read is not
+    # an episode. A failure surviving the retry still records its error and
+    # wakes once, and a retry the budget refused or cut short leaves the
+    # first attempt's genuine failure standing.
+    if [ "$observed" -ne 0 ]; then
+      outcome=0
+      observe "$url" || outcome=$?
+      if [ "$outcome" -eq 0 ]; then observed=0
+      elif [ "$BUDGET_EXHAUSTED" -eq 0 ]; then observed=$outcome; fi
+      BUDGET_EXHAUSTED=0
+    fi
     # Wake once per failure episode: only when no owner has a prior error.
     if [ "$observed" -ne 0 ] && jq -ne --slurpfile saved "$TMP/saved.json" --arg url "$url" --args \
       'all($ARGS.positional[] as $task | [$saved[0][] | select(.task == $task) | .records[] | select(.url == $url)] | first;
