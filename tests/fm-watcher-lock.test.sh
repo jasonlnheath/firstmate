@@ -855,6 +855,10 @@ test_arm_waits_for_peer_beacon_after_child_stands_down() {
     i=$((i + 1))
   done
   grep -qF "watcher: attached pid=$peer" "$armout" || fail "arm did not wait for and attach to the peer watcher: $(cat "$armout")"
+  # The stood-down child's dispatch verdict must name the winner, so a
+  # double-start is one-look diagnosable in the lifecycle ledger.
+  grep -q "arm_pid=$armpid.*reason=double-start-lost.*successor=lost-to:$peer" "$state/.watch-cycle-exits.log" \
+    || fail "double-start loser did not mark the winning watcher in the ledger"
   ! grep -qF 'watcher: FAILED' "$armout" || fail "arm falsely reported FAILED during peer startup race"
   is_live_non_zombie "$armpid" || fail "arm exited while the peer was still healthy"
   # After the peer dies without a successor, the attached arm must fail loudly.
@@ -934,6 +938,8 @@ SH
     || fail "predecessor ledger record was not linked to its verified successor"
   kill -HUP "$successor_arm" 2>/dev/null || true
   wait "$successor_arm" 2>/dev/null || true
+  grep -q "arm_pid=$successor_arm.*predecessor=$first_arm" "$state/.watch-cycle-exits.log" \
+    || fail "successor ledger rows do not record the predecessor arm pid"
   # The forced interruption is a watcher-down interval. Consume the prior
   # delivered wake before beginning independent ledger cycles, just as the
   # recovery handling turn does, so this fixture does not intentionally carry a
@@ -962,9 +968,166 @@ SH
   done
   size=$(wc -c < "$state/.watch-cycle-exits.log" | tr -d '[:space:]')
   [ "$size" -le 1400 ] || fail "cycle ledger exceeded its configured cap ($size bytes)"
-  ! grep -v '^arm_pid=.*watcher_pid=.*started_at=.*ended_at=.*exit_code=.*signal=.*reason=.*beacon_age=.*lock_before=.*lock_after=.*successor=' "$state/.watch-cycle-exits.log" | grep . >/dev/null \
+  ! grep -v '^arm_pid=.*watcher_pid=.*started_at=.*ended_at=.*exit_code=.*signal=.*reason=.*beacon_age=.*lock_before=.*lock_after=.*predecessor=.*successor=' "$state/.watch-cycle-exits.log" | grep . >/dev/null \
     || fail "bounded lifecycle ledger contains a partial or malformed record"
   pass "cycle-exit ledger links a verified successor and remains size-capped"
+}
+
+# The report's F2 blind spot: a TERM landing in the arm's setup window (before
+# its full trap handlers exist) used to kill the arm with no cycle record at
+# all, so the interrupted cycles' ledger rows permanently read successor=none
+# with no evidence of the interruption.
+test_arm_records_a_term_that_lands_during_startup() {
+  local dir state fakebin armout armpid real_uname
+  dir=$(make_case arm-pretrap-term)
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  real_uname=$(command -v uname)
+  # A slow uname freezes the arm inside library sourcing - squarely in the
+  # pre-full-trap window - so the TERM below lands where the old script was
+  # invisible: after the early interruption ledger, before the full handlers.
+  cat > "$fakebin/uname" <<SH
+#!/usr/bin/env bash
+sleep 0.5
+exec "$real_uname" "\$@"
+SH
+  chmod +x "$fakebin/uname"
+  PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH_ARM" > "$armout" 2>&1 &
+  armpid=$!
+  sleep 0.1
+  kill -TERM "$armpid" 2>/dev/null || fail "could not signal the arm during startup"
+  wait_for_exit "$armpid" 40 || true
+  grep -q "arm_pid=$armpid.*origin=pre-trap.*signal=TERM.*reason=arm-interrupted.*predecessor=none" "$state/.watch-cycle-exits.log" \
+    || fail "a TERM during arm startup left no lifecycle row"
+  pass "arm records a TERM that lands before its full trap setup"
+}
+
+# The full trap handlers exist before any cycle does, and cycle_log_append
+# records nothing without an active cycle. A TERM landing in that span - mode
+# dispatch, a restart's predecessor-TERM wait, the spawn window - must still
+# leave the pre-trap row, or the interruption is invisible in the ledger.
+test_arm_records_a_term_that_lands_before_cycle_begin() {
+  local stage dir state fakebin armout real_cat real_mktemp armpid status
+  for stage in pre-attach pre-start; do
+    dir=$(make_case "arm-pre-cycle-term-$stage")
+    state="$dir/state"
+    fakebin="$dir/fakebin"
+    armout="$dir/arm.out"
+    if [ "$stage" = pre-attach ]; then
+      # A slow cat freezes the first health probe: after the attached handlers
+      # replace the pre-lib traps, before the attach path's cycle_begin.
+      real_cat=$(command -v cat)
+      cat > "$fakebin/cat" <<SH
+#!/usr/bin/env bash
+sleep 0.5
+exec "$real_cat" "\$@"
+SH
+      chmod +x "$fakebin/cat"
+    else
+      # A slow mktemp freezes the spawn window: after the arm handlers replace
+      # the attached handlers, before the started cycle's cycle_begin.
+      real_mktemp=$(command -v mktemp)
+      cat > "$fakebin/mktemp" <<SH
+#!/usr/bin/env bash
+sleep 0.5
+exec "$real_mktemp" "\$@"
+SH
+      chmod +x "$fakebin/mktemp"
+    fi
+    PATH="$fakebin:$PATH" FM_STATE_OVERRIDE="$state" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH_ARM" > "$armout" 2>&1 &
+    armpid=$!
+    sleep 0.2
+    kill -TERM "$armpid" 2>/dev/null || fail "could not signal the arm before cycle begin ($stage)"
+    wait_for_exit "$armpid" 40
+    status=$?
+    [ "$status" -eq 143 ] || fail "pre-cycle interrupted arm ($stage) did not exit with TERM status (got $status)"
+    grep -q "arm_pid=$armpid.*origin=pre-trap.*signal=TERM.*reason=arm-interrupted.*predecessor=none" "$state/.watch-cycle-exits.log" \
+      || fail "a TERM before cycle begin ($stage) left no lifecycle row"
+  done
+  pass "arm records a TERM that lands after the full traps but before cycle begin"
+}
+
+# The early pre-lib ledger derivation must resolve a bare FM_ROOT exactly like
+# the wake library resolves STATE, or a pre-trap interruption row lands beside
+# the fleet home's ledger and the interruption is invisible where every other
+# row is.
+test_arm_pretrap_row_honors_bare_fm_root() {
+  local dir fakebin armout real_uname home armpid
+  dir=$(make_case arm-pretrap-fmroot)
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  real_uname=$(command -v uname)
+  home="$dir/fleet-home"
+  # The library's mkdir of the resolved state runs after the slow uname below,
+  # so the row's directory must already exist when the pre-lib trap fires.
+  mkdir -p "$home/state"
+  cat > "$fakebin/uname" <<SH
+#!/usr/bin/env bash
+sleep 0.5
+exec "$real_uname" "\$@"
+SH
+  chmod +x "$fakebin/uname"
+  # The harness exports FM_ROOT_OVERRIDE suite-wide, and it outranks bare
+  # FM_ROOT in both derivations, so strip every higher-precedence home/state
+  # variable to leave exactly the bare-FM_ROOT environment under test.
+  PATH="$fakebin:$PATH" env -u FM_ROOT_OVERRIDE -u FM_HOME -u FM_STATE_OVERRIDE -u STATE \
+    FM_ROOT="$home" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH_ARM" > "$armout" 2>&1 &
+  armpid=$!
+  sleep 0.15
+  kill -TERM "$armpid" 2>/dev/null || fail "could not signal the arm during startup under bare FM_ROOT"
+  wait_for_exit "$armpid" 40 || true
+  grep -q "arm_pid=$armpid.*origin=pre-trap.*signal=TERM.*reason=arm-interrupted" "$home/state/.watch-cycle-exits.log" \
+    || fail "pre-trap interruption row did not land in bare FM_ROOT's state"
+  pass "pre-trap interruption rows honor a bare FM_ROOT"
+}
+
+# A restart TERMs exactly the watcher pid this home's lock records, and that
+# TERM's outcome - the predecessor surviving the bounded wait, or exiting inside
+# it - must land in the lifecycle ledger, or a hung-predecessor restart is the
+# one lifecycle event with no row.
+test_restart_records_predecessor_term_outcomes() {
+  local stage dir state out peer identity armpid i
+  for stage in survived exited; do
+    dir=$(make_case "restart-term-$stage")
+    state="$dir/state"
+    out="$dir/restart.out"
+    if [ "$stage" = survived ]; then
+      node -e 'process.on("SIGTERM", () => {}); setInterval(() => {}, 300000)' >/dev/null 2>&1 &
+      peer=$!
+    else
+      bash -c 'trap "sleep 0.3; exit 0" TERM; while :; do sleep 0.5; done' &
+      peer=$!
+    fi
+    identity=$(FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_pid_identity "$2"' _ "$LIB" "$peer") \
+      || fail "could not identify the $stage predecessor pid"
+    mkdir "$state/.watch.lock"
+    printf '%s\n' "$peer" > "$state/.watch.lock/pid"
+    printf '%s\n' "$dir" > "$state/.watch.lock/fm-home"
+    printf '%s\n' "$WATCH" > "$state/.watch.lock/watcher-path"
+    printf '%s\n' "$identity" > "$state/.watch.lock/pid-identity"
+    [ "$stage" = survived ] && touch "$state/.last-watcher-beat"
+    FM_HOME="$dir" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 FM_ARM_CONFIRM_TIMEOUT=1 \
+      "$WATCH_ARM" --restart > "$out" 2>&1 &
+    armpid=$!
+    i=0
+    while [ "$i" -lt 120 ] && ! grep -q "watcher_pid=$peer.*origin=restart-term" "$state/.watch-cycle-exits.log" 2>/dev/null; do
+      sleep 0.1
+      i=$((i + 1))
+    done
+    if [ "$stage" = survived ]; then
+      grep -qE "watcher_pid=$peer.*origin=restart-term.*signal=TERM.*reason=predecessor-term-survived" "$state/.watch-cycle-exits.log" 2>/dev/null \
+        || fail "restart did not record the TERM-survived predecessor in the ledger: $(cat "$state/.watch-cycle-exits.log" 2>/dev/null)"
+    else
+      grep -qE "watcher_pid=$peer.*origin=restart-term.*signal=TERM.*reason=predecessor-term-exited-after-[0-9]+ms" "$state/.watch-cycle-exits.log" 2>/dev/null \
+        || fail "restart did not record the predecessor's bounded TERM exit in the ledger: $(cat "$state/.watch-cycle-exits.log" 2>/dev/null)"
+    fi
+    kill -TERM "$armpid" 2>/dev/null || true
+    wait_for_exit "$armpid" 80 >/dev/null 2>&1 || true
+    kill -KILL "$peer" 2>/dev/null || true
+    wait "$peer" 2>/dev/null || true
+  done
+  pass "restart records the predecessor watcher's TERM outcome in the ledger"
 }
 
 test_stopped_watcher_is_live_but_stale_then_exit_is_classified() {
@@ -1191,4 +1354,8 @@ test_arm_propagates_immediate_wake_before_confirmation
 test_arm_waits_for_peer_beacon_after_child_stands_down
 test_arm_fails_loud_when_no_fresh_watcher_confirmable
 test_cycle_exit_ledger_links_successor_and_stays_bounded
+test_arm_records_a_term_that_lands_during_startup
+test_arm_records_a_term_that_lands_before_cycle_begin
+test_arm_pretrap_row_honors_bare_fm_root
+test_restart_records_predecessor_term_outcomes
 test_stopped_watcher_is_live_but_stale_then_exit_is_classified

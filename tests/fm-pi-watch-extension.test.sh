@@ -537,6 +537,207 @@ EOF
   pass "Pi dispatcher branch offer owns accepted wakes and falls back to main"
 }
 
+# The 2026-09-20 diagnosis: a branch settlement includes the branch's whole
+# model turn - minutes under load, serialized behind every earlier branch wake
+# - so an awaited settlement stalled the whole restoration pipeline. The
+# settlement is bounded: past it, main gets the wake, and the durable queue
+# plus branch-grant reconciliation deduplicate the wake the branch may still
+# be settling.
+test_pi_branch_settlement_bound_falls_back_to_main() {
+  local repo home plugin log stop out status
+  repo="$TMP_ROOT/pi-branch-bound-root"
+  home="$TMP_ROOT/pi-branch-bound-home"
+  log="$TMP_ROOT/pi-branch-bound.log"
+  stop="$TMP_ROOT/pi-branch-bound.stop"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then
+  printf 'confirmed generation=%s watcher=%s\n' "$2" "$4" >> "${FM_ARM_LOG:?}"
+  exit 0
+fi
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+  printf 'signal: branch-bound synthetic wake\n'
+  exit 0
+fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_WATCH_BRANCH_SETTLEMENT_TIMEOUT_MS=250 node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+let releaseBranch = () => {};
+const branchSettlement = new Promise((resolve) => {
+  releaseBranch = resolve;
+});
+let branchAccepted = false;
+let tool = null;
+const prompts = [];
+const pi = {
+  on() {},
+  registerCommand() {},
+  registerTool(candidate) {
+    if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+  },
+  sendUserMessage: async (message) => {
+    prompts.push(message);
+  },
+  events: {
+    on() {},
+    emit(event, data) {
+      if (event !== "fm-branch-supervision:dispatch") return;
+      branchAccepted = true;
+      data.accept(branchSettlement);
+    },
+  },
+};
+const arms = () => existsSync(process.env.FM_ARM_LOG)
+  ? readFileSync(process.env.FM_ARM_LOG, "utf8").split("\n").filter((row) => row.startsWith("arm=")).length
+  : 0;
+async function waitFor(pred, label) {
+  for (let i = 0; i < 500; i += 1) {
+    if (pred()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timeout waiting for ${label}`);
+}
+
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+writeFileSync(`${process.env.FM_HOME}/state/branch-bound.meta`, "project=/projects/branch-bound\nwindow=fm-branch-bound\n");
+writeFileSync(`${process.env.FM_HOME}/state/.wake-queue`, "1\t1\tsignal\tbranch-bound.status\tsignal: branch-bound synthetic wake\n");
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await tool.execute("branch-bound-arm", {}, undefined, undefined, {});
+await waitFor(() => branchAccepted, "branch accepted the wake");
+// The bound must expire while the branch settlement is still pending.
+await waitFor(() => prompts.length === 1, "main fallback after the settlement bound");
+if (!prompts[0].includes("signal: branch-bound synthetic wake")) {
+  throw new Error(`fallback wake lost the reason line: ${prompts[0]}`);
+}
+// The late settlement must not duplicate the delivery to main.
+releaseBranch();
+await new Promise((resolve) => setTimeout(resolve, 200));
+if (prompts.length !== 1) throw new Error(`late branch settlement duplicated main delivery: ${prompts.join(" | ")}`);
+if (arms() !== 2) throw new Error(`continuity was not restored before the fallback: ${arms()} arms`);
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi branch settlement bound must fall back to main delivery"
+  [ -z "$out" ] || fail "Pi branch-bound test printed output: $out"
+  pass "Pi branch settlement bound falls back to main and deduplicates the late settlement"
+}
+
+# The core 2026-09-20 stall: delivery of wake N awaited inside the pipeline
+# meant close N+1's successor was never restored while that delivery was in
+# flight, leaving the fleet unwatched for the whole branch turn. Delivery is
+# now backgrounded, so the next close's restoration must proceed immediately.
+test_pi_next_close_successor_restored_while_delivery_in_flight() {
+  local repo home plugin log stop trigger out status
+  repo="$TMP_ROOT/pi-overlap-restore-root"
+  home="$TMP_ROOT/pi-overlap-restore-home"
+  log="$TMP_ROOT/pi-overlap-restore.log"
+  stop="$TMP_ROOT/pi-overlap-restore.stop"
+  trigger="$TMP_ROOT/pi-overlap-restore.trigger"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then
+  printf 'confirmed generation=%s watcher=%s\n' "$2" "$4" >> "${FM_ARM_LOG:?}"
+  exit 0
+fi
+printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+if [ "$count" -eq 1 ]; then
+  printf 'signal: overlap first wake\n'
+  exit 0
+fi
+while :; do
+  if [ -e "$FM_TRIGGER_FILE" ]; then
+    rm -f "$FM_TRIGGER_FILE"
+    printf 'signal: overlap second wake\n'
+    exit 0
+  fi
+  [ ! -e "$FM_STOP_FILE" ] || exit 0
+  sleep 0.02
+done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_TRIGGER_FILE="$trigger" node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+let releaseFirstDelivery = () => {};
+const firstDeliveryBlocked = new Promise((resolve) => {
+  releaseFirstDelivery = resolve;
+});
+let deliveries = 0;
+let tool = null;
+const prompts = [];
+const pi = {
+  on() {},
+  registerCommand() {},
+  registerTool(candidate) {
+    if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+  },
+  sendUserMessage: async (message) => {
+    deliveries += 1;
+    if (deliveries === 1) {
+      await firstDeliveryBlocked;
+    }
+    prompts.push(message);
+  },
+  events: { on() {}, emit() {} },
+};
+const arms = () => existsSync(process.env.FM_ARM_LOG)
+  ? readFileSync(process.env.FM_ARM_LOG, "utf8").split("\n").filter((row) => row.startsWith("arm=")).length
+  : 0;
+async function waitFor(pred, label) {
+  for (let i = 0; i < 500; i += 1) {
+    if (pred()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`timeout waiting for ${label}`);
+}
+
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await tool.execute("overlap-arm", {}, undefined, undefined, {});
+await waitFor(() => deliveries === 1, "first wake delivery started");
+writeFileSync(process.env.FM_TRIGGER_FILE, "go\n");
+// The second close arrives while the first delivery is blocked: its successor
+// (third arm) and its own main delivery must both proceed without waiting.
+await waitFor(() => arms() === 3, "second close's successor restored during the blocked first delivery");
+await waitFor(() => deliveries === 2, "second wake delivered while the first is still blocked");
+if (!prompts.some((message) => message.includes("signal: overlap second wake"))) {
+  throw new Error(`second wake lost its reason line: ${prompts.join(" | ")}`);
+}
+releaseFirstDelivery();
+await new Promise((resolve) => setTimeout(resolve, 100));
+if (arms() !== 3) throw new Error(`the settled first delivery spawned extra arms: ${arms()}`);
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi must restore the next close's successor without waiting for the previous wake's delivery"
+  [ -z "$out" ] || fail "Pi overlap-restore test printed output: $out"
+  pass "Pi restores the next close's successor while the previous wake's delivery is still in flight"
+}
+
 test_pi_branch_offer_flags_heartbeat() {
   local repo home plugin log stop out status
   repo="$TMP_ROOT/pi-branch-heartbeat-root"
@@ -2133,6 +2334,12 @@ const oldDeliveryRelease = new Promise((resolve) => {
 });
 let oldDeliveryStarted = false;
 
+let resolveOldSessionShutdown = () => {};
+const oldSessionShutdown = new Promise((resolve) => {
+  resolveOldSessionShutdown = resolve;
+});
+let acceptedOfferCount = 0;
+
 function makePi(blockDelivery = false) {
   const handlers = new Map();
   const eventHandlers = new Map();
@@ -2156,7 +2363,20 @@ function makePi(blockDelivery = false) {
       emit(event, data) {
         if (blockDelivery && event === "fm-branch-supervision:dispatch") {
           oldDeliveryStarted = true;
-          data.accept(oldDeliveryRelease);
+          acceptedOfferCount += 1;
+          // Model the real branch's generation boundary: the wake already in
+          // its serialized chain (the first acceptance, blocked until
+          // releaseOldDelivery) settles as handled, but a wake still queued
+          // behind it rejects its settlement once the owning session shuts
+          // down, because fm-branch-supervision.ts refuses a replaced
+          // generation and the durable queue hands the wake back to main.
+          data.accept(
+            acceptedOfferCount === 1
+              ? oldDeliveryRelease
+              : oldSessionShutdown.then(() => {
+                  throw new Error("supervision session was replaced before handling the accepted wake");
+                }),
+          );
         }
         for (const handler of eventHandlers.get(event) ?? []) handler(data);
       },
@@ -2217,9 +2437,18 @@ if (previous.prompts.length !== 0) {
 }
 await waitFor(() => liveArms().length === 1 && armRows().length >= 2, "old-session successor");
 writeFileSync(process.env.FM_TRIGGER_FILE, "replacement-successor actionable outcome\n");
-await waitFor(() => liveArms().length === 0, "mid-delivery successor actionable close");
+// The successor's own close is what matters here: either it is observed in the
+// restoration gap (no live arm yet) or its own successor has already been
+// restored (third arm row). Polling both keeps the checkpoint deterministic
+// now that the pipeline restores each close's successor without waiting for
+// the previous wake's delivery.
+await waitFor(
+  () => liveArms().length === 0 || armRows().length >= 3,
+  "mid-delivery successor actionable close",
+);
 
 await previous.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "new" }, {});
+resolveOldSessionShutdown();
 await waitFor(() => liveArms().length === 0, "retired old-session successor");
 
 const replacement = makePi(false);
@@ -2500,10 +2729,9 @@ EOF
 }
 
 # A verified successor can die while the wake it was started for is still
-# being delivered (a branch turn can take minutes). Its failure close arrives
-# while the pipeline is busy, so the ordinary retry path must be deferred to
-# the end of that delivery rather than skipped, or the live generation is left
-# with no watcher and no retry.
+# being delivered (a branch turn can take minutes). Delivery no longer owns
+# the restoration pipeline, so the bounded retry must restore continuity
+# immediately instead of waiting for that delivery to settle.
 test_pi_successor_failure_during_delivery_is_retried_after_delivery() {
   local repo home plugin log stop out status
   repo="$TMP_ROOT/pi-successor-dies-mid-delivery-root"
@@ -2579,14 +2807,16 @@ mod.default(pi);
 await tool.execute("initial-arm", {}, undefined, undefined, {});
 await waitFor(() => branchAccepted, "branch accepted the wake behind a verified successor");
 if (arms() !== 2) throw new Error(`expected the verified successor before delivery, got ${arms()} arms`);
-// The successor dies while the branch still holds the delivery.
-await new Promise((resolve) => setTimeout(resolve, 300));
-if (arms() !== 2) throw new Error(`a retry launched while the delivery was still in flight: ${arms()} arms`);
-releaseBranch();
-await waitFor(() => arms() === 3, "a retry watcher after the delivery settled");
+// The successor dies while the branch still holds the delivery: the bounded
+// retry must restore continuity immediately rather than wait for the delivery.
+await waitFor(() => arms() === 3, "a retry watcher launched despite the in-flight delivery");
 await new Promise((resolve) => setTimeout(resolve, 150));
-if (arms() !== 3) throw new Error(`the deferred retry was not single-flight: ${arms()} arms`);
+if (arms() !== 3) throw new Error(`the retry was not single-flight: ${arms()} arms`);
 if (prompts.length !== 0) throw new Error(`a bounded retry surfaced a failure prompt: ${prompts.join(" | ")}`);
+releaseBranch();
+await new Promise((resolve) => setTimeout(resolve, 150));
+if (arms() !== 3) throw new Error(`the settled delivery disturbed the retry watcher: ${arms()} arms`);
+if (prompts.length !== 0) throw new Error(`a settled branch delivery surfaced a prompt: ${prompts.join(" | ")}`);
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 process.exit(0);
 EOF
@@ -2594,7 +2824,7 @@ EOF
   status=$?
   expect_code 0 "$status" "Pi must retry a verified successor that failed during wake delivery"
   [ -z "$out" ] || fail "Pi successor-dies-mid-delivery test printed output: $out"
-  pass "Pi retries a verified successor that failed during wake delivery once that delivery settles"
+  pass "Pi retries a verified successor that failed during wake delivery without waiting for it"
 }
 
 test_pi_late_retiring_actionable_reaches_replacement() {
@@ -3980,6 +4210,8 @@ test_pi_redundant_tool_call_is_owned_noop
 test_pi_scheduled_retry_call_is_owned_noop
 test_pi_actionable_close_starts_single_successor_before_delivery
 test_pi_branch_offer_owns_actionable_wake
+test_pi_branch_settlement_bound_falls_back_to_main
+test_pi_next_close_successor_restored_while_delivery_in_flight
 test_pi_branch_offer_flags_heartbeat
 test_pi_heartbeat_is_not_ridden_into_main_by_a_co_present_check
 test_pi_main_only_check_classes_stay_on_main
