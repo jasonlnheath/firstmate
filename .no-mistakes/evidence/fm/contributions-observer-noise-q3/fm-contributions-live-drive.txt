@@ -1,0 +1,37 @@
+
+=== A: transient forge blip (incident replay, registered-check path) ===
+PASS: registered check state/contributions.check.sh exists
+PASS: registered contributions check exited 0
+PASS: captain-facing stdout silent (no observation-unavailable noise)
+PASS: failed reviews read retried exactly once within the same poll (2 reviews reads)
+{"checked_at":"2026-09-20T23:50:00Z","error":null,"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","state":"open"}
+PASS: fresh observation recorded, error null
+PASS: no durable wake enqueued
+
+=== B1: persistent outage (both attempts fail) still wakes the captain once ===
+PASS: poll exited 0 despite outage
+PASS: woke exactly once: contributions: observation unavailable for https://github.com/jasonlnheath/llama-cpp-turboquant/pull/1
+PASS: error evidence recorded
+
+=== B2: unchanged outage on the next poll stays silent (one wake per episode) ===
+PASS: second failing poll printed nothing
+PASS: each failing poll = initial read + one bounded retry (4 core reads total)
+PASS: error evidence retained
+
+=== B3: transient blip after the episode recovers silently ===
+PASS: recovered blip printed nothing
+PASS: episode ended: error cleared, fresh observation
+{"checked_at":"2026-09-20T23:50:00Z","error":null,"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","state":"open"}
+
+=== C: healthy observation makes exactly one read per poll ===
+PASS: healthy poll silent, rc 0
+PASS: exactly 1 core read (retry fires only after a failure)
+
+=== D: genuine failure near the deadline (budget refuses the retry) ===
+PASS: poll exited 0
+PASS: first failure stands: captain woke once
+PASS: retry was refused by the budget (no second core read)
+PASS: error evidence recorded
+
+=== RESULT ===
+ALL LIVE CHECKS PASSED

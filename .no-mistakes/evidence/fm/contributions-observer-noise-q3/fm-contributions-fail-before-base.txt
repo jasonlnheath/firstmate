@@ -1,0 +1,4 @@
+not ok - a URL owned by two tasks made 1 core reads in one poll (fail; want 2)
+not ok - a transient blip that recovered on the bounded retry woke: contributions: observation unavailable for https://github.com/o/r/pull/8
+not ok - a failing open PR stopped being observed (two failing polls, each initial read plus its bounded retry)
+not ok - 3 contribution regressions

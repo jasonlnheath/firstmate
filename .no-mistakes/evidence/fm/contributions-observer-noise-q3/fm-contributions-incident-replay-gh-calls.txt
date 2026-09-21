@@ -1,0 +1,12 @@
+pr view https://github.com/jasonlnheath/llama-cpp-turboquant/pull/1 --json headRefOid -q .headRefOid
+api repos/jasonlnheath/llama-cpp-turboquant/pulls/1
+api repos/jasonlnheath/llama-cpp-turboquant/issues/1/comments?per_page=100 --paginate --slurp
+api repos/jasonlnheath/llama-cpp-turboquant/pulls/1/reviews?per_page=100 --paginate --slurp
+api repos/jasonlnheath/llama-cpp-turboquant/pulls/1
+api repos/jasonlnheath/llama-cpp-turboquant/issues/1/comments?per_page=100 --paginate --slurp
+api repos/jasonlnheath/llama-cpp-turboquant/pulls/1/reviews?per_page=100 --paginate --slurp
+api repos/jasonlnheath/llama-cpp-turboquant/pulls/1/comments?per_page=100 --paginate --slurp
+api repos/jasonlnheath/llama-cpp-turboquant/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?filter=all&per_page=100 --paginate --slurp
+api repos/jasonlnheath/llama-cpp-turboquant/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/statuses?per_page=100 --paginate --slurp
+api repos/jasonlnheath/llama-cpp-turboquant
+pr view https://github.com/jasonlnheath/llama-cpp-turboquant/pull/1 --json headRefOid,reviewDecision
