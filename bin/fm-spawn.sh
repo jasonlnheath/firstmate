@@ -119,12 +119,16 @@
 #   returning a slot, so allocation cannot reuse a slot before its owner record
 #   is published. Under that same lock it writes the slot's owner claim, which is
 #   what lets teardown leave a slot reassigned since untouched; bin/fm-wake-lib.sh
-#   owns the claim and bin/fm-teardown.sh owns what it protects. A slot that
-#   cannot be claimed refuses the spawn rather than launching a worker whose slot
-#   could later be released out from under its successor. A spawn that aborts
-#   while it still holds the allocation lock drops its own claim; an abort after
-#   metadata publication has released that lock leaves the claim in place, and
-#   the next spawn's claim replaces it.
+#   owns the claim and bin/fm-teardown.sh owns what it protects. A slot a live
+#   task record of this home still holds is refused before the claim is written,
+#   because a lapsed Treehouse process lease is not proof a slot is free;
+#   bin/fm-wake-lib.sh's fm_treehouse_slot_live_holder owns that screen. A slot
+#   that cannot be claimed refuses the spawn rather than launching a worker whose
+#   slot could later be released out from under its successor. A spawn that
+#   aborts while it still holds the allocation lock drops its own claim; an
+#   abort after metadata publication has released that lock leaves the claim in
+#   place, and the next spawn refuses that slot while the aborted task's record
+#   still names it.
 #   The local root is whatever bin/fm-wake-lib.sh's
 #   fm_firstmate_root_home resolves, so a home seeded from another machine anchors
 #   that lock itself rather than failing to resolve one;
@@ -1219,9 +1223,10 @@ spawn_abort_cleanup() {
   # must not leave a claim naming a task no record describes. The release is a
   # read-then-remove, so it runs only while the project lock that wrote the
   # claim is still held (aborts before metadata publication); a later abort has
-  # already released that lock and leaves the claim for the next spawn's
-  # atomic replacement rather than racing it. The release itself never removes
-  # another task's claim.
+  # already released that lock and leaves the claim in place rather than racing
+  # the next spawn, whose live-holder screen refuses the slot while the aborted
+  # task's record still names it. The release itself never removes another
+  # task's claim.
   if [ "$SPAWN_SLOT_CLAIMED" = 1 ] && [ -n "${WT:-}" ] &&
     [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ] &&
     fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
