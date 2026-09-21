@@ -1336,6 +1336,60 @@ fm_treehouse_slot_owner_state() {  # <worktree> <task-id>
   fi
 }
 
+# Live-holder screen for a pool slot at allocation time. Returns 0 (held) when
+# the slot `treehouse get` just handed out is still recorded to a live task of
+# this home, 1 (free to claim) otherwise, so the allocating spawn can refuse
+# instead of double-booking a working copy two agents would share.
+# Two records can prove a live holder, and either one alone is enough:
+#   - the slot's .fm-slot-owner claim names another task of this home whose
+#     task record still exists (a claim naming a task with no record left is a
+#     stale claim from an already cleaned-up task, safe to replace); or
+#   - any task record in this home still names this exact worktree, which also
+#     covers a lost or never-written claim.
+# Claims from other homes carry no record this scan may read, so they keep the
+# pre-screen behavior (claim replacement, with teardown's own guard still
+# protecting the slot) rather than wedging allocation on an unreadable holder.
+# Sets FM_TREEHOUSE_SLOT_LIVE_HOLDER to the holder's task id and
+# FM_TREEHOUSE_SLOT_LIVE_HOLDER_META to its record path when held; both empty
+# when free. Output globals, read by the sourcing caller.
+# shellcheck disable=SC2034 # Output globals, read by the sourcing caller.
+fm_treehouse_slot_live_holder() {  # <worktree> <task-id> <state-dir>
+  local worktree=$1 id=$2 state=$3 meta holder_home slot_real wt wt_real
+  FM_TREEHOUSE_SLOT_LIVE_HOLDER=
+  FM_TREEHOUSE_SLOT_LIVE_HOLDER_META=
+  fm_treehouse_slot_owner_state "$worktree" "$id"
+  if [ "$FM_TREEHOUSE_SLOT_OWNER" = other ] && [ -n "$FM_TREEHOUSE_SLOT_OWNER_ID" ] \
+    && [ -n "$FM_TREEHOUSE_SLOT_OWNER_HOME" ] && [ -d "$FM_TREEHOUSE_SLOT_OWNER_HOME" ]; then
+    holder_home=$(CDPATH='' cd -- "$FM_TREEHOUSE_SLOT_OWNER_HOME" 2>/dev/null && pwd -P) || holder_home=
+    if [ -n "$holder_home" ] && [ "$holder_home" = "$(CDPATH='' cd -- "$(dirname "$state")" 2>/dev/null && pwd -P)" ] \
+      && { [ -f "$state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ] || [ -L "$state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta" ]; }; then
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER=$FM_TREEHOUSE_SLOT_OWNER_ID
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER_META="$state/$FM_TREEHOUSE_SLOT_OWNER_ID.meta"
+      return 0
+    fi
+  fi
+  slot_real=$(CDPATH='' cd -- "$worktree" 2>/dev/null && pwd -P) || slot_real=$worktree
+  for meta in "$state"/*.meta; do
+    [ -f "$meta" ] || continue
+    [ "${meta##*/}" = "$id.meta" ] && continue
+    wt=$(sed -n 's/^worktree=//p' "$meta" 2>/dev/null | head -n 1)
+    [ -n "$wt" ] || continue
+    if [ "$wt" = "$worktree" ]; then
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER=${meta##*/}
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER=${FM_TREEHOUSE_SLOT_LIVE_HOLDER%.meta}
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER_META=$meta
+      return 0
+    fi
+    if wt_real=$(CDPATH='' cd -- "$wt" 2>/dev/null && pwd -P) && [ "$wt_real" = "$slot_real" ]; then
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER=${meta##*/}
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER=${FM_TREEHOUSE_SLOT_LIVE_HOLDER%.meta}
+      FM_TREEHOUSE_SLOT_LIVE_HOLDER_META=$meta
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Drop a task's own claim once its slot is back in the pool. Never removes
 # another task's claim, so a misdirected release cannot strip the evidence that
 # protects the slot's real owner.
