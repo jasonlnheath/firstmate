@@ -101,8 +101,9 @@ type SessionGeneration = {
   // branch-handled one (finished).
   unconsumedWakes: Map<string, UnconsumedWake>;
   // A verified successor's failure close that arrived while the pipeline was
-  // still delivering the wake it was started for; its bounded retry runs once
-  // that delivery settles instead of being skipped by the single-flight guard.
+  // still delivering the wake it was started for; its bounded retry runs when
+  // the restoration pass ends - not once that background delivery settles -
+  // instead of being skipped by the single-flight guard.
   deferredClose: { message: string; predecessorArmPid: string } | null;
 };
 
@@ -849,7 +850,8 @@ export default function (pi: ExtensionAPI) {
         };
         try {
           // A new restoration supersedes whatever became of the previous
-          // successor; only a failure during this delivery is retried after it.
+          // successor; only a failure during this delivery is retried after
+          // the pass, never held for the delivery itself to settle.
           owner.deferredClose = null;
           // Restore this wake's successor first (Option B per wake), then hand
           // delivery to a background task instead of awaiting it here: an
@@ -1106,8 +1108,9 @@ export default function (pi: ExtensionAPI) {
       if (owner.restoring) {
         // The pipeline is still delivering the wake this successor was
         // started for. A verified successor that failed on its own keeps its
-        // bounded retry for the end of that delivery; an unready child closing
-        // here was retired by the restoration itself.
+        // bounded retry for the end of the restoration pass rather than for
+        // the background delivery; an unready child closing here was retired
+        // by the restoration itself.
         if (verified && !armRetired.has(armChild)) {
           owner.deferredClose = { message: classification.message, predecessorArmPid: predecessor };
         }

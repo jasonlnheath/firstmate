@@ -1082,6 +1082,54 @@ SH
   pass "pre-trap interruption rows honor a bare FM_ROOT"
 }
 
+# A restart TERMs exactly the watcher pid this home's lock records, and that
+# TERM's outcome - the predecessor surviving the bounded wait, or exiting inside
+# it - must land in the lifecycle ledger, or a hung-predecessor restart is the
+# one lifecycle event with no row.
+test_restart_records_predecessor_term_outcomes() {
+  local stage dir state out peer identity armpid i
+  for stage in survived exited; do
+    dir=$(make_case "restart-term-$stage")
+    state="$dir/state"
+    out="$dir/restart.out"
+    if [ "$stage" = survived ]; then
+      node -e 'process.on("SIGTERM", () => {}); setInterval(() => {}, 300000)' >/dev/null 2>&1 &
+      peer=$!
+    else
+      bash -c 'trap "sleep 0.3; exit 0" TERM; while :; do sleep 0.5; done' &
+      peer=$!
+    fi
+    identity=$(FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_pid_identity "$2"' _ "$LIB" "$peer") \
+      || fail "could not identify the $stage predecessor pid"
+    mkdir "$state/.watch.lock"
+    printf '%s\n' "$peer" > "$state/.watch.lock/pid"
+    printf '%s\n' "$dir" > "$state/.watch.lock/fm-home"
+    printf '%s\n' "$WATCH" > "$state/.watch.lock/watcher-path"
+    printf '%s\n' "$identity" > "$state/.watch.lock/pid-identity"
+    [ "$stage" = survived ] && touch "$state/.last-watcher-beat"
+    FM_HOME="$dir" FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 FM_ARM_CONFIRM_TIMEOUT=1 \
+      "$WATCH_ARM" --restart > "$out" 2>&1 &
+    armpid=$!
+    i=0
+    while [ "$i" -lt 120 ] && ! grep -q "watcher_pid=$peer.*origin=restart-term" "$state/.watch-cycle-exits.log" 2>/dev/null; do
+      sleep 0.1
+      i=$((i + 1))
+    done
+    if [ "$stage" = survived ]; then
+      grep -qE "watcher_pid=$peer.*origin=restart-term.*signal=TERM.*reason=predecessor-term-survived" "$state/.watch-cycle-exits.log" 2>/dev/null \
+        || fail "restart did not record the TERM-survived predecessor in the ledger: $(cat "$state/.watch-cycle-exits.log" 2>/dev/null)"
+    else
+      grep -qE "watcher_pid=$peer.*origin=restart-term.*signal=TERM.*reason=predecessor-term-exited-after-[0-9]+ms" "$state/.watch-cycle-exits.log" 2>/dev/null \
+        || fail "restart did not record the predecessor's bounded TERM exit in the ledger: $(cat "$state/.watch-cycle-exits.log" 2>/dev/null)"
+    fi
+    kill -TERM "$armpid" 2>/dev/null || true
+    wait_for_exit "$armpid" 80 >/dev/null 2>&1 || true
+    kill -KILL "$peer" 2>/dev/null || true
+    wait "$peer" 2>/dev/null || true
+  done
+  pass "restart records the predecessor watcher's TERM outcome in the ledger"
+}
+
 test_stopped_watcher_is_live_but_stale_then_exit_is_classified() {
   local dir state fakebin armout armpid watcher_pid i status
   dir=$(make_case stopped-watcher)
@@ -1309,4 +1357,5 @@ test_cycle_exit_ledger_links_successor_and_stays_bounded
 test_arm_records_a_term_that_lands_during_startup
 test_arm_records_a_term_that_lands_before_cycle_begin
 test_arm_pretrap_row_honors_bare_fm_root
+test_restart_records_predecessor_term_outcomes
 test_stopped_watcher_is_live_but_stale_then_exit_is_classified

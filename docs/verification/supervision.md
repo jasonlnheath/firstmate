@@ -488,6 +488,25 @@ Plain Pi and pi-signed share the same tracked `.pi/extensions/fm-primary-pi-watc
 On 2026-09-02 the same suite, the strict typecheck, and the credential-free real-SDK guard were rerun against `@earendil-works/pi-coding-agent` 0.84.4 after the extension stopped waiting for `before_agent_start` before settling a main delivery; [`runtime-backends.md`](runtime-backends.md#2026-09-02-streaming-time-watcher-delivery) owns the exact commands and output.
 Observed guarantee: a wake delivered while main was streaming was followed by a verified successor and by delivery of the next actionable close, a replacement replayed only the follow-up Pi had not consumed, an exhausted restoration delivered its typed failure without launching an arm past the retry bound, and a verified successor that failed while a branch settlement still held its wake took the ordinary bounded retry once that delivery settled.
 
+The focused extension and watcher-lock suites were rerun on 2026-09-20 on Linux 7.2.5, Node v26.8.1, after wake delivery moved off the restoration critical path, the branch settlement gained its bound, and the arm ledger gained its interruption rows:
+
+```sh
+bin/fm-test-run.sh tests/fm-pi-watch-extension.test.sh
+bin/fm-test-run.sh tests/fm-watcher-lock.test.sh
+```
+
+Observed guarantee: the next close's successor is restored while the previous wake's delivery is still in flight, a verified successor failing mid-delivery takes the ordinary bounded retry immediately rather than once that delivery settles, and a branch settlement outliving its bound falls back to main without duplicating the late settlement; the arm ledger records a TERM landing before cycle begin and the restart's predecessor TERM outcome.
+
+```text
+ok - Pi branch settlement bound falls back to main and deduplicates the late settlement
+ok - Pi restores the next close's successor while the previous wake's delivery is still in flight
+ok - Pi retries a verified successor that failed during wake delivery without waiting for it
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=38455
+ok - arm records a TERM that lands after the full traps but before cycle begin
+ok - restart records the predecessor watcher's TERM outcome in the ledger
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=115508
+```
+
 The once-per-generation recovery bound and immediate handling-successor poll were verified on 2026-08-21 with the tracked Pi extension, real watcher processes, and an isolated home.
 The regression forced handling confirmation to fail, observed one recovery follow-up across the former repeat window, confirmed the successor remained live, and then proved a separate handling successor durably queued a crew event within the bounded poll window.
 
