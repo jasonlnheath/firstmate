@@ -1,0 +1,21 @@
+
+===== A: slot claimed by a task of another home - spawn must not wedge =====
+slot claim names task of another home (record unreadable from here):
+  task=other-home-task
+  home=/tmp/fm-adversarial-replay.1UVEJN/cross-home/other-home
+
+$ fm-spawn.sh cross-home-spawn <project> --scout
+spawned cross-home-spawn harness=codex kind=scout window=firstmate:fm-cross-home-spawn worktree=/tmp/fm-adversarial-replay.1UVEJN/cross-home/pool/1/relmgr
+exit status: 0 (expected 0: no wedge; claim replaced per pre-screen behavior)
+slot claim now:
+  task=cross-home-spawn
+  home=/tmp/fm-adversarial-replay.1UVEJN/cross-home/home
+
+===== B: holder record names a symlinked alias of the same slot - must refuse =====
+holder record worktree= (a symlink alias, not the literal slot path):
+  worktree=/tmp/fm-adversarial-replay.1UVEJN/alias/alias-root/pool-alias/1/relmgr
+  alias -> /tmp/fm-adversarial-replay.1UVEJN/alias/pool
+
+$ fm-spawn.sh alias-spawn <project> --scout   (pool hands the real path)
+error: Treehouse handed pool slot /tmp/fm-adversarial-replay.1UVEJN/alias/pool/1/relmgr to task alias-spawn, but task alias-holder's record still holds that worktree (/tmp/fm-adversarial-replay.1UVEJN/alias/home/state/alias-holder.meta); two workers must not share one working copy, so refusing to launch - reconcile task alias-holder (recover or tear it down) before spawning here again; inspect window firstmate:fm-alias-spawn
+exit status: 1 (expected 1: realpath match proves the live holder)

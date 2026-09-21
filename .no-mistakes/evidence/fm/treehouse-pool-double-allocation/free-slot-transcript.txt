@@ -1,0 +1,8 @@
+pristine slot: no .fm-slot-owner, no task records ->
+  pool/1: relmgr
+spawned free-slot-spawn harness=codex kind=scout window=firstmate:fm-free-slot-spawn worktree=/tmp/fm-free-slot-drive.v6644D/case/pool/1/relmgr
+exit status: 0 (expected 0)
+slot claim now:
+  task=free-slot-spawn
+  home=/tmp/fm-free-slot-drive.v6644D/case/home
+  worktree=/tmp/fm-free-slot-drive.v6644D/case/pool/1/relmgr

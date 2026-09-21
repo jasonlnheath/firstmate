@@ -1,0 +1,38 @@
+
+===== PHASE 1: fresh spawn is handed a pool slot a live task still holds =====
+pre-spawn state:
+  holder record : /tmp/fm-incident-replay.tuhUek/live-holder/home/state/whitelist-list-identity.meta
+    endpoint_task_id=whitelist-list-identity
+    worktree=/tmp/fm-incident-replay.tuhUek/live-holder/pool/1/relmgr
+    project=/tmp/fm-incident-replay.tuhUek/live-holder/project
+    kind=scout
+  slot claim    : /tmp/fm-incident-replay.tuhUek/live-holder/pool/1/.fm-slot-owner
+    task=whitelist-list-identity
+    home=/tmp/fm-incident-replay.tuhUek/live-holder/home
+
+$ fm-spawn.sh whitelist-verb-sweep <project> --scout   (pool hands out slot 1)
+error: Treehouse handed pool slot /tmp/fm-incident-replay.tuhUek/live-holder/pool/1/relmgr to task whitelist-verb-sweep, but task whitelist-list-identity's record still holds that worktree (/tmp/fm-incident-replay.tuhUek/live-holder/home/state/whitelist-list-identity.meta); two workers must not share one working copy, so refusing to launch - reconcile task whitelist-list-identity (recover or tear it down) before spawning here again; inspect window firstmate:fm-whitelist-verb-sweep
+exit status: 1
+post-spawn state:
+  no metadata published for the refused spawn: yes
+  holder claim preserved:
+    task=whitelist-list-identity
+    home=/tmp/fm-incident-replay.tuhUek/live-holder/home
+
+===== PHASE 2: same incident with the holder's claim file lost (record alone) =====
+holder record exists, no .fm-slot-owner claim file on the slot
+
+$ fm-spawn.sh whitelist-verb-pairing <project> --scout
+error: Treehouse handed pool slot /tmp/fm-incident-replay.tuhUek/lost-claim/pool/1/relmgr to task whitelist-verb-pairing, but task whitelist-logo-concepts's record still holds that worktree (/tmp/fm-incident-replay.tuhUek/lost-claim/home/state/whitelist-logo-concepts.meta); two workers must not share one working copy, so refusing to launch - reconcile task whitelist-logo-concepts (recover or tear it down) before spawning here again; inspect window firstmate:fm-whitelist-verb-pairing
+exit status: 1
+
+===== PHASE 3: holder record removed (teardown), same spawn now succeeds =====
+$ fm-spawn.sh whitelist-verb-sweep <project> --scout   (again)
+spawned whitelist-verb-sweep harness=codex kind=scout window=firstmate:fm-whitelist-verb-sweep worktree=/tmp/fm-incident-replay.tuhUek/live-holder/pool/1/relmgr
+exit status: 0
+post-spawn state:
+  slot claim now:
+    task=whitelist-verb-sweep
+    home=/tmp/fm-incident-replay.tuhUek/live-holder/home
+  spawned task records worktree:
+    worktree=/tmp/fm-incident-replay.tuhUek/live-holder/pool/1/relmgr
