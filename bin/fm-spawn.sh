@@ -3850,9 +3850,20 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # a slot that cannot be claimed is refused here, at the cheapest point, rather
   # than launching a worker whose slot teardown could later release out from
   # under its successor.
+  # A lapsed Treehouse process lease is not proof the slot is free: a live task
+  # of this home whose worker process exited (a paused task awaiting the
+  # captain, or a wedge waiting on recovery) still holds the slot by record.
+  # The pool proved this twice by handing such slots to fresh spawns while
+  # their previous holders were still live, so the allocation cross-checks this
+  # home's own records before claiming and refuses a slot a live record still
+  # holds; only a slot every record has released reaches the claim.
   # Written under the Treehouse project lock held from before slot allocation
   # through metadata publication, so no other spawn or return sees a half-claim.
   if fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
+    if fm_treehouse_slot_live_holder "$WT" "$ID" "$STATE"; then
+      echo "error: Treehouse handed pool slot $WT to task $ID, but task $FM_TREEHOUSE_SLOT_LIVE_HOLDER's record still holds that worktree ($FM_TREEHOUSE_SLOT_LIVE_HOLDER_META); two workers must not share one working copy, so refusing to launch - reconcile task $FM_TREEHOUSE_SLOT_LIVE_HOLDER (recover or tear it down) before spawning here again; inspect window $T" >&2
+      exit 1
+    fi
     if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME"; then
       echo "error: could not claim Treehouse pool slot $WT for task $ID; refusing to launch a worker whose slot cannot later be proved to be its own; inspect window $T" >&2
       exit 1
