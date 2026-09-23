@@ -1,5 +1,12 @@
 # Per-repo no-mistakes overrides.
 
+# The test step's live-drive verification style (real arming-path drives plus a
+# ~20-minute targeted-suite batch) cannot fit the default 30-minute agent
+# budget on this repo; three validation runs hit the cap with zero failing
+# findings. Lengthen the test step only - it skips nothing, it just lets the
+# same validation finish.
+test_agent_timeout: 60m
+
 # firstmate is an agent-orchestration repo: its AGENTS.md installs a fleet-captain
 # identity. Disable project-level agent settings/instructions for gate agents so a
 # no-mistakes review/fix/document/test/lint/pr/rebase/ci agent never adopts that
