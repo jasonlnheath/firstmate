@@ -1,0 +1,4 @@
+refused: 2026-09-23T14:15:25Z
+gate: composer
+reason: helm composer not confirmed empty before /new (verdict: pending)
+window: 00:00-23:59 local, dry-run=false

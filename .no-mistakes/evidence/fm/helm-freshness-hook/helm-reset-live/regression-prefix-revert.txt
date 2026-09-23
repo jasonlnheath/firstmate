@@ -1,0 +1,9 @@
+# Round-1 fix regression demonstration (scratch copy in /tmp, worktree untouched)
+
+## With the pre-fix unrestricted fallback (|| [ "$stable" -ge 2 ] applied to every case):
+not ok - unchanged session value refuses despite empty polls: expected exit 3, got 0
+
+## With the target commit a4b928c (fix present):
+ok - fresh wait: empty polls never replace a known session value changing
+ok - fresh wait: two empty polls prove the fresh session when no session value exists
+all fm-helm-reset tests passed

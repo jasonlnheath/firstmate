@@ -1,0 +1,1 @@
+helm-reset: refused: away-posture - no away posture record at /tmp/fm-helm-reset-live.180668/home/state/.afk-contract; the reset only runs while the captain is away

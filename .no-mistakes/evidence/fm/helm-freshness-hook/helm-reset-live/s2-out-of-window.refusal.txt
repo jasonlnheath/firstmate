@@ -1,0 +1,4 @@
+refused: 2026-09-23T14:15:23Z
+gate: window
+reason: outside the configured window (01:00-02:00 local; now=10:15)
+window: 01:00-02:00 local, dry-run=false

@@ -1,0 +1,1 @@
+{"id":"cli:pane:process_info","result":{"process_info":{"foreground_process_group_id":181420,"foreground_processes":[{"argv":["pi"],"cmdline":"pi","cwd":"/tmp/fm-helm-reset-live.180668/project","name":"pi","pid":181420}],"pane_id":"w1:p1","shell_pid":181146},"type":"pane_process_info"}}

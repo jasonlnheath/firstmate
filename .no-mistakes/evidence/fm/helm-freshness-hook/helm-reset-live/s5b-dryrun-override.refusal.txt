@@ -1,0 +1,4 @@
+refused: 2026-09-23T14:15:23Z
+gate: wake-queue
+reason: wake queue not empty (unacknowledged rows: check)
+window: 00:00-23:59 local, dry-run=false

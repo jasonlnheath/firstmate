@@ -1,0 +1,1 @@
+helm-reset: feature off (no enabled /tmp/fm-helm-reset-live.180668/home/config/helm-reset); nothing to do
