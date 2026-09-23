@@ -197,6 +197,19 @@ An absent file means `auto`, i.e. default-on on macOS: the alarm exists precisel
 A missing or failing channel logs and falls through to the next, never crashing the daemon.
 See [`wedge-alarm.md`](wedge-alarm.md) for the current channel reference, [`verification/supervision.md`](verification/supervision.md#wedge-alarm-channels) for active evidence, and [`examples/wedge-alarm`](examples/wedge-alarm) for a copyable config.
 
+## Helm reset (config/helm-reset)
+
+`config/helm-reset` (local, gitignored) opts a home in to the gated bedtime reset for the primary pi helm: at a safe overnight boundary, `bin/fm-helm-reset.sh` runs `/new` on the helm session and submits the continuation prompt so the fresh session resumes from the stowed handoff.
+An absent config file means the feature is off, and an enabled run still refuses unless every gate passes: the away posture record exists (`state/.afk-contract`), the durable wake queue holds no unacknowledged rows, no live task lease is held, every `state/<id>.meta` worker reads done or unknown through `bin/fm-crew-state.sh`, and the local wall-clock time is inside the configured window.
+The first failing gate replaces `state/.helm-reset.refusal` (naming the gate and the reason, for morning diagnosis) and exits without touching the pane.
+The file is one `key=value` per line, with blank lines and leading-`#` comments allowed: `enabled=true` (required; absent file or `enabled=false` means off), `window-start=HH:MM` (default `01:00`), `window-end=HH:MM` (default `02:00`, exclusive, and a start later than the end wraps past midnight), and `dry-run=true|false` (default `true`).
+Unknown keys, malformed times, and values other than `true`/`false` refuse loudly rather than silently changing the feature, and the reset sends nothing until `dry-run=false` is explicit.
+A dry run performs every gate, the pane discovery, and the composer verification, sends nothing, and records what it would have done in `state/.helm-reset.last`.
+The helm pane is discovered from this home's own session-lock holder (`state/.lock`), whose herdr-injected environment names the pane and whose process tree must contain the lock holder; `FM_SUPERVISOR_TARGET` may name the `"<herdr-session>:<pane-id>"` target explicitly and is still proven the same way.
+The reset is herdr-only and requires `/new`'s submit, the fresh session (herdr's registered pi session value changing), and the continuation prompt's submit each to confirm through the shared composer contract; any unconfirmed step refuses with the marker instead of retrying or retyping.
+Nothing is installed system-wide by default: `bin/fm-helm-reset.sh --print-unit service` and `--print-unit timer` print the systemd user unit templates, and the script header carries the opt-in install lines.
+The `/stow` pass itself stays a helm discipline at away entry; the continuation prompt only points the fresh session at the stowed handoff if present.
+
 ## Trace context propagation (config/trace-context / FM_TRACE_CONTEXT)
 
 The optional local, gitignored `config/trace-context` presence flag enables default-off native W3C trace-context propagation.
