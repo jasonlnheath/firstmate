@@ -252,6 +252,10 @@ write_question() {
 
 # ---- tests -------------------------------------------------------------------
 
+# The run/run_off helpers below assign these names dynamically through
+# printf -v, so they are initialized once here for ShellCheck's dataflow pass.
+_exit='' _out='' _err=''
+
 echo "1..15"
 
 # 1. No key → no call, exit 0, "screen: off" on stderr.
