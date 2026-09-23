@@ -231,6 +231,14 @@ The bound is required rather than cosmetic because churn and pane staleness read
 The flag is a home-local supervision-noise preference and is not inherited by secondmate homes, which run their own crew mix.
 [`architecture.md`](architecture.md) owns the triage contract and `bin/fm-watch.sh`'s `signal_turnend_panes_churned` owns the exact evidence and fail-closed boundaries.
 
+## Jev wedge pre-screen (config/jev-wedge-floor)
+
+The optional local, gitignored `config/jev-wedge-floor` file holds one decimal number from 0 through 1, whitespace-insensitive, that sets the confidence floor an `actively-working` screen verdict must meet before the watcher's wedge escalation path defers; an absent or malformed file means `0.8`.
+With `TYPESAFE_API_KEY` present ("Typed dispatch resolution" above owns the shared key contract), `bin/fm-watch.sh` consults `bin/fm-jev-screen.sh` with the pane tail at most once per `STALE_ESCALATE_SECS` window, only after the declared-wait, worktree-write, and dead-record probes have all come back negative, so a fleet that is busy or provably working never pays for a call.
+A verdict at or above the floor defers exactly one threshold window through the same deferral shape a written worktree uses, tracked in the `.writing-deferred-<key>` marker; a second consecutive defer, a pane hash change, a delivered re-surface wake, or any escalation resets that budget.
+Every other outcome - a missing key, a below-floor or non-working verdict, a timeout, an HTTP error, or a malformed response - escalates with today's byte-identical reason lines, so the pre-screen only ever defers and never suppresses a wake.
+`bin/fm-watch.sh`'s `wedge_defer_jev` owns the exact marker and bound mechanics, `bin/fm-jev-screen.sh`'s header owns the request and validation contract, and the screener is overridable for tests through `FM_JEV_WEDGE_SCREENER` the same way `FM_CREW_STATE_BIN` overrides the crew-state reader.
+
 ## Gate defaults (.no-mistakes.yaml)
 
 The tracked `.no-mistakes.yaml` sets `test.evidence.store_in_repo: true` and pins `commands.lint` to `bin/fm-lint.sh`, the same owner CI invokes.
@@ -1114,7 +1122,7 @@ FMX_RELAY_URL=https://myfirstmate.io   # optional Relay endpoint override, mainl
 FMX_ENV_FILE=           # optional alternate .env file for direct Relay client invocations; bootstrap still checks $FM_HOME/.env
 FMX_DRY_RUN=            # truthy previews Relay replies and dismissals to state/x-outbox/ without posting or requiring a token
 FMX_X_REPLY_MAX_CHARS=280   # X reply per-message split budget; values below 50 clamp to 50
-TYPESAFE_API_KEY=       # typed dispatch resolution opt-in, from the environment or .env; absent means bin/fm-dispatch-resolve.sh is off (docs/configuration.md "Typed dispatch resolution")
+TYPESAFE_API_KEY=       # typed dispatch resolution and Jev wedge pre-screen opt-in, from the environment or .env; absent means bin/fm-dispatch-resolve.sh and bin/fm-jev-screen.sh are off (docs/configuration.md "Typed dispatch resolution", "Jev wedge pre-screen")
 FMX_DISCORD_REPLY_MAX_CHARS=1900   # Discord reply per-message split budget; values below 50 clamp to 50, values above 2000 reset to 1900
 FMX_X_THREAD_MAX=25     # maximum messages in one auto-split reply thread
 FMX_FOLLOWUP_MAX_AGE_SECS=604800   # local window for posting Relay completion follow-ups (7 days)
