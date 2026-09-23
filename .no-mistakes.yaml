@@ -5,7 +5,9 @@
 # budget on this repo; three validation runs hit the cap with zero failing
 # findings. Lengthen the test step only - it skips nothing, it just lets the
 # same validation finish.
-test_agent_timeout: 60m
+# decided budget: 7200 seconds (2h) - see status log resolution for the
+# test-budget decision on branch fm/bash-arm-parser-fix.
+test_agent_timeout: 120m
 
 # firstmate is an agent-orchestration repo: its AGENTS.md installs a fleet-captain
 # identity. Disable project-level agent settings/instructions for gate agents so a
