@@ -312,6 +312,15 @@ _event_cap_key=""
 _event_cap_ok=0
 _event_cap_fails=0
 
+# Jev wedge pre-screen: optional Jev classifier on the escalation path.
+# Reads config/jev-wedge-floor for the confidence floor (default 0.8);
+# absent or empty → uses 0.8.  Zeroes out when TYPESAFE_API_KEY is absent.
+# The screener runs only at the at-threshold branch, after the three probes
+# fail, so it costs at most one call per STALE_ESCALATE_SECS per window.
+JEV_WEDGE_SCREENER="$SCRIPT_DIR/fm-jev-screen.sh"
+JEV_WEDGE_FLOOR=${FM_JEV_WEDGE_FLOOR:-}
+case "$JEV_WEDGE_FLOOR" in ''|*[!0-9.]*) JEV_WEDGE_FLOOR=0.8 ;; esac
+
 # afk_present: 0 while the away-mode flag exists. When set, the daemon wraps this
 # watcher and owns triage, so the watcher must behave one-shot (enqueue + exit on
 # every wake) and let the daemon classify - never absorb here, or the daemon's
@@ -1113,8 +1122,8 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
 # through its worktree. The dead-record probe runs last of the three, so the two
 # cheaper deferrals keep the panes they already own on their existing bounded
 # cadences and only a pane that would otherwise alarm pays for a backend read.
-wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file> <task> <pane-hash>
-  local win=$1 since_file=$2 label=$3 escalation_file=$4 task=$5 hash=$6 since age n reason evidence
+wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-file> <task> <pane-hash> [<tail40>]
+  local win=$1 since_file=$2 label=$3 escalation_file=$4 task=$5 hash=$6 tail40=${7:-} since age n reason evidence
   since=$(cat "$since_file" 2>/dev/null || true)
   case "$since" in
     ''|*[!0-9]*)
@@ -1138,6 +1147,46 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         if wedge_dead_record "$win" "$since_file" "$label" "$age" "$hash" "$task"; then
           return 0
         fi
+        # Jev wedge pre-screen: optional classifier on the escalation path.
+        # Only runs when tail40 is available (passed from the main poll loop).
+        if [ -n "$tail40" ] && [ -n "$JEV_WEDGE_SCREENER" ] && [ -n "$JEV_WEDGE_FLOOR" ]; then
+          local _jev_qf="" _jev_out="" _jev_choice="" _jev_conf="" _jev_screen_key=""
+          _jev_screen_key=$(window_key "$win")
+          _jev_qf=$(mktemp) || true
+          if [ -n "$_jev_qf" ] && printf '%s' "$tail40" > "$_jev_qf" 2>/dev/null; then
+            _jev_out=$("$JEV_WEDGE_SCREENER" "$_jev_qf" 2>/dev/null)
+            if [ -n "$_jev_out" ]; then
+              _jev_choice=$(printf '%s' "$_jev_out" | awk '/^  choice:/{print $2}')
+              _jev_conf=$(printf '%s' "$_jev_out" | awk '/^  confidence:/{print $2}')
+            fi
+          fi
+          rm -f "$_jev_qf" 2>/dev/null
+          if [ "$_jev_choice" = "actively-working" ] && [ -n "$_jev_conf" ]; then
+            case "$_jev_conf" in *[!0-9.]*) _jev_conf="" ;; esac
+          fi
+          if [ "$_jev_choice" = "actively-working" ] && [ -n "$_jev_conf" ]; then
+            local _jev_above=0
+            _jev_above=$(awk "BEGIN {print ($_jev_conf >= $JEV_WEDGE_FLOOR) ? 1 : 0}" 2>/dev/null || echo 0)
+            if [ "$_jev_above" = "1" ]; then
+            local _jev_defer_file="$STATE/.writing-deferred-$_jev_screen_key"
+            local _jev_defer_count=0
+            _jev_defer_count=$(cat "$_jev_defer_file" 2>/dev/null || echo 0)
+            case "$_jev_defer_count" in *[!0-9]*) _jev_defer_count=0 ;; esac
+            _jev_defer_count=$(( _jev_defer_count + 1 ))
+            if [ "$_jev_defer_count" -ge 2 ]; then
+              # Second consecutive defer: escalate anyway
+              echo "$_jev_defer_count" > "$_jev_defer_file"
+            else
+              echo "$_jev_defer_count" > "$_jev_defer_file"
+              date +%s > "$since_file"
+              resurface_absorbed "$win" "$STATE/.writing-resurfaced-$_jev_screen_key" "$age" \
+                "stale: $win (idle ${age}s, Jev pre-screen: actively-working (conf ${_jev_conf}), deferred escalation): $win"
+              triage_log "absorbed $label (Jev pre-screen: actively-working conf ${_jev_conf}, deferred escalation): $win"
+              return 0
+            fi
+          fi
+        fi
+      fi
         n=$(( $(cat "$escalation_file" 2>/dev/null || echo 0) + 1 ))
         echo "$n" > "$escalation_file"
         reason="stale: $win (idle ${age}s, possible wedge, escalation $n)"
@@ -2588,7 +2637,7 @@ EOF
             # wedge timer is running for it) - keep treating it that way
             # without re-reading the crew state every poll, and without
             # letting the still-captain-relevant log line re-surface it.
-            wedge_timer_check "$w" "$ssf" "stale (overridden terminal status)" "$ewf" "$task" "$h"
+            wedge_timer_check "$w" "$ssf" "stale (overridden terminal status)" "$ewf" "$task" "$h" "$tail40"
           fi
           # else: already surfaced as genuinely terminal on a prior poll of
           # this same hash - nothing left to do (matches the original,
@@ -2631,12 +2680,12 @@ EOF
                 paused)  handle_paused_stale "$w" "$task" "$h" ;;
                 working) clear_pause_state "$key"
                          printf '%s' "$h" > "$sf"
-                         wedge_timer_check "$w" "$ssf" "non-terminal stale (provably working after a declared pause)" "$ewf" "$task" "$h"
+                         wedge_timer_check "$w" "$ssf" "non-terminal stale (provably working after a declared pause)" "$ewf" "$task" "$h" "$tail40"
                          triage_log "absorbed non-terminal stale (provably working): $w" ;;
                 *)       handle_paused_stale "$w" "$task" "$h" ;;
               esac
             else
-              wedge_timer_check "$w" "$ssf" "non-terminal stale" "$ewf" "$task" "$h"
+              wedge_timer_check "$w" "$ssf" "non-terminal stale" "$ewf" "$task" "$h" "$tail40"
             fi
           fi
         fi
@@ -2664,6 +2713,8 @@ EOF
       printf '%s' "$h" > "$hf"
       echo 0 > "$cf"
       paused_bound=1
+      # Clear Jev deferral counter on hash change.
+      rm -f "$STATE/.writing-deferred-$key"
       if [ "$busy_now" -eq 0 ] && busy_turn_over_age "$task"; then
         busy_turn_bound_check "$w" "$task" "$h" "$ssf" "$ewf" && paused_bound=0
       else
