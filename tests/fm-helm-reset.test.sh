@@ -59,10 +59,14 @@ write_queue_row() {  # <home> <kind> <key>
 }
 
 # run_reset <home> <argv...>: run the script with the shared fast fixture
-# environment (per-call FAKE_* / FM_HELM_RESET_NOW prefixes inherit through).
+# environment (per-call FAKE_* / FM_HELM_RESET_NOW / FM_SUPERVISOR_TARGET
+# prefixes inherit through; an inherited FM_SUPERVISOR_TARGET is still
+# stripped, matching a clean shell).
 run_reset() {  # <home> <argv...>
   local home=$1
   shift
+  local target_env=()
+  [ -n "${FM_SUPERVISOR_TARGET:-}" ] && target_env=("FM_SUPERVISOR_TARGET=$FM_SUPERVISOR_TARGET")
   set +e
   RUN_OUT=$(env -u FM_SUPERVISOR_TARGET -u FM_SUPERVISOR_BACKEND \
     FM_HOME="$home" \
@@ -74,6 +78,7 @@ run_reset() {  # <home> <argv...>
     FM_HELM_RESET_SLEEP="$FM_HELM_RESET_SLEEP" FM_HELM_RESET_SETTLE="$FM_HELM_RESET_SETTLE" \
     FM_HELM_RESET_RESTART_WAIT="$FM_HELM_RESET_RESTART_WAIT" FM_HELM_RESET_POLL="$FM_HELM_RESET_POLL" \
     FM_BACKEND_HERDR_SUBMIT_MIN_SLEEP=0 \
+    ${target_env[@]+"${target_env[@]}"} \
     PATH="$TMP_ROOT/fakebin:$PATH" \
     "$SCRIPT" "$@" 2>&1)
   RUN_RC=$?
@@ -116,8 +121,15 @@ case "$sub $sub2" in
     printf '{"id":"c","error":{"code":"pane_not_found","message":"no such pane"}}\n' >&2
     exit 1 ;;
   "agent get")
+    # Scene knobs: no-agent-session models herdr reporting no registered
+    # session value at all; no-session-flip models /new landing without the
+    # registered value changing.
+    if [ -e "$DIR/no-agent-session" ]; then
+      printf '{"id":"c","result":{"agent":{"agent":"pi","agent_status":"idle","pane_id":"%s"},"type":"agent_info"}}\n' "$PANE"
+      exit 0
+    fi
     session="$DIR/session-a.jsonl"
-    [ -e "$DIR/new-sent" ] && session="$DIR/session-b.jsonl"
+    [ -e "$DIR/new-sent" ] && [ ! -e "$DIR/no-session-flip" ] && session="$DIR/session-b.jsonl"
     printf '{"id":"c","result":{"agent":{"agent":"pi","agent_status":"idle","pane_id":"%s","agent_session":{"kind":"path","source":"herdr:pi","value":"%s"}},"type":"agent_info"}}\n' "$PANE" "$session"
     exit 0 ;;
   "pane process-info")
@@ -425,7 +437,10 @@ test_discovery_refusals() {
 test_discovery_explicit_override() {
   local home
   home=$(make_scene disc-override)
-  # The override names the pane directly and skips the environ read entirely.
+  # The override names the pane directly and skips the environ read entirely,
+  # so the environ must not be able to rescue a dropped override: it holds no
+  # HERDR_PANE_ID, and the environ path would refuse pane-discovery.
+  printf 'HOME=%s\0' "$home" > "$TMP_ROOT/proc/$LOCKPID/environ"
   FM_SUPERVISOR_TARGET="default:$FAKE_PANE" run_scene "$home"
   expect_code 0 "$RUN_RC" "explicit target override runs (dry-run default)"
   assert_grep "target: default:$FAKE_PANE" "$home/state/.helm-reset.last" "run record names the overridden target"
@@ -524,6 +539,45 @@ test_fresh_prompt_stall_refuses() {
   pass "a stalled restart refuses without sending the continuation prompt"
 }
 
+test_fresh_wait_requires_session_change_when_known() {
+  local home dir
+  home=$(make_scene fresh-static-session)
+  dir="$FAKE_DIR_BASE/fresh-static-session"
+  write_config "$home" 'enabled=true' 'dry-run=false'
+  # After /new the composer reads empty forever, but herdr keeps reporting the
+  # SAME session value: with a known pre-/new value, empty polls alone must
+  # never prove a fresh session - the wait times out and refuses before the
+  # continuation prompt.
+  touch "$dir/no-session-flip"
+  run_scene "$home"
+  expect_code 3 "$RUN_RC" "unchanged session value refuses despite empty polls"
+  assert_grep "gate: fresh-prompt" "$home/state/.helm-reset.refusal" "refusal names the fresh-prompt gate"
+  assert_contains "$RUN_OUT" "continuation prompt was NOT sent" "refusal says the prompt was not sent"
+  assert_equals "/new" "$(cat "$dir/last-typed")" "only /new was typed"
+  assert_absent "$home/state/.helm-reset.last" "an unproven fresh session records no completion"
+  pass "fresh wait: empty polls never replace a known session value changing"
+}
+
+test_fresh_wait_fallback_without_session_value() {
+  local home dir log typed_prompt prompt_line
+  home=$(make_scene fresh-no-session-value)
+  dir="$FAKE_DIR_BASE/fresh-no-session-value"
+  write_config "$home" 'enabled=true' 'dry-run=false'
+  # herdr never reports a session value to compare, so two consecutive empty
+  # composer polls are the proof; the reset completes.
+  touch "$dir/no-agent-session"
+  run_scene "$home"
+  expect_code 0 "$RUN_RC" "no-session-value fallback completes the reset"
+  assert_grep "mode: reset" "$home/state/.helm-reset.last" "run record says reset"
+  assert_contains "$RUN_OUT" "continuation prompt was submitted" "stdout reports the reset"
+  log="$dir/log"
+  typed_prompt='Read the stowed handoff file if present (and the session-start digest) and continue working.'
+  prompt_line=$(grep -n "$typed_prompt" "$log" | head -1 | cut -d: -f1)
+  [ -n "$prompt_line" ] || fail "the continuation prompt send-text is missing from the log"
+  assert_absent "$home/state/.helm-reset.refusal" "the fallback reset writes no refusal"
+  pass "fresh wait: two empty polls prove the fresh session when no session value exists"
+}
+
 # --- CLI surface -------------------------------------------------------------
 
 test_print_unit_and_help() {
@@ -580,6 +634,8 @@ test_composer_guard_refuses
 test_real_reset_sends_new_then_prompt
 test_new_submit_unconfirmed_refuses
 test_fresh_prompt_stall_refuses
+test_fresh_wait_requires_session_change_when_known
+test_fresh_wait_fallback_without_session_value
 test_print_unit_and_help
 
 echo "all fm-helm-reset tests passed"

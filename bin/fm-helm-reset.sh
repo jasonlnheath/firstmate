@@ -434,7 +434,7 @@ helm_reset_wait_fresh() {  # <target> <session-before-new>
       stable=0
     fi
     if { [ -n "$before" ] && [ -n "$session" ] && [ "$session" != "$before" ]; } \
-       || [ "$stable" -ge 2 ]; then
+       || { [ -z "$before" ] && [ "$stable" -ge 2 ]; }; then
       [ "$verdict" = empty ] && return 0
     fi
     [ "$(date +%s)" -lt "$deadline" ] ||
@@ -521,6 +521,10 @@ ExecStart=$exec_start
 # Uncomment and adjust when the firstmate home is not the checkout the script
 # lives in:
 #Environment=FM_HOME=%h/path/to/firstmate
+# Uncomment and adjust when herdr is not on the user manager's PATH (for
+# example it lives in %h/.local/bin): every herdr call must find the binary
+# or the run refuses:
+#Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 EOF
       ;;
     timer)
