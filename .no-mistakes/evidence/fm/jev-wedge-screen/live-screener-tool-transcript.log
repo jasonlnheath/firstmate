@@ -1,0 +1,26 @@
+== live drive 1: real bin/fm-jev-screen.sh, NO key anywhere (isolated FM_HOME, curl canary first on PATH)
+exit=0  stdout=[]  stderr=[screen: off (TYPESAFE_API_KEY absent)]
+curl canary invocations: 0  (zero-call contract)
+
+== live drive 2: key read from $FM_HOME/.env -> armed; request wire record (recording curl stub at the socket boundary only)
+exit=0
+stdout:
+screen:
+  status: clear
+  choice: actively-working
+  confidence: 0.92
+  latency_ms: 3
+  tokens: 340/28
+wire record:
+POST-URL: https://api.typesafe.ai/v1/systemone
+fd3-header: Authorization: Bearer env-file-key-456
+POST-URL: https://api.typesafe.ai/v1/systemone
+fd3-header: Authorization: Bearer env-file-key-456
+key-leak check across full wire log (expect the single fd3-header hit only): 2 occurrence(s)
+
+== live drive 3: real curl binary, armed key, network forced dead (https_proxy -> refused port) -> fail-soft
+exit=0
+stdout:
+screen:
+  status: error
+  reason: http 000 after 5 ms

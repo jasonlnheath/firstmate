@@ -1,0 +1,18 @@
+== live watcher drive A: real fm-watch.sh subprocess, consult wired to the REAL bin/fm-jev-screen.sh (logging shim, no other fake in between), key absent
+LIVE-PASS off: real screener inside the real watcher -> off verdict, one consult, today's escalation, no marker, silent triage
+
+== live watcher drive B: same, but the shim arms a key and forces the REAL curl to fail (dead proxy) -> screener 'status: error' inside the watcher
+LIVE-PASS error: real screener + real curl failing inside the real watcher -> error verdict, today's escalation, diagnostic triage line
+
+== live watcher drive C: real screener with a real request (wire canary at the socket) wired into the real watcher
+-- drive output:
+LIVE-PASS defer: real screener clear verdict deferred one window (one real POST), the second window escalated byte-identically (second real POST)
+-- reviewer detail (preserved from the live case):
+watcher -> real screener argv, both windows:
+  consult argv: --idle-secs 501 --window test:fm-live-defer /tmp/tmp.K3cIC82cav
+  consult argv: --idle-secs 501 --window test:fm-live-defer /tmp/tmp.2fqxA63LER
+triage log (both windows):
+  [2026-09-23T15:09:48-0400] absorbed non-terminal stale (Jev pre-screen: actively-working at confidence 0.92, idle 501s): test:fm-live-defer
+  [2026-09-23T15:09:50-0400] jev pre-screen defer bound reached, escalating unchanged (actively-working at confidence 0.92, idle 501s): test:fm-live-defer
+wake output, window 2 (today's byte-identical reason):
+  stale: test:fm-live-defer (idle 501s, possible wedge, escalation 1)
