@@ -48,19 +48,21 @@ FM_CURSOR_PROBE_TIMEOUT=${FM_CURSOR_PROBE_TIMEOUT:-10}
 # resolved. Symlink resolution is what makes the structural signal work, since
 # both installed names are symlinks into Cursor's versioned install tree.
 fm_cursor_canonical_path() {  # <path>
-  local path=$1 dir base
+  local path=$1 dir base _fm_path_dir
   [ -n "$path" ] || return 1
-  dir=$(CDPATH='' cd -- "$(dirname -- "$path")" 2>/dev/null && pwd -P) || { printf '%s\n' "$path"; return 0; }
+  _fm_path_dir=$(dirname -- "$path")
+  dir=$(CDPATH='' cd -- "$_fm_path_dir" 2>/dev/null && pwd -P) || { printf '%s\n' "$path"; return 0; }
   base=$(basename -- "$path")
   # Follow the symlink chain by hand: readlink -f is GNU-only and realpath is
   # not guaranteed on macOS, and this needs no new dependency.
-  local hops=0 target
+  local hops=0 target _fm_target_dir
   while [ -L "$dir/$base" ] && [ "$hops" -lt 16 ]; do
     target=$(readlink -- "$dir/$base") || break
+    _fm_target_dir=$(dirname -- "$target")
     case "$target" in
-      /*) dir=$(CDPATH='' cd -- "$(dirname -- "$target")" 2>/dev/null && pwd -P) || break
+      /*) dir=$(CDPATH='' cd -- "$_fm_target_dir" 2>/dev/null && pwd -P) || break
           base=$(basename -- "$target") ;;
-      *)  dir=$(CDPATH='' cd -- "$dir/$(dirname -- "$target")" 2>/dev/null && pwd -P) || break
+      *)  dir=$(CDPATH='' cd -- "$dir/$_fm_target_dir" 2>/dev/null && pwd -P) || break
           base=$(basename -- "$target") ;;
     esac
     hops=$((hops + 1))
