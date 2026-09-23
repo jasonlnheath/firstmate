@@ -2899,7 +2899,8 @@ EOF
         wake "heartbeat"
       fi
       touch "$STATE/.last-heartbeat"
-      echo $(( $(cat "$STATE/.heartbeat-streak" 2>/dev/null || echo 0) + 1 )) > "$STATE/.heartbeat-streak"
+      _streak=$(cat "$STATE/.heartbeat-streak" 2>/dev/null || echo 0)
+      echo $(( _streak + 1 )) > "$STATE/.heartbeat-streak"
       triage_log "absorbed heartbeat (no captain-relevant change)"
     fi
   fi

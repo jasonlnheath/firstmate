@@ -87,9 +87,12 @@ triage_log() {
 
 # Exit after reporting one actionable wake. Tests override this callback.
 wake() {
-  local output_status=0
+  local output_status=0 _streak
   case "$1" in
-    heartbeat*) echo $(( $(cat "$STATE/.heartbeat-streak" 2>/dev/null || echo 0) + 1 )) > "$STATE/.heartbeat-streak" ;;
+    heartbeat*)
+      _streak=$(cat "$STATE/.heartbeat-streak" 2>/dev/null || echo 0)
+      echo $(( _streak + 1 )) > "$STATE/.heartbeat-streak"
+      ;;
     *) echo 0 > "$STATE/.heartbeat-streak" ;;
   esac
   trap '' HUP INT TERM

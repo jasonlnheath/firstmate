@@ -109,9 +109,10 @@ fm_path_mtime() {
 }
 
 fm_path_age() {
-  local path=$1 m
+  local path=$1 m _now
   m=$(fm_path_mtime "$path") || { echo 999999; return; }
-  echo $(( $(date +%s) - m ))
+  _now=$(date +%s)
+  echo $(( _now - m ))
 }
 
 # fm_poll_derived_grace [poll-seconds]
