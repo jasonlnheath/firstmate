@@ -49,7 +49,8 @@
 #   fmx_meta_link_clear <meta> - remove the X-request link entirely
 # Callers must have FM_HOME set before calling fmx_load_config.
 
-_FM_X_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_fm_xlib_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_X_LIB_DIR=$(cd "$_fm_xlib_dir" && pwd)
 if ! command -v fm_backlog_atomic_transition >/dev/null 2>&1; then
   # shellcheck source=bin/fm-tasks-axi-lib.sh
   . "$_FM_X_LIB_DIR/fm-tasks-axi-lib.sh"
@@ -431,7 +432,10 @@ fmx_context_registry_prune() {
   local state=$1 dir now max_age file recorded_at age dir_device
   dir="$state/x-context"
   dir_device=$(fmx_private_artifact_dir_device "$dir" 2>/dev/null) || return 0
-  now=${FMX_NOW_OVERRIDE:-$(date +%s)}
+  now=${FMX_NOW_OVERRIDE:-}
+  if [ -z "$now" ]; then
+    now=$(date +%s)
+  fi
   case "$now" in
     ''|*[!0-9]*) return 0 ;;
   esac
@@ -494,7 +498,10 @@ fmx_context_registry_set() {
     return 1
   fi
   fmx_context_registry_prune "$state"
-  now=${FMX_NOW_OVERRIDE:-$(date +%s)}
+  now=${FMX_NOW_OVERRIDE:-}
+  if [ -z "$now" ]; then
+    now=$(date +%s)
+  fi
   case "$now" in
     ''|*[!0-9]*) return 1 ;;
   esac
@@ -524,7 +531,10 @@ fmx_offer_registry_claim() {
     ''|.*|*[!A-Za-z0-9._-]*) return 2 ;;
   esac
   fmx_context_registry_prune "$state"
-  now=${FMX_NOW_OVERRIDE:-$(date +%s)}
+  now=${FMX_NOW_OVERRIDE:-}
+  if [ -z "$now" ]; then
+    now=$(date +%s)
+  fi
   case "$now" in
     ''|*[!0-9]*) return 2 ;;
   esac

@@ -80,8 +80,18 @@
 set -u
 export LC_ALL=C
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}}"
+# Flat parse shape (bash 5.3.15-1 parser regression, see the note at the top
+# of bin/fm-watch-arm.sh): no command substitution as a ${...:-...} default.
+_fmw_inact_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fmw_inact_dir" && pwd)
+FM_HOME=${FM_HOME:-}
+if [ -z "$FM_HOME" ]; then
+  if [ -n "${FM_ROOT_OVERRIDE:-}" ]; then
+    FM_HOME=$FM_ROOT_OVERRIDE
+  else
+    FM_HOME=$(cd "$SCRIPT_DIR/.." && pwd)
+  fi
+fi
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 OUTCOME_DIR="$STATE/terminal-outcomes"
 SCAN_MARKER="$STATE/.inactive-outcome-reconcile"
@@ -421,9 +431,12 @@ report_child_ledger_locked() { # <id> <meta>
   elif [ "$?" -eq 2 ]; then
     return 1
   fi
-  note=$(clean_field "$(status_line_note "$last")")
-  mode=$(clean_field "$(meta_field "$meta" mode)")
-  yolo=$(clean_field "$(meta_field "$meta" yolo)")
+  _fm_note_raw=$(status_line_note "$last") || true
+  note=$(clean_field "$_fm_note_raw")
+  _fm_mode_raw=$(meta_field "$meta" mode) || true
+  mode=$(clean_field "$_fm_mode_raw")
+  _fm_yolo_raw=$(meta_field "$meta" yolo) || true
+  yolo=$(clean_field "$_fm_yolo_raw")
   data="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
   line="$state [key=$outcome_key]: child $id $state: $note"
   [ -z "$pr" ] || line="$line pr=$pr"
@@ -506,7 +519,8 @@ reconcile_direct_child_locked() { # <id> <meta> <secondmate-id-or-empty> <timeou
   esac
   pr=$(pr_for_task "$meta")
   incarnation=$(meta_incarnation "$meta")
-  fingerprint=$(sha256_text "$incarnation|$id|$state|$pr|$(clean_field "$last")")
+  _fm_fpr_last=$(clean_field "$last") || true
+  fingerprint=$(sha256_text "$incarnation|$id|$state|$pr|$_fm_fpr_last")
   if [ -n "$self" ]; then
     outcome_key="inactive-outcome-$self-$id-$state"
   else
@@ -562,7 +576,8 @@ scan_pass() { # <cursor> <after|through> <deadline> <secondmate-id-or-empty>
       [ "$(date +%s)" -lt "$deadline" ] || return 3
     fi
     write_scan_marker "$id" || return 1
-    remaining=$((deadline - $(date +%s)))
+    _fm_now=$(date +%s)
+    remaining=$((deadline - _fm_now))
     if [ "$first" -eq 1 ] && [ "$remaining" -lt 1 ]; then
       remaining=1
     fi
@@ -597,7 +612,8 @@ scan() {
       "inactive terminal outcomes remain unreconciled: invalid .fm-secondmate-home marker" || true
     return 0
   fi
-  deadline=$(( $(date +%s) + FM_INACTIVE_RECONCILE_BUDGET_SECS ))
+  _fm_now=$(date +%s)
+  deadline=$(( _fm_now + FM_INACTIVE_RECONCILE_BUDGET_SECS ))
   SCAN_FIRST_VISIT_PENDING=1
   scan_pass "$cursor" after "$deadline" "$self" || rc=$?
   if [ "$rc" -eq 0 ] && [ -n "$cursor" ]; then

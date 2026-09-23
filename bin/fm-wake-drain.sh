@@ -12,7 +12,10 @@
 # presentation-path locks (default 10); queue mutation locks remain blocking.
 set -u
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Flat parse shape (bash 5.3.15-1 parser regression, see the note at the top
+# of bin/fm-watch-arm.sh): no nested "$( )" inside a string assignment.
+_fmw_drain_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fmw_drain_dir" && pwd)
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-classify-lib.sh
@@ -704,7 +707,9 @@ if [ -n "$ACK_THROUGH" ]; then
       exit 1
     }
   fi
-  ACK_REMOVED=$(( $(awk 'END { print NR }' "$FM_WAKE_QUEUE") - $(awk 'END { print NR }' "$DRAIN_TMP") ))
+  _ack_queue_rows=$(awk 'END { print NR }' "$FM_WAKE_QUEUE")
+  _ack_drain_rows=$(awk 'END { print NR }' "$DRAIN_TMP")
+  ACK_REMOVED=$(( _ack_queue_rows - _ack_drain_rows ))
   if [ ! -s "$DRAIN_TMP" ]; then
     fm_recovery_marker_ack "$RECOVERY_MARKER" "$ACK_GENERATION"
     RECOVERY_ACK_STATUS=$?

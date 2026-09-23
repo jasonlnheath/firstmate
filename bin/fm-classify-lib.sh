@@ -44,7 +44,8 @@
 # Directory of this library, used to locate the sibling fm-crew-state.sh reader.
 # Resolved at source time from BASH_SOURCE so it works whether sourced by a
 # bin/ script (which sets its own SCRIPT_DIR) or directly by a test.
-_FM_CLASSIFY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _FM_CLASSIFY_LIB_DIR="."
+_fm_classify_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_CLASSIFY_LIB_DIR=$(cd "$_fm_classify_dir" && pwd 2>/dev/null) || _FM_CLASSIFY_LIB_DIR="."
 
 # The crew current-state reader used for the "provably working" decision.
 # Overridable so tests can stub the run-step/pane verdict without a real worktree
@@ -1717,7 +1718,13 @@ status_open_activities() {  # <status-file-or-dash>
 # task id from a recorded window target, falling back to the tmux-shaped
 # "<session>:fm-<id>" form when no metadata state is available.
 window_to_task() {
-  local w=$1 state=${2:-${STATE:-${FM_STATE_OVERRIDE:-}}} meta mw mt t
+  local w=$1 state=${2:-} meta mw mt t
+  if [ -z "$state" ]; then
+    state=${STATE:-}
+  fi
+  if [ -z "$state" ]; then
+    state=${FM_STATE_OVERRIDE:-}
+  fi
   if [ -n "$state" ]; then
     for meta in "$state"/*.meta; do
       [ -e "$meta" ] || continue
@@ -1866,10 +1873,12 @@ status_span_first_actionable_record() {  # <status-file> <start-offset> [record-
               || { failed=1; break; }
             while IFS= read -r _line || [ -n "$_line" ]; do prefix_lines=$((prefix_lines + 1)); done < "$prefix_file"
           fi
-          origins=$(_fm_status_open_decision_origins "$full_file" "$(_fm_status_kind "$f")") || { failed=1; break; }
+          _orig_kind=$(_fm_status_kind "$f") || true
+          origins=$(_fm_status_open_decision_origins "$full_file" "$_orig_kind") || { failed=1; break; }
           folded=1
         fi
-        live_line=$(while IFS=$(printf '\t') read -r _key _line; do
+        _orig_tab=$(printf '\t')
+        live_line=$(while IFS=$_orig_tab read -r _key _line; do
           [ "$_key" = "$key" ] && { printf '%s' "$_line"; break; }
         done <<EOF
 $origins
@@ -2102,7 +2111,8 @@ signal_crew_provably_working() {  # <file> ...
 # "non-terminal"; the always-on watcher then applies crew_is_provably_working,
 # while the away-mode daemon applies its persistence recheck.
 stale_is_terminal() {  # <window> <state>
-  local win=$1 state=$2 last
-  last=$(last_status_line "$state/$(window_to_task "$win" "$state").status")
+  local win=$1 state=$2 last _win_task
+  _win_task=$(window_to_task "$win" "$state") || true
+  last=$(last_status_line "$state/$_win_task.status")
   [ -n "$last" ] && status_is_captain_relevant "$last"
 }
