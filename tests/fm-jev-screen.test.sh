@@ -252,7 +252,7 @@ write_question() {
 
 # ---- tests -------------------------------------------------------------------
 
-echo "1..12"
+echo "1..15"
 
 # 1. No key → no call, exit 0, "screen: off" on stderr.
 {
@@ -374,7 +374,52 @@ echo "1..12"
   run _exit _out _err "/nonexistent/question.txt"
   expect_code 2 "$_exit" "missing-file exit"
   assert_contains "$_out" "" "missing-file stdout empty" || true
-  assert_contains "$_err" "question file not readable" "missing-file stderr"
+  assert_contains "$_err" "input file not readable" "missing-file stderr"
+}
+
+# 13. The request body carries the question file's text as the screen input,
+# so the model classifies the actual pane tail and not an empty prompt.
+{
+  reset_log
+  reset_response
+  printf '● Bash(npm test)\n  ⎿ 34 tests passing\n' > "$QUESTION"
+  run _exit _out _err "$QUESTION"
+  expect_code 0 "$_exit" "payload exit"
+  jq -e --rawfile q "$QUESTION" '.state.screen.input == $q' "$LOG/body" >/dev/null \
+    || fail "request body did not carry the question file text as screen.input"
+  pass "request carries the question file text as screen.input"
+}
+
+# 14. The request pins the C1 typed question and the five-option vocabulary,
+# so the wedge screen and its confidence stay comparable across callers.
+{
+  reset_log
+  reset_response
+  write_question "streaming build output"
+  run _exit _out _err "$QUESTION"
+  expect_code 0 "$_exit" "instructions exit"
+  jq -e '
+    (.questions.screen.type == "choice") and
+    (.questions.screen.instructions | test("terminal pane tail")) and
+    (.questions.screen.instructions | test("screen.input")) and
+    (["actively-working", "waiting-at-prompt", "awaiting-user-input", "stalled", "uncertain"]
+      - (.questions.screen.criteria | keys)) == []
+  ' "$LOG/body" >/dev/null \
+    || fail "request did not pin the C1 question and option criteria"
+  pass "request pins the C1 question and the five-option criteria"
+}
+
+# 15. Optional --idle-secs and --window context reaches the state block, per
+# the C1 input contract (harness/window identity, idle seconds, tail text).
+{
+  reset_log
+  reset_response
+  write_question "spinner mid-turn"
+  run _exit _out _err --idle-secs 240 --window "test:fm-quiet" "$QUESTION"
+  expect_code 0 "$_exit" "context exit"
+  jq -e '.state.screen.idle_secs == "240" and .state.screen.window == "test:fm-quiet"' "$LOG/body" >/dev/null \
+    || fail "request did not carry the idle/window context"
+  pass "optional idle and window context reach the request state"
 }
 
 echo "All tests complete."

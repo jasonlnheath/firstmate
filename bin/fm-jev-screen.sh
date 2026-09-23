@@ -2,12 +2,14 @@
 # fm-jev-screen.sh - typed Jev screen: one POST to /v1/systemone, validated TOON output.
 #
 # Usage:
-#   fm-jev-screen.sh <question-file>
+#   fm-jev-screen.sh [--idle-secs <n>] [--window <s>] <input-file>
 #
-# A question file is a single plain-text line containing the Choice prompt
-# (the "what does this X show?" sentence).  The tool wraps it into the
-# standard Jev systemone request shape, sends it, validates the response,
-# and prints a `screen:` TOON block on stdout.
+# The input file holds the text to classify - for the wedge pre-screen, the
+# worker's terminal pane tail (last ~40 lines, plain text).  The tool wraps it
+# into the standard Jev systemone request shape as `state.screen.input`, pins
+# the C1 typed question and its five-option vocabulary in the question's
+# criteria, sends the request, validates the response, and prints a `screen:`
+# TOON block on stdout.
 #
 # Opt-in gate: TYPESAFE_API_KEY non-empty in the process environment, or
 #   a TYPESAFE_API_KEY= line in $FM_HOME/.env read via fmx_env_get.
@@ -26,8 +28,8 @@
 #   clear → the choice is the screen verdict; confidence is advisory.
 #   error → API, network, response, or validation failure; exit 0.
 #   Every outcome exits 0 so the caller never blocks on this tool.
-#   Exit 2 only for a usage or configuration error (unreadable question
-#   file, missing jq, missing curl).
+#   Exit 2 only for a usage or configuration error (unreadable input
+#   file, malformed --idle-secs, missing jq, missing curl).
 #
 # Environment:
 #   TYPESAFE_API_KEY is the only screen-specific environment setting.
@@ -55,17 +57,20 @@ TS_TIMEOUT=5
 
 die() { printf 'error: %s\n' "$1" >&2; exit 2; }
 
-QUESTION_FILE=''
+QUESTION_FILE='' JEVI_IDLE='' JEVI_WINDOW=''
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
       awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next}{exit}' "$0"
       exit 0
       ;;
+    --idle-secs) [ $# -ge 2 ] || die "--idle-secs needs a value"; JEVI_IDLE=$2; shift 2 ;;
+    --window) [ $# -ge 2 ] || die "--window needs a value"; JEVI_WINDOW=$2; shift 2 ;;
     -*) die "unknown flag $1" ;;
-    *) [ -z "$QUESTION_FILE" ] || die "one question file only"; QUESTION_FILE=$1; shift ;;
+    *) [ -z "$QUESTION_FILE" ] || die "one input file only"; QUESTION_FILE=$1; shift ;;
   esac
 done
+case "$JEVI_IDLE" in ''|*[!0-9]*) [ -z "$JEVI_IDLE" ] || die "--idle-secs must be a whole number of seconds" ;; esac
 
 # ---- opt-in gate ---------------------------------------------------------------
 if [ -z "$TYPESAFE_API_KEY_PRIVATE" ]; then
@@ -77,10 +82,9 @@ if [ -z "$TYPESAFE_API_KEY_PRIVATE" ]; then
 fi
 
 # ---- inputs --------------------------------------------------------------------
-[ -n "$QUESTION_FILE" ] || die "question file required (see --help)"
-[ -r "$QUESTION_FILE" ] || die "question file not readable: $QUESTION_FILE"
-QUESTION=$(cat "$QUESTION_FILE")
-[ -n "$QUESTION" ] || die "question file is empty: $QUESTION_FILE"
+[ -n "$QUESTION_FILE" ] || die "input file required (see --help)"
+[ -r "$QUESTION_FILE" ] || die "input file not readable: $QUESTION_FILE"
+[ -n "$QUESTION_FILE" ] || die "input file is empty: $QUESTION_FILE"
 
 command -v jq >/dev/null 2>&1 || die "jq required"
 command -v curl >/dev/null 2>&1 || die "curl required"
@@ -89,14 +93,13 @@ RESP_FILE=$(mktemp) || die "mktemp failed"
 trap 'rm -f "$RESP_FILE"' EXIT
 
 # ---- build and send the request ------------------------------------------------
-REQUEST=$(jq -n --arg question "$QUESTION" --arg model "$TS_MODEL" '{
+REQUEST=$(jq -n --rawfile input "$QUESTION_FILE" --arg idle "$JEVI_IDLE" --arg window "$JEVI_WINDOW" --arg model "$TS_MODEL" '{
   model: $model,
-  state: {},
+  state: {screen: {input: $input, idle_secs: $idle, window: $window}},
   questions: {
     screen: {
       type: "choice",
-      instructions: "Choose the ONE option that best describes the input.\n" +
-        "Options: actively-working, waiting-at-prompt, awaiting-user-input, stalled, uncertain.",
+      instructions: "What does this worker'"'"'s terminal pane tail (last ~40 lines, plain text) show? Choose the ONE option that best describes `screen.input`; `state.screen.idle_secs` and `state.screen.window` give the idle age and window identity when known.",
       criteria: {
         "actively-working": "streaming output, spinner, tool/step banner in flight",
         "waiting-at-prompt": "idle prompt or finished turn",
