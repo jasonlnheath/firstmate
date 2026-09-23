@@ -71,8 +71,13 @@
 # the model.
 set -u
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+_fm_autoarm_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fm_autoarm_dir" && pwd)
+if [ -n "${FM_ROOT_OVERRIDE:-}" ]; then
+  FM_ROOT=$FM_ROOT_OVERRIDE
+else
+  FM_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+fi
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
@@ -101,7 +106,10 @@ esac
 # FM_POLL seconds between touches (docs/turnend-guard.md "Guard grace and the
 # poll cadence"). fm_poll_derived_grace (bin/fm-wake-lib.sh) is the single
 # owner of that max(300, poll+60) derivation.
-GRACE=${FM_GUARD_GRACE:-$(fm_poll_derived_grace)}
+GRACE=${FM_GUARD_GRACE:-}
+if [ -z "$GRACE" ]; then
+  GRACE=$(fm_poll_derived_grace)
+fi
 
 # Consume the Stop payload once. The decisions below are state-based; the
 # payload is read so a slow writer can never wedge on a full pipe, and its host
