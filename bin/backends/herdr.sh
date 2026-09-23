@@ -3430,10 +3430,10 @@ fm_backend_herdr_agent_status_raw() {  # <session> <pane_id>
 # cannot report a shell-only pane as working. Only the busy case pays the extra
 # process read; idle and unknown are never trusted as busy by any consumer.
 fm_backend_herdr_busy_state() {  # <target>
-  local verdict
+  local verdict _fm_raw
   fm_backend_herdr_target_ready "$1" || { printf 'unknown'; return 0; }
-  verdict=$(fm_backend_herdr_classify_agent_status \
-    "$(fm_backend_herdr_agent_status_raw "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE")")
+  _fm_raw=$(fm_backend_herdr_agent_status_raw "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE")
+  verdict=$(fm_backend_herdr_classify_agent_status "$_fm_raw")
   if [ "$verdict" = busy ] \
     && [ "$(fm_backend_herdr_pane_process_state "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE")" = shell ]; then
     verdict=unknown
