@@ -4,9 +4,8 @@
 # Drives the public argv and environment interface with a fake curl on PATH
 # that records argv, the request body it read from stdin, and the header it
 # read from file descriptor 3, and answers with a canned Jev systemone
-# response.  A fake quota-axi serves the selected schema-5 fixture. No case
-# touches the network, and the absent-key case proves the tool makes no call
-# at all.
+# response. No case touches the network, and the absent-key case proves the
+# tool makes no call at all.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -16,14 +15,10 @@ TOOL="$ROOT/bin/fm-jev-screen.sh"
 TMP_ROOT=$(fm_test_tmproot fm-jev-screen)
 HOME_DIR="$TMP_ROOT/home"
 FAKEBIN=$(fm_fakebin "$TMP_ROOT")
-NO_CURL_BIN="$TMP_ROOT/no-curl-bin"
 LOG="$TMP_ROOT/log"
 QUESTION="$TMP_ROOT/question.txt"
 BASE_PATH=$PATH
-mkdir -p "$HOME_DIR/config" "$LOG" "$NO_CURL_BIN"
-for command_name in bash chmod cp dirname jq mktemp rm; do
-  ln -s "$(command -v "$command_name")" "$NO_CURL_BIN/$command_name"
-done
+mkdir -p "$HOME_DIR/config" "$LOG"
 
 # ---- canned responses --------------------------------------------------------
 #
@@ -193,9 +188,6 @@ while [ $# -gt 0 ]; do
 done
 cat > "${FAKE_CURL_LOG:?}/body"
 cat /dev/fd/3 > "${FAKE_CURL_LOG:?}/header" 2>/dev/null || printf 'fd3 unreadable\n' > "${FAKE_CURL_LOG:?}/header"
-if [ "${FAKE_CURL_FAIL:-0}" = 1 ]; then
-  exit 7
-fi
 cp "${FAKE_CURL_RESPONSE:?}" "$out"
 printf '%s' "${FAKE_CURL_HTTP:-200}"
 SH
@@ -377,7 +369,7 @@ echo "1..15"
   reset_log
   run _exit _out _err "/nonexistent/question.txt"
   expect_code 2 "$_exit" "missing-file exit"
-  assert_contains "$_out" "" "missing-file stdout empty" || true
+  [ -z "$_out" ] || fail "missing-file stdout not empty: $_out"
   assert_contains "$_err" "input file not readable" "missing-file stderr"
 }
 

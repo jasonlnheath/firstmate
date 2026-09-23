@@ -84,7 +84,6 @@ fi
 # ---- inputs --------------------------------------------------------------------
 [ -n "$QUESTION_FILE" ] || die "input file required (see --help)"
 [ -r "$QUESTION_FILE" ] || die "input file not readable: $QUESTION_FILE"
-[ -n "$QUESTION_FILE" ] || die "input file is empty: $QUESTION_FILE"
 
 command -v jq >/dev/null 2>&1 || die "jq required"
 command -v curl >/dev/null 2>&1 || die "curl required"

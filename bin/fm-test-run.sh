@@ -161,6 +161,13 @@ RUN_STARTED_MS=$(now_ms)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
+# No behavior test may see the host's ambient opt-in secrets: an inherited
+# TYPESAFE_API_KEY would arm real api.typesafe.ai calls inside otherwise
+# hermetic suites. The typed-client suites (fm-dispatch-resolve,
+# fm-jev-screen) set their own per-invocation key, so nothing legitimate reads
+# the ambient one.
+unset TYPESAFE_API_KEY || true
+
 MODE=
 LIST_ONLY=0
 LIST_SCHEDULED=0

@@ -2715,6 +2715,34 @@ test_wedge_threshold_recheck_names_the_captain_for_a_held_lane() {
   pass "a captain-held lane is rechecked as a hold on the captain, never as an external wait, and never at all while the captain is away"
 }
 
+# Hermeticity pin for the pre-screen consult this suite's threshold rounds now
+# make: the off-stub tests/wake-helpers.sh installs as the default
+# FM_JEV_WEDGE_SCREENER must receive that consult, so a threshold round never
+# spawns the real bin/fm-jev-screen.sh and its api.typesafe.ai POST on a
+# key-bearing host. The stub answers with the screener's no-key contract, so
+# the round must also keep today's byte-identical escalation.
+test_wedge_threshold_round_consults_the_harness_screener_stub() {
+  local dir state fakebin out capture window key consults
+  local working='state: working · source: run-step · ci running'
+  dir=$(wedge_threshold_fixture jev-stub-off 'working: implementing' 0)
+  state="$dir/state"; fakebin="$dir/fakebin"; out="$dir/watch.out"; capture="$dir/pane.txt"
+  window="test:fm-wedge"; key=$(printf '%s' "$window" | tr ':/.' '___')
+  : > "$dir/jev-stub.log"
+  export FM_JEV_SCREENER_LOG="$dir/jev-stub.log"
+  wedge_threshold_round "$state" "$fakebin" "$out" "$capture" "$window" "$working" exit \
+    || fail "a threshold round under the harness off-stub did not escalate unchanged: $(cat "$out")"
+  unset FM_JEV_SCREENER_LOG
+  grep -F "possible wedge, escalation 1" "$out" >/dev/null \
+    || fail "the off-stub round lost today's unchanged wedge wording: $(cat "$out")"
+  consults=$(grep -c '^--idle-secs' "$dir/jev-stub.log")
+  [ "$consults" = 1 ] \
+    || fail "expected the threshold round's one consult on the harness stub, saw $consults: $(cat "$dir/jev-stub.log")"
+  [ ! -e "$state/.writing-deferred-$key" ] \
+    || fail "the off-stub verdict left a deferral marker behind"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the off-stub escalation"
+  pass "a threshold round consults the harness off-stub screener and escalates unchanged"
+}
+
 
 # --- a record whose agent is GONE reports once, instead of alarming forever ---
 # Observed on a live fleet: two finished lanes reached 226 and 203 CONSECUTIVE
@@ -5513,6 +5541,7 @@ test_live_declared_wait_churn_honors_the_resurface_throttle
 test_live_paused_until_controls_recheck_time
 test_wedge_threshold_defers_to_a_declared_wait_under_a_working_verdict
 test_wedge_threshold_recheck_names_the_captain_for_a_held_lane
+test_wedge_threshold_round_consults_the_harness_screener_stub
 test_open_captain_call_bounds_stale_churn
 test_stale_churn_without_a_captain_call_still_alarms
 test_failed_wake_append_does_not_arm_the_captain_hold_throttle

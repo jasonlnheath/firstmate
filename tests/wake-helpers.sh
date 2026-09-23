@@ -42,6 +42,29 @@ REC
 chmod +x "$_fm_wedge_rec_dir/rec"
 export FM_WEDGE_ALARM_EXEC="$_fm_wedge_rec_dir/rec"
 
+# Jev wedge pre-screen off-stub (hermeticity seam, same install-at-source-time
+# shape as the alarm recorder above). The watcher's threshold branch consults
+# bin/fm-jev-screen.sh whenever FM_JEV_WEDGE_SCREENER is unset, and that tool
+# POSTs to api.typesafe.ai on a home holding TYPESAFE_API_KEY in the
+# environment or in the $FM_HOME/.env it falls back to. Sourcing this harness
+# points the consult at an off-stub with the screener's exact no-key contract -
+# "screen: off" on stderr, nothing on stdout, exit 0 - so no watcher suite,
+# present or future, can reach the network by forgetting the override. The stub
+# records each invocation's argv to $FM_JEV_SCREENER_LOG (unset means
+# /dev/null), which a test points at its own file to prove a consult landed on
+# the stub; a suite driving verdict behavior sets FM_JEV_WEDGE_SCREENER per
+# call, which wins over this default.
+_fm_jev_stub_dir=$(fm_test_tmproot fm-jev-off-stub)
+cat > "$_fm_jev_stub_dir/off" <<'STUB'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${FM_JEV_SCREENER_LOG:-/dev/null}"
+echo "screen: off (TYPESAFE_API_KEY absent)" >&2
+exit 0
+STUB
+chmod +x "$_fm_jev_stub_dir/off"
+export FM_JEV_WEDGE_SCREENER="$_fm_jev_stub_dir/off"
+
 # append_wake <state> <kind> <key> <payload>: append a wake record to the durable
 # queue in a subshell scoped to <state>, using the production wake library.
 append_wake() {

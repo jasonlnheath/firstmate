@@ -324,6 +324,10 @@ run_fail_soft_case() {  # <name> <mode> <choice> <conf>
     || fail "the $name escalation was not today's byte-identical wedge reason: $(cat "$out")"
   [ ! -e "$state/.writing-deferred-$key" ] || fail "the $name outcome left a deferral marker behind"
   [ ! -e "$state/.writing-since-$key" ] || fail "the $name outcome left a write chain behind"
+  if [ "$mode" = error ]; then
+    grep -F 'escalating unchanged (http 000 after 5 ms)' "$state/.watch-triage.log" >/dev/null \
+      || fail "the screen-error outcome did not log its reason as the no-verdict diagnostic"
+  fi
 }
 
 test_jev_prescreen_fail_soft_verdicts_escalate_as_today() {
@@ -446,7 +450,37 @@ test_jev_defer_floor_comes_from_config() {
     || { reap "$pid"; fail "the default floor did not defer an exactly-at-floor verdict"; }
   reap "$pid"
   ack_stopped_cycle "$state" || fail "could not acknowledge the intentional watcher stop"
-  pass "the deferral floor comes from config/jev-wedge-floor and compares inclusive, defaulting to 0.8"
+
+  # A malformed value never reaches the comparison: a multi-dot typo and an
+  # out-of-range number both mean the documented 0.8, so an above-default
+  # verdict still defers instead of silently disabling the feature (or, on an
+  # awk that string-compares, deferring everything).
+  dir=$(make_jev_case jev-floor-typo "test:fm-jev10" jev10 "quiet under a mistyped floor")
+  state="$dir/state"; key=$(jev_case_key "$dir"); out="$dir/watch.out"
+  printf '0..8\n' > "$dir/config/jev-wedge-floor"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 watch_jev_bg "$dir" "$out"
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "the multi-dot floor typo did not fall back to 0.8 and defer: $(cat "$out")"
+  fi
+  [ "$(cat "$state/.writing-deferred-$key" 2>/dev/null || true)" = 1 ] \
+    || { reap "$pid"; fail "the multi-dot floor typo did not defer at the 0.8 fallback"; }
+  reap "$pid"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional watcher stop"
+
+  dir=$(make_jev_case jev-floor-range "test:fm-jev11" jev11 "quiet under an out-of-range floor")
+  state="$dir/state"; key=$(jev_case_key "$dir"); out="$dir/watch.out"
+  printf '5\n' > "$dir/config/jev-wedge-floor"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 watch_jev_bg "$dir" "$out"
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "the out-of-range floor did not fall back to 0.8 and defer: $(cat "$out")"
+  fi
+  [ "$(cat "$state/.writing-deferred-$key" 2>/dev/null || true)" = 1 ] \
+    || { reap "$pid"; fail "the out-of-range floor did not defer at the 0.8 fallback"; }
+  reap "$pid"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional watcher stop"
+  pass "the deferral floor comes from config/jev-wedge-floor and compares inclusive, defaulting to 0.8 on an absent or malformed file"
 }
 
 # The busy-over-age path reaches the same consult: a busy pane with no completed

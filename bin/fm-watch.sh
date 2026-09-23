@@ -326,7 +326,17 @@ JEV_WEDGE_SCREENER="${FM_JEV_WEDGE_SCREENER:-$SCRIPT_DIR/fm-jev-screen.sh}"
 JEV_WEDGE_FLOOR=''
 [ -r "$CONFIG/jev-wedge-floor" ] \
   && JEV_WEDGE_FLOOR=$(tr -d '[:space:]' < "$CONFIG/jev-wedge-floor")
-case "$JEV_WEDGE_FLOOR" in ''|*[!0-9.]*) JEV_WEDGE_FLOOR=0.8 ;; esac
+# One well-formed decimal 0-1 or the documented 0.8 default: a multi-dot or
+# out-of-range typo that survived a bare charset check would reach the floor
+# comparison as an implementation-defined awk string and decide deferrals
+# without an error on either pole, so both are rejected before awk sees it.
+case "$JEV_WEDGE_FLOOR" in
+  ''|*[!0-9.]*|*.*.*) JEV_WEDGE_FLOOR=0.8 ;;
+  *)
+    awk "BEGIN { exit !($JEV_WEDGE_FLOOR >= 0 && $JEV_WEDGE_FLOOR <= 1) }" 2>/dev/null \
+      || JEV_WEDGE_FLOOR=0.8
+    ;;
+esac
 
 # afk_present: 0 while the away-mode flag exists. When set, the daemon wraps this
 # watcher and owns triage, so the watcher must behave one-shot (enqueue + exit on
@@ -1050,7 +1060,7 @@ wedge_defer_wait() {  # <window> <task> <since-file> <triage-label> <idle-age> <
 # one diagnostic that distinguishes a key-absent home (silent, by design) from a
 # real screen error is a single triage-log line, never a wake.
 wedge_jev_screen() {  # <window> <tail40> <idle-age>
-  local win=$1 tail40=$2 age=$3 qf ef out choice conf detail
+  local win=$1 tail40=$2 age=$3 qf ef out='' choice conf detail
   [ -n "$tail40" ] || return 0
   [ -x "$JEV_WEDGE_SCREENER" ] || return 0
   qf=$(mktemp 2>/dev/null) || return 0
@@ -1064,6 +1074,7 @@ wedge_jev_screen() {  # <window> <tail40> <idle-age>
     printf '%s\t%s' "$choice" "$conf"
   else
     detail=$(head -n 1 "$ef" 2>/dev/null || true)
+    [ -n "$detail" ] || detail=$(printf '%s' "$out" | sed -n 's/^  reason: //p')
     case "$detail" in
       'screen: off'*) ;;
       '') ;;
