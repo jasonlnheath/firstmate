@@ -26,7 +26,8 @@
 # Sourced by bin/fm-pr-merge.sh, bin/fm-watch.sh, and tests. No side effects on
 # source beyond its sourced libraries.
 
-_FM_MERGE_OUTCOME_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_fm_mergeoutcome_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_MERGE_OUTCOME_LIB_DIR=$(cd "$_fm_mergeoutcome_dir" && pwd)
 # shellcheck source=bin/fm-pr-lib.sh
 . "$_FM_MERGE_OUTCOME_LIB_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-parent-channel-lib.sh

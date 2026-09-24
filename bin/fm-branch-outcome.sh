@@ -91,7 +91,10 @@
 #     call site).
 set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Flat parse shape (bash 5.3.15-1 parser regression, see the note at the top
+# of bin/fm-watch-arm.sh): no nested "$( )" inside a string assignment.
+_fmw_bo_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fmw_bo_dir" && pwd)
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-classify-lib.sh
@@ -628,7 +631,8 @@ case "$CMD" in
         printf 'BRANCH OUTCOMES (handled by the supervision branch, not yet seen by this session):\n'
         printf '%s\n' "$VISIBLE"
       fi
-      LAST=$(record_seq "$(printf '%s\n' "$REPLAYABLE" | tail -n 1)")
+      _replay_last=$(printf '%s\n' "$REPLAYABLE" | tail -n 1) || true
+      LAST=$(record_seq "$_replay_last")
       if [ -n "$LAST" ] && ! advance_cursor "$LAST"; then
         fm_lock_release "$LOCK"
         exit 1

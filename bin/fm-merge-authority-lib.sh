@@ -30,7 +30,8 @@
 # Sourced by those scripts and by tests. No side effects on source beyond its
 # sourced libraries.
 
-_FM_MERGE_AUTHORITY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_fm_mergeauth_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_MERGE_AUTHORITY_LIB_DIR=$(cd "$_fm_mergeauth_dir" && pwd)
 # shellcheck source=bin/fm-pr-lib.sh
 . "$_FM_MERGE_AUTHORITY_LIB_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-afk-contract.sh

@@ -107,7 +107,8 @@
 # sourcing fm-backend.sh (which sources this file); this exists only so this
 # file's own unit tests, which source it directly, resolve sanely. Mirrors
 # bin/backends/zellij.sh's identical fallback.
-FM_BACKEND_CMUX_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+_fm_cmux_dir=$(dirname "${BASH_SOURCE[0]}")
+FM_BACKEND_CMUX_ROOT=$(cd "$_fm_cmux_dir/../.." && pwd)
 FM_ROOT="${FM_ROOT_OVERRIDE:-${FM_ROOT:-$FM_BACKEND_CMUX_ROOT}}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 
@@ -556,9 +557,10 @@ fm_backend_cmux_composer_caps() {
 # never here. cmux has no identity probe, so the classifier's identity
 # sentinel resolves to unknown.
 fm_backend_cmux_composer_state() {  # <target> [expected-label] -> empty|pending|pending-unproven|unknown
-  local cap verdict
+  local cap verdict _fm_caps
   cap=$(fm_backend_cmux_composer_capture "$1" "${2:-}") || { printf 'unknown'; return 0; }
-  verdict=$(fm_composer_classify_screen "$(fm_backend_cmux_composer_caps)" "$cap")
+  _fm_caps=$(fm_backend_cmux_composer_caps)
+  verdict=$(fm_composer_classify_screen "$_fm_caps" "$cap")
   [ "$verdict" != need-identity ] || verdict=unknown
   printf '%s' "$verdict"
 }

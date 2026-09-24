@@ -6,7 +6,8 @@
 # carrier. Existing callers source this path so they do not need a flag-day
 # migration. No side effects on source. set -u / set -e safe.
 
-_FM_MARKER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_fm_marker_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_MARKER_LIB_DIR=$(cd "$_fm_marker_dir" && pwd)
 # shellcheck source=bin/fm-operational-input.sh
 . "$_FM_MARKER_LIB_DIR/fm-operational-input.sh"
 unset _FM_MARKER_LIB_DIR

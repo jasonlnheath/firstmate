@@ -135,8 +135,12 @@
 # fm_afk_contract_lock_hold, fm_afk_contract_lock_release) without running main.
 set -u
 
-FM_AFK_CONTRACT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$FM_AFK_CONTRACT_DIR/.." && pwd)}"
+_fm_afk_dir=$(dirname "${BASH_SOURCE[0]}")
+FM_AFK_CONTRACT_DIR=$(cd "$_fm_afk_dir" && pwd)
+FM_ROOT=${FM_ROOT_OVERRIDE:-}
+if [ -z "$FM_ROOT" ]; then
+  FM_ROOT=$(cd "$FM_AFK_CONTRACT_DIR/.." && pwd)
+fi
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 FM_AFK_CONTRACT_STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
@@ -414,9 +418,10 @@ fm_afk_contract_render_body() {  # <entered-iso> <entered-epoch>
 }
 
 fm_afk_contract_write_atomic() {  # <path> (content on stdin)
-  local path=$1 pending
+  local path=$1 pending _pending_dir
   mkdir -p "$(dirname "$path")" || return 1
-  pending=$(mktemp "$(dirname "$path")/.afk-contract.pending.XXXXXX") || return 1
+  _pending_dir=$(dirname "$path")
+  pending=$(mktemp "$_pending_dir/.afk-contract.pending.XXXXXX") || return 1
   if ! cat > "$pending"; then
     rm -f "$pending"
     return 1
@@ -861,7 +866,7 @@ fm_afk_contract_archive_target() {  # <record> [superseded-stamp]
 }
 
 fm_afk_contract_cmd_confirm() {
-  local record proposal body confirmed confirmed_epoch archived archived_tmp staged session_entered session_entered_epoch
+  local record proposal body confirmed confirmed_epoch archived archived_tmp staged session_entered session_entered_epoch _staged_dir _arch_dir
   record=$(fm_afk_contract_path)
   proposal=$(fm_afk_contract_proposal_path)
   confirmed=$(fm_afk_contract_now_iso)
@@ -884,7 +889,8 @@ fm_afk_contract_cmd_confirm() {
     session_entered=$(fm_afk_contract_read_field "$record" entered)
     session_entered_epoch=$(fm_afk_contract_read_field "$record" entered_epoch)
   fi
-  staged=$(mktemp "$(dirname "$record")/.afk-contract.confirming.XXXXXX") || return 1
+  _staged_dir=$(dirname "$record")
+  staged=$(mktemp "$_staged_dir/.afk-contract.confirming.XXXXXX") || return 1
   {
     printf '%s\n' "$body" | awk -v entered="$session_entered" -v epoch="$session_entered_epoch" '
       /^entered: / { print "entered: " entered; next }
@@ -900,7 +906,8 @@ fm_afk_contract_cmd_confirm() {
     archived=$(fm_afk_contract_archive_target "$record" "$confirmed_epoch") || { rm -f "$staged"; return 1; }
     # Copy into a temporary name first and rename atomically, so a failed copy
     # never leaves a partial archive at a glob-visible name.
-    archived_tmp=$(mktemp "$(dirname "$archived")/.afk-contract.archiving.XXXXXX") || { rm -f "$staged"; return 1; }
+    _arch_dir=$(dirname "$archived")
+    archived_tmp=$(mktemp "$_arch_dir/.afk-contract.archiving.XXXXXX") || { rm -f "$staged"; return 1; }
     if ! cp -p "$record" "$archived_tmp" || ! mv "$archived_tmp" "$archived"; then
       rm -f "$staged" "$archived_tmp"
       return 1

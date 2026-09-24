@@ -205,8 +205,14 @@
 # the record; bin/fm-inactive-reconcile.sh's diagnostics name a broken binding.
 set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+# Flat parse shape (bash 5.3.15-1 parser regression, see the note at the top
+# of bin/fm-watch-arm.sh): no command substitution as a ${...:-...} default.
+_fmw_hold_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fmw_hold_dir" && pwd)
+FM_ROOT=${FM_ROOT_OVERRIDE:-}
+if [ -z "$FM_ROOT" ]; then
+  FM_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+fi
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
@@ -417,8 +423,9 @@ decode_shown_value() {  # <shown-field>
 
 # Decode show-encoded scalar fields and normalize the empty marker.
 show_field_value() {  # <show-output> <field>
-  local value
-  value=$(decode_shown_value "$(show_field "$1" "$2")")
+  local value _fm_shown
+  _fm_shown=$(show_field "$1" "$2") || true
+  value=$(decode_shown_value "$_fm_shown")
   [ "$value" != '-' ] || value=''
   printf '%s' "$value"
 }
@@ -838,7 +845,10 @@ command_hold() {
       *) fail "--until must be a YYYY-MM-DD date: $until" ;;
     esac
   fi
-  hold_set=${FM_CAPTAIN_HOLD_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+  hold_set=${FM_CAPTAIN_HOLD_NOW:-}
+  if [ -z "$hold_set" ]; then
+    hold_set=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  fi
   case "$hold_set" in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) : ;;
     *) fail "FM_CAPTAIN_HOLD_NOW must be a UTC YYYY-MM-DDTHH:MM:SSZ timestamp" ;;
@@ -900,7 +910,9 @@ command_hold() {
   show=$TASK_SHOW_OUTPUT
   hold_kind=$(show_field_value "$show" hold_kind)
   [ "$hold_kind" = captain ] || fail "task $id did not retain its captain hold"
-  occurrence=$(( $(resolution_record_count "$(show_field "$show" body)") + 1 ))
+  _fm_occ_body=$(show_field "$show" body) || true
+  _fm_occ_count=$(resolution_record_count "$_fm_occ_body")
+  occurrence=$(( _fm_occ_count + 1 ))
   [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
     || fail "task $id lost its hold-set stamp while being held"
   publish_parent_hold "$id" "$occurrence" needs-decision "$reason"
@@ -973,9 +985,10 @@ close_answered() {  # <task-id> <release-0-or-1>
 }
 
 remove_interrupted_answer_stamp() {  # <task-id>
-  local id=$1 show body existing tmp
+  local id=$1 show body existing tmp _fm_body_raw
   task_show_or_fail "$id" "task $id disappeared after closing"
-  body=$(decode_shown_value "$(show_field "$show" body)") \
+  _fm_body_raw=$(show_field "$show" body) || true
+  body=$(decode_shown_value "$_fm_body_raw") \
     || fail "could not decode the closed body for $id"
   existing=$(body_hold_set_timestamp "$body")
   [ -n "$existing" ] || return 0
@@ -1018,7 +1031,8 @@ command_answer() {
   if [ "$release" = 1 ]; then outcome=released; else outcome=answered; fi
   # The occurrence the parent line names: the record about to be written is
   # one past those already in the body, and a retry names the newest one.
-  occurrence=$(( $(resolution_record_count "$body") + 1 ))
+  _fm_occ_count=$(resolution_record_count "$body")
+  occurrence=$(( _fm_occ_count + 1 ))
 
   if [ "$state" = "done" ]; then
     if body_has_resolution_record "$body"; then
@@ -1280,7 +1294,8 @@ command_answers() {
     fi
     keyed_decision_text "$source" "$id" "$answer" "$label" > "$tmp" \
       || fail "cannot stage the captain decision for $id"
-    digest=$(sha256_text "$(cat "$tmp")")
+    _fm_tmp_body=$(cat "$tmp") || true
+    digest=$(sha256_text "$_fm_tmp_body")
     legacy_digest=''
     if [ "$id" != "$key" ]; then
       legacy_key=$key
@@ -1291,7 +1306,8 @@ command_answers() {
       legacy_key=''
     fi
     if [ -n "$legacy_key" ]; then
-      legacy_digest=$(sha256_text "$(legacy_keyed_decision_text "$source" "$legacy_key" "$answer" "$label")")
+      _fm_legacy_text=$(legacy_keyed_decision_text "$source" "$legacy_key" "$answer" "$label") || true
+      legacy_digest=$(sha256_text "$_fm_legacy_text")
     fi
     task_show "$id" || { printf 'skipped: %s (absent)\n' "$id"; skipped=$((skipped + 1)); continue; }
     show=$TASK_SHOW_OUTPUT
@@ -1520,7 +1536,8 @@ reconcile_close() {
   state=$(show_field "$show" state)
   hold_kind=$(show_field_value "$show" hold_kind)
   body=$(show_field "$show" body)
-  occurrence=$(( $(resolution_record_count "$body") + 1 ))
+  _fm_occ_count=$(resolution_record_count "$body")
+  occurrence=$(( _fm_occ_count + 1 ))
   if [ "$state" = "done" ]; then
     # An exact retry finishes an interrupted close and stays idempotent; a
     # different evidence text on an already closed call is refused.
@@ -1589,7 +1606,8 @@ reconcile_note() {
   command_open "$id" \
     || fail "task $id is not an open captain call; a note cannot keep a closed call open"
   task_show_or_fail "$id" "captain-held task $id is absent from this home's configured backlog (data directory $DATA)"
-  body=$(decode_shown_value "$(show_field "$show" body)") \
+  _fm_body_raw=$(show_field "$show" body) || true
+  body=$(decode_shown_value "$_fm_body_raw") \
     || fail "could not decode the existing body for $id"
   note_digest=$(sha256_text "$note")
   marker="Reconcile request: $RECONCILE_REQUESTED | $RECONCILE_SOURCE | note digest: $note_digest"
@@ -1602,7 +1620,10 @@ reconcile_note() {
       return 0
       ;;
   esac
-  stamp=${FM_CAPTAIN_HOLD_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+  stamp=${FM_CAPTAIN_HOLD_NOW:-}
+  if [ -z "$stamp" ]; then
+    stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  fi
   tmp=$(umask 077; mktemp "${TMPDIR:-/tmp}/fm-captain-hold-note.XXXXXX") \
     || fail "cannot stage the reconcile note"
   if ! printf '%s\n\nCaptain hold reconciled: %s\n%s\n%s\n' "$body" "$stamp" "$marker" "$note" > "$tmp"; then
@@ -1837,7 +1858,8 @@ command_diverged() {
         # The title is the only free-text field here, and the report is
         # TAB-separated, so it goes through the same sanitizer every other
         # emitted field uses rather than being trusted to stay one clean line.
-        title=$(sanitize_field "$(show_field_value "$show" title)")
+        _fm_title_shown=$(show_field_value "$show" title) || true
+        title=$(sanitize_field "$_fm_title_shown")
         printf '%s\t%s\t%s\t%s\n' "$id" "$origin" "$key" "$title"
         break
       done <<INNER

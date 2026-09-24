@@ -45,7 +45,7 @@ fm_sup_stat_mtime() {
 # grace-seconds defaults to $FM_GUARD_GRACE, then 300, matching fm-guard.sh.
 # Always returns 0; callers read the vars, or use fm_supervision_unhealthy below.
 fm_supervision_status() {
-  local state=$1 grace=${2:-${FM_GUARD_GRACE:-300}} meta source check id beat m age
+  local state=$1 grace=${2:-${FM_GUARD_GRACE:-300}} meta source check id beat m age _now
   FM_SUP_IN_FLIGHT=0
   FM_SUP_NEEDED=false
   FM_SUP_WATCHER_FRESH=false
@@ -83,7 +83,8 @@ fm_supervision_status() {
   if [ -e "$beat" ]; then
     m=$(fm_sup_stat_mtime "$beat")
     if [ -n "$m" ]; then
-      age=$(( $(date +%s) - m ))
+      _now=$(date +%s)
+      age=$(( _now - m ))
       FM_SUP_BEACON_DESC="${age}s ago"
       [ "$age" -lt "$grace" ] && FM_SUP_WATCHER_FRESH=true
     else

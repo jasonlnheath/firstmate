@@ -56,7 +56,8 @@
 #
 # Sourced by the publishers above and by tests. No side effects on source.
 
-_FM_PARENT_CHANNEL_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_fm_parent_channel_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_PARENT_CHANNEL_LIB_DIR=$(cd "$_fm_parent_channel_dir" && pwd)
 # shellcheck source=bin/fm-secondmate-parent-lib.sh
 . "$_FM_PARENT_CHANNEL_LIB_DIR/fm-secondmate-parent-lib.sh"
 

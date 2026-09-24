@@ -90,8 +90,13 @@
 #      unbounded re-block loop below that override.
 set -u
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+_fm_guard_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fm_guard_dir" && pwd)
+if [ -n "${FM_ROOT_OVERRIDE:-}" ]; then
+  FM_ROOT=$FM_ROOT_OVERRIDE
+else
+  FM_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+fi
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
@@ -217,7 +222,10 @@ fi
 # (poll-cadence-derived, see the comment above) instead of the flat $GRACE
 # every other check on this page uses, so a daemon that is genuinely still
 # cycling - just slower than a fixed 300s window - is not misread as down.
-AFK_GRACE=${FM_GUARD_GRACE:-$(fm_poll_derived_grace)}
+AFK_GRACE=${FM_GUARD_GRACE:-}
+if [ -z "$AFK_GRACE" ]; then
+  AFK_GRACE=$(fm_poll_derived_grace)
+fi
 if [ "$(fm_path_age "$STATE/.last-watcher-beat")" -lt "$AFK_GRACE" ] \
   && fm_afk_daemon_owns_supervision "$STATE"; then
   allow_supervised_stop

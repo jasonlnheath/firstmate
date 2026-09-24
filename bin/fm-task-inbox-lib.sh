@@ -69,7 +69,8 @@
 #   FM_TASK_INBOX_GRACE_SECS   default 90; delivery-attempt grace and spacing
 #   FM_TASK_INBOX_RING_MAX     default 3; delivery attempts before escalation
 
-_FM_TASK_INBOX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_fm_inbox_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_TASK_INBOX_LIB_DIR=$(cd "$_fm_inbox_dir" && pwd)
 # Both dependencies are canonical lint roots in their own right. Keep them as
 # analysis boundaries here so ShellCheck's external-source traversal does not
 # recursively duplicate the full backend graph for every inbox consumer.
@@ -127,14 +128,15 @@ fm_task_inbox_next_seq() {  # <inbox-dir>
 
 fm_task_inbox_lock_acquire() {  # <lock-path>
   local lock=$1 wait=${FM_TASK_INBOX_LOCK_WAIT_SECS:-$FM_TASK_INBOX_LOCK_WAIT_DEFAULT}
-  local deadline probe
+  local deadline probe _now
   case "$wait" in ''|*[!0-9]*) wait=$FM_TASK_INBOX_LOCK_WAIT_DEFAULT ;; esac
   probe=$(mktemp "${lock%/*}/.lock-probe.XXXXXX") || return 1
   rm -f "$probe" || return 1
   if [ ! -e "$lock" ] && [ ! -L "$lock" ]; then
     fm_lock_try_create "$lock" && return 0
   fi
-  deadline=$(( $(date +%s) + wait ))
+  _now=$(date +%s)
+  deadline=$(( _now + wait ))
   while ! fm_lock_try_acquire "$lock"; do
     [ "$(date +%s)" -lt "$deadline" ] || return 1
     sleep 0.1

@@ -35,8 +35,21 @@
 # 1 check-miss, 2 usage, 6 refused (other actor holds or actor mismatch).
 set -eu
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FM_ROOT="${FM_ROOT_OVERRIDE:-${FM_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}}"
+# Flat parse shape (bash 5.3.15-1 parser regression, see the note at the top
+# of bin/fm-watch-arm.sh): no nested "$( )" inside a string assignment.
+_fm_lease_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fm_lease_dir" && pwd)
+# Flat parse shape (bash 5.3.15-1 parser regression, see the note at the top
+# of bin/fm-watch-arm.sh): no command substitution as a ${...:-...} default.
+_fm_lease_prev_root=${FM_ROOT:-}
+FM_ROOT=${FM_ROOT_OVERRIDE:-}
+if [ -z "$FM_ROOT" ]; then
+  if [ -n "$_fm_lease_prev_root" ]; then
+    FM_ROOT=$_fm_lease_prev_root
+  else
+    FM_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+  fi
+fi
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 # shellcheck source=bin/fm-lease-lib.sh

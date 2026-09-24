@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# PARSER REGRESSION NOTE (bash 5.3.15-1): bash 5.3.15-1 (Arch; no newer build
+# available) segfaults inside its own parser (yyparse/push_source) when a string
+# assignment's expansion re-enters the parser - nested "$( )" command
+# substitutions and multi-level ${...:-${...:-...}} default chains both sit on
+# the crashing path (expand_string_assignment -> command_substitute ->
+# parse_and_execute). Crash bursts were diagnosed here on Sep 20 and Sep 23
+# while arming. RULE for future editors of this file and the libs it sources:
+# keep every assignment flat - capture an inner command's output into its own
+# variable first, and resolve default chains with sequential if/else - never
+# nest "$( )" inside a string assignment and never chain ${...:-...} defaults
+# three levels deep.
 # Safe, home-scoped (re-)arm of the firstmate watcher, with honest verification.
 #
 # The watcher (bin/fm-watch.sh) blocks until it has an actionable wake to
@@ -73,10 +84,27 @@ set -u
 ARM_PID=${BASHPID:-$$}
 CYCLE_PREDECESSOR=${FM_WATCH_PREDECESSOR_ARM_PID:-none}
 case "$CYCLE_PREDECESSOR" in ''|*[!0-9]*) CYCLE_PREDECESSOR=none ;; esac
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_FMW_SETUP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-_FMW_SETUP_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-${FM_ROOT:-$_FMW_SETUP_ROOT}}}"
-CYCLE_LOG="${FM_STATE_OVERRIDE:-${STATE:-$_FMW_SETUP_HOME/state}}/.watch-cycle-exits.log"
+# Flat parse shape: no nested "$( )" inside a string assignment and no
+# ${...:-...} default chains (see the parser regression note at the top).
+_fmw_src_dir=$(dirname "${BASH_SOURCE[0]}")
+SCRIPT_DIR=$(cd "$_fmw_src_dir" && pwd)
+_FMW_SETUP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+if [ -n "${FM_HOME:-}" ]; then
+  _FMW_SETUP_HOME=$FM_HOME
+elif [ -n "${FM_ROOT_OVERRIDE:-}" ]; then
+  _FMW_SETUP_HOME=$FM_ROOT_OVERRIDE
+elif [ -n "${FM_ROOT:-}" ]; then
+  _FMW_SETUP_HOME=$FM_ROOT
+else
+  _FMW_SETUP_HOME=$_FMW_SETUP_ROOT
+fi
+if [ -n "${FM_STATE_OVERRIDE:-}" ]; then
+  CYCLE_LOG="$FM_STATE_OVERRIDE/.watch-cycle-exits.log"
+elif [ -n "${STATE:-}" ]; then
+  CYCLE_LOG="$STATE/.watch-cycle-exits.log"
+else
+  CYCLE_LOG="$_FMW_SETUP_HOME/state/.watch-cycle-exits.log"
+fi
 
 # shellcheck disable=SC2329 # Invoked indirectly by the signal traps below.
 handle_prelib_signal() {
@@ -305,10 +333,12 @@ report_attached() {
 # Adapter-owned continuations normally win immediately, but the bound avoids a
 # false failure when process-close delivery and lock publication cross briefly.
 wait_for_healthy_successor() {
-  local deadline
+  local deadline _fmw_now
   # date(1) exposes whole seconds. Add one rounding second so a timeout of one
   # second cannot collapse to a few milliseconds when called near a boundary.
-  deadline=$(( $(date +%s) + CONFIRM_TIMEOUT + 1 ))
+  # Flat parse shape: no "$( )" inside $(( )) (parser regression note above).
+  _fmw_now=$(date +%s)
+  deadline=$(( _fmw_now + CONFIRM_TIMEOUT + 1 ))
   while :; do
     healthy_watcher && return 0
     [ "$(date +%s)" -ge "$deadline" ] && return 1
@@ -606,7 +636,9 @@ owned_child_finished() {
 # until the child gives up. Only then print the honest line.
 # date(1) exposes whole seconds. Keep the configured confirmation budget from
 # collapsing when startup begins just before the next second boundary.
-deadline=$(( $(date +%s) + CONFIRM_TIMEOUT + 1 ))
+# Flat parse shape: no "$( )" inside $(( )) (parser regression note above).
+_fmw_now=$(date +%s)
+deadline=$(( _fmw_now + CONFIRM_TIMEOUT + 1 ))
 while :; do
   if healthy_watcher; then
     if [ "$HEALTHY_PID" = "$child" ]; then

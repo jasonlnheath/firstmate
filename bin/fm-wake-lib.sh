@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Shared durable wake queue and portable lock helpers.
+# PARSER REGRESSION NOTE (bash 5.3.15-1): nested "$( )" inside a string
+# assignment and deep ${...:-${...:-...}} default chains crash that build's
+# parser (yyparse/push_source via expand_string_assignment ->
+# command_substitute -> parse_and_execute); this lib is sourced by the arming
+# script on that exact path. Keep assignments flat: capture an inner command's
+# output in its own variable first, and never nest "$( )" in an assignment.
 
-FM_WAKE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_fmw_wake_lib_dir=$(dirname "${BASH_SOURCE[0]}")
+FM_WAKE_LIB_DIR=$(cd "$_fmw_wake_lib_dir" && pwd)
 FM_WAKE_DEFAULT_ROOT="$(cd "$FM_WAKE_LIB_DIR/.." && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-${FM_ROOT:-$FM_WAKE_DEFAULT_ROOT}}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
@@ -36,7 +43,10 @@ _fm_wake_require_timeout() {
 # On Bash 3.2, exec a child shell so its PPID identifies this frame, unlike $$.
 fm_current_pid() {  # [output-variable]
   local fm_pid
-  fm_pid=${BASHPID:-$(exec sh -c 'printf "%s\n" "$PPID"')} || return 1
+  fm_pid=${BASHPID:-}
+  if [ -z "$fm_pid" ]; then
+    fm_pid=$(exec sh -c 'printf "%s\n" "$PPID"') || return 1
+  fi
   case "$fm_pid" in ''|*[!0-9]*|0) return 1 ;; esac
   if [ "$#" -gt 0 ]; then
     printf -v "$1" '%s' "$fm_pid"
@@ -99,9 +109,10 @@ fm_path_mtime() {
 }
 
 fm_path_age() {
-  local path=$1 m
+  local path=$1 m _now
   m=$(fm_path_mtime "$path") || { echo 999999; return; }
-  echo $(( $(date +%s) - m ))
+  _now=$(date +%s)
+  echo $(( _now - m ))
 }
 
 # fm_poll_derived_grace [poll-seconds]
@@ -1236,10 +1247,11 @@ fm_treehouse_project_lock_path() {  # <project-dir>
 # Require both its pool state and the same Git common directory as the recorded
 # project; an ordinary linked worktree is not evidence that Treehouse owns it.
 fm_treehouse_pool_slot() {  # <project-dir> <worktree>
-  local project=$1 worktree=$2 slot pool state project_common slot_common
+  local project=$1 worktree=$2 slot pool slot_pool_dir state project_common slot_common
   [ -d "$project" ] && [ -d "$worktree" ] || return 1
   slot=$(CDPATH='' cd -- "$worktree" 2>/dev/null && pwd -P) || return 1
-  pool=$(dirname "$(dirname "$slot")")
+  slot_pool_dir=$(dirname "$slot")
+  pool=$(dirname "$slot_pool_dir")
   state="$pool/treehouse-state.json"
   [ -f "$state" ] && [ ! -L "$state" ] || return 1
   project_common=$(git -C "$project" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1

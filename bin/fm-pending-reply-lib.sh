@@ -106,7 +106,8 @@
 #   FM_PENDING_REPLY_NOW          optional fixed epoch for deterministic tests
 
 # shellcheck source=bin/fm-marker-lib.sh
-_FM_PENDING_REPLY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _FM_PENDING_REPLY_LIB_DIR="."
+_fm_pending_dir=$(dirname "${BASH_SOURCE[0]}")
+_FM_PENDING_REPLY_LIB_DIR=$(cd "$_fm_pending_dir" && pwd 2>/dev/null) || _FM_PENDING_REPLY_LIB_DIR="."
 # shellcheck source=bin/fm-marker-lib.sh
 . "$_FM_PENDING_REPLY_LIB_DIR/fm-marker-lib.sh"
 # shellcheck source=bin/fm-backend.sh
@@ -157,7 +158,8 @@ fm_pending_reply_new_id() {
     raw=$(openssl rand -hex 8 2>/dev/null || true)
   fi
   if [ -z "$raw" ]; then
-    raw=$(printf '%s' "$$-$(date +%s%N 2>/dev/null || date +%s)-$RANDOM$RANDOM" | cksum 2>/dev/null | awk '{print $1}')
+    _fmpr_stamp=$(date +%s%N 2>/dev/null || date +%s)
+    raw=$(printf '%s' "$$-$_fmpr_stamp-$RANDOM$RANDOM" | cksum 2>/dev/null | awk '{print $1}')
     hex=$(printf '%s' "$raw$RANDOM$RANDOM" | shasum -a 256 2>/dev/null | awk '{print $1}')
     raw=${hex:0:16}
   fi
@@ -368,7 +370,10 @@ fm_pending_reply_mark_delivered() {  # <state-dir> <corr_id> [confirmed-epoch]
   esac
   delivered=$(fm_pending_reply_get "$rec" delivered_epoch)
   if [ -z "$delivered" ]; then
-    now=${confirmed_epoch:-$(fm_pending_reply_now)}
+    now=${confirmed_epoch:-}
+    if [ -z "$now" ]; then
+      now=$(fm_pending_reply_now)
+    fi
     fm_pending_reply_set "$rec" delivered_epoch "$now" || return 1
   fi
   if [ "$phase" = delivery_unknown ]; then
@@ -669,7 +674,10 @@ _fm_pending_reply_try_resolve_locked() {  # <state-dir> <corr_id> [status-file-o
     case "$delivery_state" in attempted|confirmed) ;; *) return 1 ;; esac
     unconfirmed=1
   fi
-  status_file=${status_override:-$(fm_pending_reply_get "$rec" parent_status)}
+  status_file=${status_override:-}
+  if [ -z "$status_file" ]; then
+    status_file=$(fm_pending_reply_get "$rec" parent_status)
+  fi
   if [ -z "$status_override" ] && [ "$unconfirmed" = 0 ]; then
     signature=$(fm_pending_reply_file_signature "$status_file")
     previous=$(fm_pending_reply_get "$rec" parent_status_scan_signature)

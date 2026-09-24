@@ -673,12 +673,13 @@ fm_busy_cursor_project_dir() {  # <projects-root> <workspace-root>
 # no turn has been submitted yet and several means the pane cannot be told
 # apart, and neither proves anything about the current turn.
 fm_busy_cursor_transcript() {  # <state-dir> <id>
-  local root workspace project dir conv found='' count=0 prior
+  local root workspace project dir conv found='' count=0 prior _binding
   root=$(fm_busy_cursor_binding_field "$1" "$2" projects_root) || return 1
   workspace=$(fm_busy_cursor_binding_field "$1" "$2" workspace_root) || return 1
   project=$(fm_busy_cursor_project_dir "$root" "$workspace") || return 1
+  _binding=$(fm_busy_cursor_binding_path "$1" "$2")
   prior=$(LC_ALL=C awk -F= '$1 == "prior_conversation" { sub(/^[^=]*=/, ""); print }' \
-    "$(fm_busy_cursor_binding_path "$1" "$2")" 2>/dev/null)
+    "$_binding" 2>/dev/null)
   for dir in "$project"/agent-transcripts/*/; do
     [ -d "$dir" ] || continue
     conv=$(basename -- "${dir%/}")
