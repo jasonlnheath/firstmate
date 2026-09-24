@@ -1,0 +1,10 @@
+fm-watch-triage full-budget rerun (initial batch hit a 600s per-test cap; this suite needs longer):
+rc=0, 123 ok, 0
+0 not-ok
+
+ok - a live captain-held pane is absorbed on first sight while the away-posture record exists
+ok - a delivery the captain already holds is never rechecked while the away-posture record exists
+ok - the daemon-owned one-shot never hands off a captain-held pane while the away-posture record exists
+ok - a declared wait naming a near-future until time stays quiet until that time
+ok - a wrong-year declared time cannot silence the watcher beyond the recheck cadence
+ok - a declared wait whose until time has passed is rechecked at once, then held to the cadence

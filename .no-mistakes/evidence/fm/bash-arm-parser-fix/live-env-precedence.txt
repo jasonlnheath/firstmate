@@ -1,0 +1,22 @@
+
+=== env precedence after flattening (watcher invoked from cwd=/) ===
+PASS: no-env-repo-root: state resolved to /tmp/fm-parserfix-drive/repo/state
+PASS: root-override-wins: state resolved to /tmp/fm-parserfix-drive/prec/ovA/state
+PASS: fm-home-wins: state resolved to /tmp/fm-parserfix-drive/prec/homeC/state
+PASS: home-beats-override: state resolved to /tmp/fm-parserfix-drive/prec/homeD/state
+FAIL: state-override-wins: expected /tmp/fm-parserfix-drive/prec/stE, got 'none'
+
+=== arm env fallback: no env -> repo-root state (cycle ledger location) ===
+FAIL: arm no-env unexpected: watcher: started pid=1641169 (beacon fresh)
+
+=== RESULT rc=1 ===
+
+=== env precedence after flattening (watcher invoked from cwd=/) ===
+PASS: no-env-repo-root: state resolved to /tmp/fm-parserfix-drive/repo/state
+PASS: root-override-wins: state resolved to /tmp/fm-parserfix-drive/prec/ovA/state
+PASS: fm-home-wins: state resolved to /tmp/fm-parserfix-drive/prec/homeC/state
+PASS: home-beats-override: state resolved to /tmp/fm-parserfix-drive/prec/homeD/state
+PASS: state-override-wins: state resolved to /tmp/fm-parserfix-drive/prec/stE
+
+=== arm env fallback: no env -> repo-root state (cycle ledger location) ===
+PASS: arm with no env armed from the repo root: state, lock, and beacon all under the checkout

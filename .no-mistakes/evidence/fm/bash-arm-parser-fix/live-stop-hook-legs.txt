@@ -1,0 +1,25 @@
+
+=== turn-end guard, Claude leg: idle primary home must allow the stop ===
+PASS: guard --claude idle: exit 0 (allow stop), output: '<empty>'
+PASS: no segfault guard claude
+
+=== turn-end guard: bad flag must refuse with usage and exit 2 ===
+PASS: guard bad flag: usage + exit 2
+
+=== turn-end guard, Cursor leg (fm-turnend-guard-cursor.sh): idle home must not park ===
+PASS: cursor stop-guard idle: exit 0, output: '<empty>'
+PASS: no segfault cursor guard
+
+=== Claude Stop auto-arm: idle home stays inert (exit 0, nothing armed) ===
+PASS: autoarm idle: exit 0
+PASS: autoarm armed nothing
+PASS: no watcher left behind
+
+=== Claude Stop auto-arm: stale dead-owner session lock also stays inert when no supervision is needed ===
+PASS: autoarm stale-lock idle: exit 0
+
+=== session lock CLI (fm-lock.sh): status on unlocked home; acquire; status again ===
+PASS: lock status (unlocked): exit 0, output: lock: free
+PASS: lock acquire: exit 0 and .lock written
+PASS: lock status (after acquire): exit 0, output: lock: held by live harness pid 1500022
+PASS: no segfault lock

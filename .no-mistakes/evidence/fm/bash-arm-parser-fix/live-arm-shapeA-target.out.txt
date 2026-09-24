@@ -1,0 +1,2 @@
+watcher: started pid=3358994 (beacon fresh)
+signal: /tmp/fm-parserfix-drive/home-target/state/demo.status

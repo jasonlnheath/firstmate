@@ -1,0 +1,43 @@
+ok   fm-watch-arm
+ok   fm-watcher-lock
+FAIL fm-watch-triage (rc=124)
+ok   fm-watch-recovery-loop
+ok   fm-watch-checkpoint
+ok   fm-watch-jev-defer
+ok   fm-claude-stop-autoarm
+ok   fm-turnend-guard
+ok   fm-turnend-foreign-owner-arm-fix
+ok   fm-busy-state
+ok   fm-busy-adapter-wiring
+ok   fm-transition-lib
+ok   fm-inactive-reconcile
+ok   fm-captain-hold-lifecycle
+MISSING fm-lease
+ok   fm-afk-contract
+ok   fm-afk-launch
+ok   fm-afk-return
+ok   fm-wake-queue
+ok   fm-wake-drain-open-decisions
+ok   fm-wake-drain-outcome-backstop
+ok   fm-wake-drain-unread-status
+ok   fm-pending-reply
+ok   fm-task-inbox
+ok   fm-supervision-events
+ok   fm-guard-stale-banner
+ok   fm-backend
+ok   fm-backend-autodetect-smoke
+ok   fm-backend-cmux
+ok   fm-backend-orca
+ok   fm-backend-zellij
+ok   fm-classify-decision-key
+ok   fm-classify-corr-token
+ok   fm-pr-merge
+ok   fm-x-mode
+ok   fm-cursor-harness
+ok   fm-cursor-primary
+ok   fm-arm-pretool-check
+ok   fm-branch-supervision
+ok   fm-tmux-agent-liveness
+
+BATCH RESULT: pass=38 fail=1
+failed: fm-watch-triage

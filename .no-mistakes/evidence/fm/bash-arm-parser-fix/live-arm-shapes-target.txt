@@ -1,0 +1,30 @@
+
+=== [target] shape A: plain arm on a quiet home ===
+PASS[target]: verified start line: watcher: started pid=3358994 (beacon fresh)
+PASS[target]: lock names the started watcher (3358994)
+PASS[target]: no segfault in shape A
+PASS[target]: shape A arm exited 0
+PASS[target]: shape A surfaced the signal wake
+PASS[target]: shape A ledger row
+PASS[target]: shape A wake drained
+
+=== [target] shape B1: --restart over a live unowned watcher ===
+PASS[target]: seed watcher 3361055 holds the lock
+PASS[target]: shape B1 --restart arm exited 0
+PASS[target]: old watcher TERM'd
+PASS[target]: shape B1 delivered the typed recovery wake
+PASS[target]: shape B1 restart-term ledger row
+PASS[target]: no segfault in shape B1
+PASS[target]: shape B1 wake drained
+
+=== [target] shape B2: --restart with no live watcher (post-crash rearm) ===
+PASS[target]: post-crash rearm verified: watcher: started pid=3362389 (beacon fresh)
+PASS[target]: restarted watcher 3362389 is alive and holding
+PASS[target]: lock names it
+PASS[target]: no segfault in shape B2
+PASS[target]: shape B2 arm exited 0 after the wake
+PASS[target]: shape B2 surfaced the signal wake
+PASS[target]: shape B2 ledger row
+PASS[target]: shape B2 wake drained
+
+=== [target] RESULT rc=0 ===
