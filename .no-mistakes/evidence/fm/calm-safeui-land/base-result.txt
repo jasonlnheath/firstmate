@@ -1,0 +1,12 @@
+variant=base pi=0.85.1 ext=/tmp/safeui/base-fm-calm.ts grid=160x36 (TIOCSWINSZ)
+checkpoint startup: extensions listed, calm preference=on
+checkpoint boat-visible-first-run: pass
+checkpoint alive-after-new: pass
+observable-stale-error-after-new: no
+checkpoint boat-visible-replacement-run: pass
+checkpoint replacement-run-settled: pass
+checkpoint boat-removed-after-settle: pass
+checkpoint alive-after-reload: pass
+observable-stale-error-after-reload: no
+checkpoint post-reload-run: pass
+checkpoint clean-exit: pass

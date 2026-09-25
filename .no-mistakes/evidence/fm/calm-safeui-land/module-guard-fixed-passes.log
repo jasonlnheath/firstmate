@@ -1,0 +1,2 @@
+ok - stale session contexts on agent_start, agent_settled, and session_shutdown are skipped without crashing Calm or touching the live UI, and the replacement session's working presentation still installs
+TARGETED-RUN-COMPLETE

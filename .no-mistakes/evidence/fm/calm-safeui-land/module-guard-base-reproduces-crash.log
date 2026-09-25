@@ -1,0 +1,9 @@
+not ok - Pi calm stale-context guard failed: file:///tmp/fm-calm-pi-extension.rptpNe/stale-ui-context/[eval1]:84
+    throw new Error(`a stale ${event} context crashed Calm: ${error instanceof Error ? error.message : String(error)}`);
+          ^
+
+Error: a stale agent_start context crashed Calm: stale extension context: its session was replaced
+    at file:///tmp/fm-calm-pi-extension.rptpNe/stale-ui-context/[eval1]:84:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v26.8.1

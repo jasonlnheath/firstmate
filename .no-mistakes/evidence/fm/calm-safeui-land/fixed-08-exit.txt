@@ -1,0 +1,18 @@
+/safeui-run FOURTH                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+ SAFEUI_PROMPT_FOURTH                                                                                                                                           
+                                                                                                                                                                
+
+ SAFEUI_ANSWER_FOURTH                                                                                                                                           
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/safeui/live/fixed/project (master)
+0.8%/4.1k (auto)                                                                                                                    (safeui-drive) deterministic/quit                                                                                                                                                           → quit        Quit pi                                                                                                                                           
+/tmp/safeui/live/fixed/project (master)
+0.8%/4.1k (auto)                                                                                                                    (safeui-drive) deterministic[<u                                                                                                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/tmp/safeui/live/fixed/project (master)
+0.8%/4.1k (auto)                                                                                                                    (safeui-drive) deterministic
+ 
+To resume this session: pi --session-dir /tmp/safeui/live/fixed/sessions --session 01a0da79-3e8d-7501-84a7-53aaa52d394c
