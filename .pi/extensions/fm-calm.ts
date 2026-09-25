@@ -458,20 +458,28 @@ export default function (pi: ExtensionAPI) {
     });
   });
 
+  // Guard helper: ctx.ui throws on stale ctx after session replacement/reload.
+  const safeUi = (ctx: { ui: ExtensionUIContext }) => {
+    try { return ctx.ui; } catch { return undefined; }
+  };
+
   pi.on("agent_start", (_event, ctx) => {
     agentRunActive = true;
-    applyWorkingPresentation(ctx.ui);
+    const ui = safeUi(ctx);
+    if (ui) applyWorkingPresentation(ui);
   });
 
   // agent_settled is emitted from a finally block, so it also covers abort and failure.
   pi.on("agent_settled", (_event, ctx) => {
     agentRunActive = false;
-    applyWorkingPresentation(ctx.ui);
+    const ui = safeUi(ctx);
+    if (ui) applyWorkingPresentation(ui);
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
     agentRunActive = false;
-    applyWorkingPresentation(ctx.ui);
+    const ui = safeUi(ctx);
+    if (ui) applyWorkingPresentation(ui);
   });
 
   pi.registerCommand("calm", {

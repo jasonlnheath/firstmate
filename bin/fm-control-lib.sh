@@ -66,10 +66,17 @@ fm_control_harnesses() {
 }
 
 fm_control_harness_supported() {  # <harness>
-  local harness
+  # Drain the table before scanning it. A `done < <(fm_control_harnesses)`
+  # reader that returns on a match closes the pipe while the producer may
+  # still be writing, killing it with EPIPE mid-table and (on some bash
+  # versions) printing a "printf: write error: Broken pipe" diagnostic onto
+  # the caller's stderr. The command substitution drains the producer to
+  # EOF, so the scan below can never strand a write.
+  local harness table
+  table=$(fm_control_harnesses)
   while read -r harness; do
     [ "$harness" = "${1-}" ] && return 0
-  done < <(fm_control_harnesses)
+  done <<< "$table"
   return 1
 }
 

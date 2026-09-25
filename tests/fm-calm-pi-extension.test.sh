@@ -3295,6 +3295,144 @@ JS
 # This pins that guard with real processes and no browser: one clean render, one
 # that only succeeds after Chrome's start-up flake, and one that never renders
 # and must report enough to tell a Chrome failure apart from a Pi export change.
+test_stale_ui_context_guard() {
+  local fixture out status
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "skip: node or npm not found for Pi calm stale-context test"
+    return 0
+  fi
+  if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
+    echo "skip: installed @earendil-works/pi-coding-agent package not found"
+    return 0
+  fi
+
+  fixture="$TMP_ROOT/stale-ui-context"
+  mkdir -p "$fixture/home/config" "$fixture/lib" "$fixture/node_modules/@earendil-works"
+  cp "$EXT" "$fixture/fm-calm.ts"
+  cp "$ASSISTANT_LAYOUT" "$fixture/lib/fm-calm-assistant-layout.ts"
+  cp "$PRESERVATION" "$fixture/lib/fm-calm-preservation.ts"
+  cp "$OPERATIONAL_USER_LAYOUT" "$fixture/lib/fm-calm-operational-user-layout.ts"
+  cp "$VISIBILITY" "$fixture/lib/fm-calm-visibility.ts"
+  cp "$WORKING_SHIP" "$fixture/lib/fm-calm-working-ship.ts"
+  cp "$WORKING_SHIP_SPRITE" "$fixture/lib/fm-calm-working-ship-sprite.ts"
+  cp "$PI_OPERATIONAL_INPUT" "$fixture/lib/fm-operational-input.ts"
+  ln -s "$PI_PACKAGE_DIR" "$fixture/node_modules/@earendil-works/pi-coding-agent"
+  ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-tui" "$fixture/node_modules/@earendil-works/pi-tui"
+  ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$fixture/node_modules/typebox"
+  printf '%s\n' '{"type":"module"}' >"$fixture/package.json"
+  printf '%s\n' on >"$fixture/home/config/calm"
+
+  out=$(cd "$fixture" && EXT="$fixture/fm-calm.ts" FM_HOME="$fixture/home" node --input-type=module 2>&1 <<'JS'
+import { pathToFileURL } from "node:url";
+
+// The run-lifecycle handlers receive their session's context object. After a session
+// replacement or /reload, an event still in flight can carry the retired session's
+// context, whose ui getter throws instead of returning a usable UI - the crash this
+// guard exists for. The getter below never yields a UI, exactly like the stale real
+// one, so any handler that touches ctx.ui despite the guard throws and fails here.
+const staleCtx = {
+  get ui() {
+    throw new Error("stale extension context: its session was replaced");
+  },
+};
+
+const handlers = new Map();
+let calmCommand;
+const pi = {
+  events: { emit() {}, on() {} },
+  on(event, handler) {
+    const existing = handlers.get(event) ?? [];
+    existing.push(handler);
+    handlers.set(event, existing);
+  },
+  registerCommand(name, command) {
+    if (name === "calm") calmCommand = command;
+  },
+  registerEntryRenderer() {},
+  registerTool() {},
+  getAllTools() {
+    return [];
+  },
+};
+const extension = await import(`${pathToFileURL(process.env.EXT).href}?stale=${Date.now()}`);
+extension.default(pi);
+for (const event of ["session_start", "agent_start", "agent_settled", "session_shutdown"]) {
+  if (!handlers.has(event)) throw new Error(`Calm did not register a ${event} handler`);
+}
+
+// A live recording UI. The widget factory is stored, never invoked, so this test
+// observes the extension's own presentation decisions without needing Pi internals.
+const widgetOps = [];
+const workingVisible = [];
+const ui = {
+  setWidget(key, content) {
+    widgetOps.push({ key, content });
+  },
+  setWorkingVisible(visible) {
+    workingVisible.push(visible);
+  },
+  getEditorText: () => "",
+  getToolsExpanded: () => false,
+  onTerminalInput: () => () => {},
+  setHiddenThinkingLabel() {},
+  setStatus() {},
+  setToolsExpanded() {},
+  notify() {},
+};
+const ctx = { ui };
+const fire = async (event, context) => {
+  for (const handler of handlers.get(event) ?? []) await handler({}, context);
+};
+const { CALM_WORKING_SHIP_WIDGET_KEY } = await import(
+  `${pathToFileURL(`${process.cwd()}/lib/fm-calm-working-ship.ts`).href}?key=${Date.now()}`
+);
+const installs = () => widgetOps.filter((op) => op.content !== undefined);
+
+// A first live session: Calm restores the stock working row, then a run installs
+// the ship widget - the baseline behavior the stale events must not disturb.
+await fire("session_start", ctx);
+await fire("agent_start", ctx);
+if (installs().length !== 1 || installs()[0].key !== CALM_WORKING_SHIP_WIDGET_KEY) {
+  throw new Error(`a live run did not install the working ship: ${JSON.stringify(widgetOps.map((op) => op.key))}`);
+}
+if (typeof installs()[0].content !== "function") {
+  throw new Error("the working ship install did not pass a component factory");
+}
+
+// The regression: every run-lifecycle event arriving on the retired session's
+// context must be skipped without throwing, while the live UI records nothing new.
+const staleEvents = ["agent_start", "agent_settled", "session_shutdown"];
+for (const event of staleEvents) {
+  try {
+    await fire(event, staleCtx);
+  } catch (error) {
+    throw new Error(`a stale ${event} context crashed Calm: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+if (widgetOps.length !== 1 || workingVisible.length !== 2) {
+  throw new Error(
+    `a stale context reached the live UI: widgetOps=${JSON.stringify(widgetOps.map((op) => op.key))} workingVisible=${JSON.stringify(workingVisible)}`,
+  );
+}
+
+// Recovery: the replacement session starts, then its first live run reinstalls the
+// ship, proving the guarded events left the presentation state machine consistent.
+await fire("session_start", ctx);
+await fire("agent_start", ctx);
+if (installs().length !== 2) {
+  throw new Error(`the replacement session's run did not reinstall the working ship: ${JSON.stringify(widgetOps.map((op) => op.key))}`);
+}
+if (JSON.stringify(workingVisible) !== JSON.stringify([true, false, true, false])) {
+  throw new Error(`unexpected working-row visibility sequence: ${JSON.stringify(workingVisible)}`);
+}
+JS
+)
+  status=$?
+  [ "$status" -eq 0 ] || fail "Pi calm stale-context guard failed: $out"
+  [ -z "$out" ] || fail "Pi calm stale-context test printed output: $out"
+  pass "stale session contexts on agent_start, agent_settled, and session_shutdown are skipped without crashing Calm or touching the live UI, and the replacement session's working presentation still installs"
+}
+
 test_export_dom_render_guard() {
   local dir source_file out_file report
 
@@ -4288,5 +4426,6 @@ test_calm_mid_turn_working_notes
 test_operational_followup_turn_e2e
 test_hidden_block_geometry_e2e
 test_working_ship_geometry_and_lifecycle
+test_stale_ui_context_guard
 test_export_dom_render_guard
 test_interactive_terminal_e2e

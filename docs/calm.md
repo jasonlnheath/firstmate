@@ -17,6 +17,7 @@ Every resize reflows the sprite without wrapping, and it disappears when the run
 Within one Pi session and Calm extension lifetime, the next working period resumes the boat from its last rendered column and travel direction rather than restarting at the left edge.
 Hidden elapsed time does not advance the animation, and a resize while hidden clamps the frozen boat to the new width without changing its valid travel direction.
 A fresh Pi session or new Calm extension lifetime starts at the normal initial position.
+A run-lifecycle event still in flight when its session is replaced or reloaded can arrive on the retired session's context, which no longer reaches a live UI; Calm skips that event's working-presentation update rather than crashing, and the replacement session's own events drive the presentation normally.
 Very narrow terminals fall back to a smaller deterministic sprite.
 While Calm is off, Pi's stock working row is left exactly as Pi renders it.
 Calm hides collapsed thinking labels, the mid-turn assistant working-note blocks governed by the shared preservation rule above, the shells for the Pi built-in tool names Calm owns, the `fm_watch_arm_pi` and `fm_branch_outcomes` tool shells, and canonically classified Firstmate operational user rows.
