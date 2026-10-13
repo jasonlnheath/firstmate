@@ -20,7 +20,10 @@
 # on every wake. Printed reason lines:
 #   signal: <file>...      status/turn-end signals, surfaced when a listed status
 #                          span has a captain-relevant event OR a no-verb signal lacks
-#                          positive execution evidence, unless afk is active
+#                          positive execution evidence - an authoritative working
+#                          verdict, opted-in pane churn, or a pane the Jev pre-screen
+#                          classifies actively-working at or above the floor - unless
+#                          afk is active
 #   stale: <window>        a provably-working stale is ALWAYS absorbed (with a wedge
 #                          timer) regardless of what the status log says - an active
 #                          run-step or busy pane outranks even a captain-relevant log
@@ -325,14 +328,17 @@ _event_cap_key=""
 _event_cap_ok=0
 _event_cap_fails=0
 
-# Jev wedge pre-screen, plan item 4.1 / candidate C1: the optional typed
-# classifier consult on the wedge escalation path. bin/fm-jev-screen.sh owns the
-# opt-in key gate itself, so this side owns only the policy: the confidence
-# floor for an `actively-working` deferral, read from config/jev-wedge-floor
-# (one decimal 0-1, whitespace-insensitive; absent or malformed means 0.8), and
-# the bounded deferral below. The consult runs only inside the at-threshold
-# branch after the three deterministic probes fail, so it costs at most one
-# screen per STALE_ESCALATE_SECS per stale window and never on a busy fleet.
+# Jev pre-screen, plan item 4.1 / candidate C1 widened by the 2026-10-12
+# routine-wake ask: the optional typed classifier consult, used on the wedge
+# escalation path AND on the two routine surfaces that would otherwise cost a
+# helm turn on an echo (a no-verb signal batch and a first-sight non-terminal
+# stale pane). bin/fm-jev-screen.sh owns the opt-in key gate itself, so this
+# side owns only the policy: the confidence floor for an `actively-working`
+# deferral, read from config/jev-wedge-floor (one decimal 0-1,
+# whitespace-insensitive; absent or malformed means 0.8), and the bounded
+# deferral below. The consult runs only at the moment a wake would otherwise be
+# forwarded or escalated, after every deterministic probe fails, so it costs at
+# most one screen per such decision and never on a provably-working fleet.
 # FM_JEV_WEDGE_SCREENER exists for the same reason FM_CREW_STATE_BIN does: tests
 # point the consult at a recording fake instead of the network.
 JEV_WEDGE_SCREENER="${FM_JEV_WEDGE_SCREENER:-$SCRIPT_DIR/fm-jev-screen.sh}"
@@ -750,6 +756,89 @@ signal_turnend_panes_churned() {  # <file> ...
   return 0
 }
 
+# 0 (benign/absorb) when EVERY task referenced by a no-verb "signal:" wake has
+# a pane the Jev pre-screen classifies actively-working at or above the
+# configured floor: the routine-wake widening of the wedge pre-screen. Reached
+# only after both deterministic proofs failed, so a fleet the harness or the
+# run step can vouch for never pays for a consult, and every negative outcome
+# forwards the wake exactly as before: a batch referencing a secondmate (whose
+# .status stream is parent-directed content and whose panes the supervision
+# contract deliberately never classifies), an unresolvable or non-unique
+# endpoint, a capture that fails or comes back empty, a below-floor,
+# non-working, error, or malformed screen. Only an unambiguous typed verdict
+# absorbs an echo; anything doubtful costs the helm turn it cost today, and the
+# staleness backbone plus the wedge path's one-defer budget remain the bounded
+# backstop for a pane this verdict cleared and later stalled.
+signal_jev_classified_benign() {  # <file> ...
+  local f base task meta kind w key backend label tail verdict choice conf count i ti
+  local rec_task rec_kind rec_w rec_backend rec_terminal
+  local -a batch_tasks=()
+  local -a snap_tasks=() snap_kinds=() snap_windows=() snap_keys=() snap_backends=() snap_labels=()
+  [ "$#" -gt 0 ] || return 1
+  for f in "$@"; do
+    base=${f##*/}
+    case "$base" in
+      *.status)     task=${base%.status} ;;
+      *.turn-ended) task=${base%.turn-ended} ;;
+      *)            return 1 ;;
+    esac
+    [ -n "$task" ] || return 1
+    case " ${batch_tasks[*]} " in *" $task "*) ;; *) batch_tasks+=("$task") ;; esac
+  done
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || continue
+    rec_task=${meta##*/}
+    rec_task=${rec_task%.meta}
+    rec_kind=$(fm_meta_get "$meta" kind)
+    rec_backend=$(fm_backend_of_meta "$meta")
+    if [ "$rec_backend" = orca ]; then
+      rec_terminal=$(fm_meta_get "$meta" terminal)
+      if [ -n "$rec_terminal" ]; then
+        rec_w=$rec_terminal
+      else
+        rec_w=$(fm_meta_get "$meta" window)
+      fi
+    else
+      rec_w=$(fm_meta_get "$meta" window)
+    fi
+    key=
+    [ -n "$rec_w" ] && key=$(window_key "$rec_w")
+    snap_tasks+=("$rec_task")
+    snap_kinds+=("$rec_kind")
+    snap_windows+=("$rec_w")
+    snap_keys+=("$key")
+    snap_backends+=("$rec_backend")
+    snap_labels+=("fm-$rec_task")
+  done
+  for task in "${batch_tasks[@]}"; do
+    ti=-1
+    for ((i = 0; i < ${#snap_tasks[@]}; i++)); do
+      [ "${snap_tasks[$i]}" = "$task" ] && { ti=$i; break; }
+    done
+    [ "$ti" -ge 0 ] || return 1
+    [ "${snap_kinds[$ti]}" != secondmate ] || return 1
+    w=${snap_windows[$ti]}
+    key=${snap_keys[$ti]}
+    [ -n "$w" ] && [ -n "$key" ] || return 1
+    count=0
+    for ((i = 0; i < ${#snap_keys[@]}; i++)); do
+      [ "${snap_keys[$i]}" = "$key" ] && count=$((count + 1))
+    done
+    [ "$count" -eq 1 ] || return 1
+    backend=${snap_backends[$ti]}
+    label=${snap_labels[$ti]}
+    tail=$(fm_backend_capture "$backend" "$w" 40 "$label" 2>/dev/null) || return 1
+    [ -n "$tail" ] || return 1
+    verdict=$(wedge_jev_screen "$w" "$tail" '')
+    choice=${verdict%%$'\t'*}
+    conf=${verdict#*$'\t'}
+    [ "$choice" = "actively-working" ] || return 1
+    jev_conf_meets_floor "$conf" || return 1
+    triage_log "benign no-verb signal (Jev pre-screen: actively-working at confidence $conf): $label"
+  done
+  return 0
+}
+
 recorded_windows() {
   local meta w seen=
   for meta in "$STATE"/*.meta; do
@@ -1072,10 +1161,12 @@ wedge_defer_wait() {  # <window> <task> <since-file> <triage-label> <idle-age> <
   triage_log "absorbed $label (the pane's own wait explains the quiet, idle ${age}s): $win"
 }
 
-# The C1 typed consult: one Jev screen of the pane tail the poll loop already
-# captured for hashing, asked only at the moment an escalation would otherwise
-# fire (after the three deterministic probes came back negative), so the cost is
-# bounded by the existing STALE_ESCALATE_SECS budget rather than the poll rate.
+# The C1 typed consult: one Jev screen of a pane tail, asked only at the moment
+# a wake would otherwise be escalated or forwarded on a pane read alone - the
+# wedge escalation after the three deterministic probes come back negative, the
+# routine-wake widening's no-verb signal batch after both deterministic proofs
+# fail, and the first inconclusive sight of a non-terminal stale pane - so the
+# cost is bounded by the decision rate rather than the poll rate.
 # bin/fm-jev-screen.sh owns the request shape, the key gate, and the response
 # validation; this wrapper owns only the watcher-side plumbing. Prints
 # `choice<TAB>confidence` from a validated clear block and nothing at all for
@@ -2545,19 +2636,22 @@ EOF
     #     (even via an interactive menu that wrote no done: status), waiting on a
     #     decision, or wedged. Absorbing such a turn-end is exactly the
     #     swallowed-finish this change guards against.
-    # Positive evidence is either an authoritative provably-working verdict or, in a
-    # home that opts in with config/turnend-churn-absorb and for a BARE turn-end
-    # alone, a pane that rendered something since the previous poll
-    # (signal_turnend_panes_churned) - the only proof available to a harness whose
-    # busy state has no verified semantic source, bounded so it cannot defer that
-    # task's turn-ends forever. Absorb stays evidence-driven: with neither proof the
-    # wake surfaces exactly as before.
+    # Positive evidence is either an authoritative provably-working verdict, a
+    # pane that rendered something since the previous poll in a home that opts in
+    # with config/turnend-churn-absorb (BARE turn-ends alone - the only proof
+    # available to a harness whose busy state has no verified semantic source,
+    # bounded so it cannot defer that task's turn-ends forever), or - the
+    # routine-wake widening - a pane the Jev pre-screen classifies
+    # actively-working at or above the floor (signal_jev_classified_benign),
+    # which clears the echo without fabricating any harness verdict. Absorb stays
+    # evidence-driven: with no proof the wake surfaces exactly as before.
     # Actionable -> enqueue, advance .seen-* markers, exit. Benign (a no-verb wake
     # whose crew is still executing) in always-on mode -> advance the markers so it
-    # will not re-fire, log, and keep blocking without enqueuing. Both evidence
-    # checks are costly (a bounded no-mistakes call, then a pane capture), so the ||
-    # ordering evaluates them ONLY for a non-afk signal with no captain-relevant
-    # status span, and the capture only once the authoritative verdict comes up short.
+    # will not re-fire, log, and keep blocking without enqueuing. All three evidence
+    # checks are costly (a bounded no-mistakes call, a pane capture, then a typed
+    # screen), so the || ordering evaluates them ONLY for a non-afk signal with no
+    # captain-relevant status span, and each only once the cheaper verdict comes
+    # up short.
     FM_SIGNAL_SURFACE_ENDPOINTS=''
     FM_SIGNAL_NEEDS_DECISION_FILES=''
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
@@ -2575,7 +2669,9 @@ EOF
     # bin/fm-supervise-daemon.sh).
     # shellcheck disable=SC2086  # same space-separated status-path list
     if afk_present || [ "$signal_actionable" -eq 0 ] \
-      || { ! signal_crew_provably_working $files && ! signal_turnend_panes_churned $files; }; then
+      || { ! signal_crew_provably_working $files \
+        && ! signal_turnend_panes_churned $files \
+        && ! signal_jev_classified_benign $files; }; then
       while IFS=$(printf '\t') read -r sf sig f; do
         [ -n "$sf" ] || continue
         file_reason="$reason"
@@ -2790,7 +2886,26 @@ EOF
                 handle_paused_stale "$w" "$task" "$h"
                 ;;
               *)
-                surface_nonterminal_stale "$w" "$h"
+                # The routine-wake widening on the stale side: the first
+                # inconclusive sight consults the same pre-screen the wedge
+                # escalation uses, so a demonstrably-working crew behind a
+                # static pane costs no helm turn here either. An absorbing
+                # verdict starts the ordinary wedge timer, so the wedge path's
+                # own one-defer budget stays the bounded backstop; every other
+                # outcome - including Jev unreachable - surfaces exactly as
+                # before, so a real finish is never left waiting out a timer.
+                jev_verdict=$(wedge_jev_screen "$w" "$tail40" "$(( n * POLL ))")
+                jev_choice=${jev_verdict%%$'\t'*}
+                jev_conf=${jev_verdict#*$'\t'}
+                [ "$jev_choice" = "actively-working" ] || jev_conf=''
+                if [ "$jev_choice" = "actively-working" ] && jev_conf_meets_floor "$jev_conf"; then
+                  clear_pause_tracking "$key"
+                  printf '%s' "$h" > "$sf"
+                  date +%s > "$ssf"
+                  triage_log "absorbed non-terminal stale (Jev pre-screen: actively-working at confidence $jev_conf, first sight): $w"
+                else
+                  surface_nonterminal_stale "$w" "$h"
+                fi
                 ;;
             esac
           else

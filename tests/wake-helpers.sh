@@ -42,9 +42,10 @@ REC
 chmod +x "$_fm_wedge_rec_dir/rec"
 export FM_WEDGE_ALARM_EXEC="$_fm_wedge_rec_dir/rec"
 
-# Jev wedge pre-screen off-stub (hermeticity seam, same install-at-source-time
-# shape as the alarm recorder above). The watcher's threshold branch consults
-# bin/fm-jev-screen.sh whenever FM_JEV_WEDGE_SCREENER is unset, and that tool
+# Jev pre-screen off-stub (hermeticity seam, same install-at-source-time
+# shape as the alarm recorder above). The watcher's threshold, no-verb signal,
+# and first-sight branches consult bin/fm-jev-screen.sh whenever
+# FM_JEV_WEDGE_SCREENER is unset, and that tool
 # POSTs to api.typesafe.ai on a home holding TYPESAFE_API_KEY in the
 # environment or in the $FM_HOME/.env it falls back to. Sourcing this harness
 # points the consult at an off-stub with the screener's exact no-key contract -

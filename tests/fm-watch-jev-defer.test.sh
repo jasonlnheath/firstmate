@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# tests/fm-watch-jev-defer.test.sh - the Jev wedge pre-screen integration in
-# bin/fm-watch.sh (the overnight Jev plan's item 4.1 / candidate C1): an
-# optional typed classifier consult on the wedge escalation path, fail-soft in
+# tests/fm-watch-jev-defer.test.sh - the Jev pre-screen integration in
+# bin/fm-watch.sh (the overnight Jev plan's item 4.1 / candidate C1, widened by
+# the 2026-10-12 routine-wake ask to the no-verb signal batch and the
+# first-sight non-terminal stale surface): an optional typed classifier consult
+# on the wedge escalation path and the two routine surfaces, fail-soft in
 # every outcome and bounded to one silent deferral per quiet stretch. These
 # tests drive a real fm-watch.sh subprocess whose consult is pointed at a
 # recording fake screener, so every case asserts watcher behavior (absorb,
@@ -483,6 +485,329 @@ test_jev_defer_floor_comes_from_config() {
   pass "the deferral floor comes from config/jev-wedge-floor and compares inclusive, defaulting to 0.8 on an absent or malformed file"
 }
 
+# --- routine-wake triage: the pre-screen widened past the wedge path ---------
+#
+# The captain's 2026-10-12 ask: echoes and benign polls get Jev-classified
+# before they cost a helm turn. Two routine surfaces forward wakes today that a
+# typed pane read can clear: the no-verb signal batch (a bare turn-end or a
+# working: note whose crew state is unknown) and the first-sight non-terminal
+# stale surface. Both consult the SAME screener, the SAME config floor, and the
+# SAME fail-soft posture as the wedge path: only a high-confidence
+# actively-working pane absorbs, every other verdict - and Jev itself
+# unreachable - forwards exactly as today, and captain-relevant,
+# decision-owned, afk, and secondmate-status wakes are never classified at all.
+
+# Signal-path fixture: a ship crew whose status note or bare turn-end is the
+# whole new span, every deterministic proof negative (unknown crew state, churn
+# absorb not configured), and whose pane text is written to <case-dir>/pane.txt
+# for the fake tmux. The fake screener records every consult to jev.log.
+make_jev_signal_case() {  # <name> <task> <pane-text> [status-line]
+  local name=$1 id=$2 pane_text=$3 status_line=${4:-} dir state
+  dir=$(make_case "$name")
+  state="$dir/state"
+  mkdir -p "$dir/config"
+  printf '%s' "$pane_text" > "$dir/pane.txt"
+  printf 'window=test:fm-%s\nkind=ship\n' "$id" > "$state/$id.meta"
+  [ -z "$status_line" ] || printf '%s\n' "$status_line" > "$state/$id.status"
+  make_fake_jev_screener "$dir" >/dev/null
+  : > "$dir/jev.log"
+  printf '%s\n' "$dir"
+}
+
+# Launch the watcher for a signal case. A slow poll leaves the signal absorb's
+# assertions many ticks clear of the stale backbone this static fixture pane
+# would otherwise reach.
+watch_jev_signal_bg() {  # <case-dir> <out> [env assignments...]
+  local dir=$1 out=$2
+  shift 2
+  local fakebin="$dir/fakebin" window
+  window=$(sed -n 's/^window=//p' "$dir/state"/*.meta | head -n 1)
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" \
+    FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" \
+    FM_STATE_OVERRIDE="$dir/state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" \
+    FM_CONFIG_OVERRIDE="$dir/config" \
+    FM_JEV_WEDGE_SCREENER="$dir/jev-screen-fake" FM_FAKE_JEV_LOG="$dir/jev.log" \
+    FM_STALE_ESCALATE_SECS=999999 FM_PAUSE_RESURFACE_SECS=999999 \
+    FM_POLL=3 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    "$@" "$WATCH" > "$out" &
+}
+
+# A no-verb signal whose pane the pre-screen classifies actively-working at or
+# above the floor is absorbed: no wake, no queue row, suppressor advanced, and
+# the consult received the pane tail and the window identity.
+test_jev_routine_signal_active_pane_absorbed() {
+  local dir state out pid
+  dir=$(make_jev_signal_case jev-routine-absorb jevrs1 "● Bash(make lint)
+● Edit(bin/fm-watch.sh)
+Running: bash tests/fm-watch.test.sh" "working: implementing the widen step")
+  state="$dir/state"; out="$dir/watch.out"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "the watcher surfaced a no-verb signal the pre-screen cleared: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || { reap "$pid"; fail "the pre-screened benign signal printed a wake reason: $(cat "$out")"; }
+  [ ! -s "$state/.wake-queue" ] || { reap "$pid"; fail "the pre-screened benign signal enqueued a durable wake"; }
+  [ -s "$state/.seen-jevrs1_status" ] \
+    || { reap "$pid"; fail "the pre-screened benign signal did not advance its .seen-* suppressor"; }
+  grep -F 'Jev pre-screen: actively-working at confidence 0.92' "$state/.watch-triage.log" >/dev/null \
+    || { reap "$pid"; fail "the absorb triage line did not name the screen verdict"; }
+  grep -F 'Running: bash tests/fm-watch.test.sh' "$dir/jev.log" >/dev/null \
+    || { reap "$pid"; fail "the routine consult did not receive the pane tail"; }
+  grep -E 'argv .*\[--window\]\[test:fm-jevrs1\]' "$dir/jev.log" >/dev/null \
+    || { reap "$pid"; fail "the routine consult did not pass the window identity"; }
+  reap "$pid"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional watcher stop"
+  pass "a no-verb signal whose pane screens actively-working at the floor is absorbed"
+}
+
+# A non-working verdict on the same routine wake forwards exactly as today: the
+# crew may be done, waiting, or wedged, and the classifier never silences that.
+test_jev_routine_signal_waiting_pane_forwarded() {
+  local dir state out drain_out pid
+  dir=$(make_jev_signal_case jev-routine-wait jevrs2 "idle at prompt, nothing running" "working: step finished, next queued")
+  state="$dir/state"; out="$dir/watch.out"; drain_out="$dir/drain.out"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.9 FM_FAKE_JEV_CHOICE=waiting-at-prompt \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "a waiting-pane no-verb signal was not forwarded: $(cat "$out")"
+  grep -F "signal: $state/jevrs2.status" "$out" >/dev/null \
+    || fail "the forwarded signal was not today's byte-identical reason: $(cat "$out")"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after the forwarded signal failed"
+  grep "$(printf '\tsignal\t')" "$drain_out" | grep -F 'jevrs2.status' >/dev/null \
+    || fail "the forwarded signal was not queued"
+  pass "a no-verb signal whose pane screens waiting-at-prompt forwards exactly as today"
+}
+
+# Captain-relevant content is never classified: a done: append surfaces without
+# a single consult, whatever the screener would have answered.
+test_jev_routine_signal_captain_relevant_never_consulted() {
+  local dir state out pid
+  dir=$(make_jev_signal_case jev-routine-done jevrs3 "● PR ready: https://github.com/example/repo/pull/12" \
+    "done: PR https://github.com/example/repo/pull/12 checks green")
+  state="$dir/state"; out="$dir/watch.out"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.99 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "a done: signal did not surface: $(cat "$out")"
+  grep -F "signal: $state/jevrs3.status" "$out" >/dev/null \
+    || fail "the done: signal was not today's byte-identical reason: $(cat "$out")"
+  [ ! -s "$dir/jev.log" ] || fail "a captain-relevant signal was classified: $(cat "$dir/jev.log")"
+  pass "a captain-relevant done: signal surfaces with zero pre-screen consults"
+}
+
+# Away posture: the daemon owns triage, so the watcher queues and exits on the
+# routine wake without consulting the classifier at all.
+test_jev_routine_signal_afk_never_consulted() {
+  local dir state out pid
+  dir=$(make_jev_signal_case jev-routine-afk jevrs4 "● Bash(make lint)
+Running: bash tests/x.sh" "working: implementing")
+  state="$dir/state"; out="$dir/watch.out"
+  : > "$state/.afk"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.99 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "an afk routine signal was not handed to the daemon: $(cat "$out")"
+  grep -F "signal: $state/jevrs4.status" "$out" >/dev/null \
+    || fail "the afk signal was not today's byte-identical reason: $(cat "$out")"
+  [ ! -s "$dir/jev.log" ] || fail "an afk-owned routine signal was classified: $(cat "$dir/jev.log")"
+  pass "an afk routine signal is queued for the daemon with zero pre-screen consults"
+}
+
+# Jev unreachable is today's behavior, never a new wedge: an off verdict and a
+# screen error both forward the routine wake with today's byte-identical reason
+# and leave no deferral marker behind.
+test_jev_routine_signal_jev_unreachable_forwards() {
+  local mode dir state out pid
+  for mode in off error; do
+    dir=$(make_jev_signal_case "jev-routine-$mode" "jevrs5$mode" "● Bash(make lint)" "working: implementing")
+    state="$dir/state"; out="$dir/watch.out"
+    FM_FAKE_JEV_MODE=$mode \
+      FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+      watch_jev_signal_bg "$dir" "$out"
+    pid=$!
+    wait_for_exit "$pid" 100 || fail "the $mode outcome did not forward the routine signal: $(cat "$out")"
+    grep -F "signal: $state/jevrs5$mode.status" "$out" >/dev/null \
+      || fail "the $mode outcome was not today's byte-identical reason: $(cat "$out")"
+    [ ! -e "$state/.writing-deferred-$(jev_case_key "$dir")" ] \
+      || fail "the $mode outcome left a deferral marker behind"
+  done
+  pass "an unreachable Jev forwards the routine signal exactly as today"
+}
+
+# The widened consults share the wedge path's threshold mechanism: the same
+# config/jev-wedge-floor file governs them, and the comparison is inclusive.
+test_jev_routine_signal_floor_from_config() {
+  local dir state out pid
+  dir=$(make_jev_signal_case jev-routine-floor-high jevrs6 "● Bash(make lint)
+Running: bash tests/x.sh" "working: implementing")
+  state="$dir/state"; out="$dir/watch.out"
+  printf '0.95\n' > "$dir/config/jev-wedge-floor"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "a 0.92 verdict under a 0.95 floor did not forward: $(cat "$out")"
+  grep -F "signal: $state/jevrs6.status" "$out" >/dev/null \
+    || fail "the below-floor forward was not today's reason: $(cat "$out")"
+
+  dir=$(make_jev_signal_case jev-routine-floor-low jevrs7 "● Bash(make lint)
+Running: bash tests/x.sh" "working: implementing")
+  state="$dir/state"; out="$dir/watch.out"
+  printf '0.5\n' > "$dir/config/jev-wedge-floor"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.6 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "a 0.6 verdict under a 0.5 floor did not absorb: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || { reap "$pid"; fail "the at-floor absorb printed a wake reason: $(cat "$out")"; }
+  grep -F 'Jev pre-screen: actively-working at confidence 0.6' "$state/.watch-triage.log" >/dev/null \
+    || { reap "$pid"; fail "the config-lowered floor did not absorb at 0.6"; }
+  reap "$pid"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional watcher stop"
+  pass "the routine consults read the same config/jev-wedge-floor, compared inclusively"
+}
+
+# A secondmate's .status append is the parent-directed reply stream and is never
+# classified: it surfaces with zero consults whatever the screener would say.
+test_jev_routine_signal_secondmate_status_never_classified() {
+  local dir state out pid
+  dir=$(make_jev_signal_case jev-routine-mate jevrs8 "● Bash(make lint)
+Running: bash tests/x.sh" "working: mate progress note")
+  state="$dir/state"; out="$dir/watch.out"
+  printf 'window=test:fm-jevrs8\nkind=secondmate\n' > "$state/jevrs8.meta"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.99 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "a secondmate status signal did not surface: $(cat "$out")"
+  grep -F "signal: $state/jevrs8.status" "$out" >/dev/null \
+    || fail "the secondmate signal was not today's byte-identical reason: $(cat "$out")"
+  [ ! -s "$dir/jev.log" ] || fail "a secondmate status signal was classified: $(cat "$dir/jev.log")"
+  pass "a secondmate .status signal surfaces with zero pre-screen consults"
+}
+
+# Stale-path widening: the FIRST inconclusive sight of a static pane consults
+# the same pre-screen. A high-confidence actively-working read absorbs and
+# starts the ordinary wedge timer, so the existing one-defer wedge budget stays
+# the bounded backstop: the next threshold window defers once, the one after
+# escalates with today's byte-identical reason.
+test_jev_first_sight_stale_absorbed_then_bounded_chain() {
+  local dir state key out pid back window i
+  window="test:fm-jevfs1"
+  dir=$(make_case jev-fresh-sight)
+  state="$dir/state"; key=$(printf '%s' "$window" | tr ':/.' '___'); out="$dir/watch.out"
+  printf '%s' '● Bash(make lint)
+● Edit(bin/fm-watch.sh)
+Running: bash tests/fm-watch.test.sh' > "$dir/pane.txt"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/jevfs1.meta"
+  printf 'working: implementing\n' > "$state/jevfs1.status"
+  prime_status_seen "$state" "$state/jevfs1.status"
+  mkdir -p "$dir/config"
+  make_fake_jev_screener "$dir" >/dev/null
+  : > "$dir/jev.log"
+  PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$dir/fakebin/fm-crew-state.sh" \
+    FM_CONFIG_OVERRIDE="$dir/config" FM_JEV_WEDGE_SCREENER="$dir/jev-screen-fake" \
+    FM_FAKE_JEV_LOG="$dir/jev.log" FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 \
+    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' "$WATCH" > "$out" &
+  pid=$!
+  i=0
+  while [ "$i" -lt 100 ]; do
+    grep -Fq 'first sight' "$state/.watch-triage.log" 2>/dev/null && break
+    kill -0 "$pid" 2>/dev/null || { reap "$pid"; fail "the watcher surfaced a first-sight stale the pre-screen cleared: $(cat "$out")"; }
+    sleep 0.1; i=$((i + 1))
+  done
+  [ "$i" -lt 100 ] || { reap "$pid"; fail "the first-sight stale was never pre-screened"; }
+  [ ! -s "$out" ] || { reap "$pid"; fail "the first-sight absorb printed a wake reason: $(cat "$out")"; }
+  [ ! -s "$state/.wake-queue" ] || { reap "$pid"; fail "the first-sight absorb enqueued a durable wake"; }
+  [ -s "$state/.stale-since-$key" ] \
+    || { reap "$pid"; fail "the first-sight absorb did not start the wedge timer"; }
+  grep -F 'Jev pre-screen: actively-working at confidence 0.92, first sight' "$state/.watch-triage.log" >/dev/null \
+    || { reap "$pid"; fail "the first-sight triage line did not name the screen verdict"; }
+  reap "$pid"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional phase-A watcher stop"
+
+  # Phase B: the wedge timer crosses its threshold; the wedge path's own
+  # consult defers exactly once, so no helm turn yet.
+  back=$(( $(date +%s) - 500 ))
+  echo "$back" > "$state/.stale-since-$key"
+  set_mtime "$back" "$state/.stale-since-$key"
+  : > "$out"
+  PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$dir/fakebin/fm-crew-state.sh" \
+    FM_CONFIG_OVERRIDE="$dir/config" FM_JEV_WEDGE_SCREENER="$dir/jev-screen-fake" \
+    FM_FAKE_JEV_LOG="$dir/jev.log" FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 \
+    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "the post-first-sight wedge window did not defer: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || { reap "$pid"; fail "the wedge deferral printed a wake reason: $(cat "$out")"; }
+  [ "$(cat "$state/.writing-deferred-$key" 2>/dev/null || true)" = 1 ] \
+    || { reap "$pid"; fail "the wedge consult did not record its one-defer budget"; }
+  reap "$pid"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional phase-B watcher stop"
+
+  # Phase C: a second consecutive defer is refused; today's wedge escalation.
+  back=$(( $(date +%s) - 500 ))
+  echo "$back" > "$state/.stale-since-$key"
+  set_mtime "$back" "$state/.stale-since-$key"
+  : > "$out"
+  PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$dir/fakebin/fm-crew-state.sh" \
+    FM_CONFIG_OVERRIDE="$dir/config" FM_JEV_WEDGE_SCREENER="$dir/jev-screen-fake" \
+    FM_FAKE_JEV_LOG="$dir/jev.log" FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 \
+    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "the second consecutive defer did not escalate: $(cat "$out")"
+  grep -E "^stale: test:fm-jevfs1 \(idle [0-9]+s, possible wedge, escalation 1\)$" "$out" >/dev/null \
+    || fail "the final escalation was not today's byte-identical wedge reason: $(cat "$out")"
+  pass "a first-sight stale the pre-screen clears absorbs into the existing bounded wedge chain"
+}
+
+# A non-working verdict on the first inconclusive sight forwards immediately,
+# exactly as the surface does today: the finish is never left waiting.
+test_jev_first_sight_stale_waiting_pane_surfaced() {
+  local dir state out pid window
+  window="test:fm-jevfs2"
+  dir=$(make_case jev-fresh-sight-wait)
+  state="$dir/state"; out="$dir/watch.out"
+  printf '%s' 'idle at prompt, nothing running' > "$dir/pane.txt"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/jevfs2.meta"
+  printf 'working: implementing\n' > "$state/jevfs2.status"
+  prime_status_seen "$state" "$state/jevfs2.status"
+  mkdir -p "$dir/config"
+  make_fake_jev_screener "$dir" >/dev/null
+  : > "$dir/jev.log"
+  PATH="$dir/fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$dir/fakebin/fm-crew-state.sh" \
+    FM_CONFIG_OVERRIDE="$dir/config" FM_JEV_WEDGE_SCREENER="$dir/jev-screen-fake" \
+    FM_FAKE_JEV_LOG="$dir/jev.log" FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.9 \
+    FM_FAKE_JEV_CHOICE=waiting-at-prompt \
+    FM_STALE_ESCALATE_SECS=240 FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "a waiting first-sight stale was not surfaced: $(cat "$out")"
+  grep -E "^stale: test:fm-jevfs2$" "$out" >/dev/null \
+    || fail "the forwarded first-sight stale was not today's byte-identical reason: $(cat "$out")"
+  pass "a waiting first-sight stale forwards immediately with today's reason"
+}
+
 # The busy-over-age path reaches the same consult: a busy pane with no completed
 # turn past BUSY_TURN_MAX_SECS hands its crossed bound to the wedge timer with
 # the pane tail in hand, so the pre-screen covers it too.
@@ -539,3 +864,12 @@ test_jev_defer_budget_clears_on_pane_hash_change
 test_jev_defer_budget_clears_after_a_delivered_resurface
 test_jev_defer_floor_comes_from_config
 test_jev_prescreen_covers_the_busy_over_age_path
+test_jev_routine_signal_active_pane_absorbed
+test_jev_routine_signal_waiting_pane_forwarded
+test_jev_routine_signal_captain_relevant_never_consulted
+test_jev_routine_signal_afk_never_consulted
+test_jev_routine_signal_jev_unreachable_forwards
+test_jev_routine_signal_floor_from_config
+test_jev_routine_signal_secondmate_status_never_classified
+test_jev_first_sight_stale_absorbed_then_bounded_chain
+test_jev_first_sight_stale_waiting_pane_surfaced
