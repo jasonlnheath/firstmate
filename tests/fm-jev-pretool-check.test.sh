@@ -847,10 +847,10 @@ rm -rf /usr'
   mkdir -p "$wt_dir/bin"
   cp "$ROOT/bin/fm-jev-pretool-check.sh" "$wt_dir/bin/" 2>/dev/null || true
   cp "$ROOT/bin/fm-jev-gate-policy.mjs" "$wt_dir/bin/" 2>/dev/null || true
-  gt_out=$(cd "$FIX_HOME" && printf 'rm -rf /' | \
+  (cd "$FIX_HOME" && printf 'rm -rf /' | \
     env FM_ROOT_OVERRIDE="$wt_dir" FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
       FM_JEV_COMMAND_SCREENER="$FAKE_SCREENER" \
-      "$wt_dir/bin/fm-jev-pretool-check.sh" 2> "$TMP_ROOT/s1-err")
+      "$wt_dir/bin/fm-jev-pretool-check.sh" > /dev/null 2> "$TMP_ROOT/s1-err")
   gt_code=$?
   expect_code 0 "$gt_code" "GATE-S1 exit"
   assert_no_state "GATE-S1"
@@ -889,10 +889,10 @@ rm -rf /usr'
 {
   reset_gate_state
   sans_path=$(fm_test_base_path_sans "$BASE_PATH" git)
-  gt_out=$(cd "$FIX_HOME" && printf 'rm -rf /' | \
+  (cd "$FIX_HOME" && printf 'rm -rf /' | \
     env PATH="$sans_path" FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
       FM_JEV_COMMAND_SCREENER="$FAKE_SCREENER" \
-      "$TRANSPORT" 2> "$TMP_ROOT/s5-err")
+      "$TRANSPORT" >/dev/null 2> "$TMP_ROOT/s5-err")
   gt_code=$?
   expect_code 0 "$gt_code" "GATE-S5 exit"
   assert_no_state "GATE-S5"
@@ -906,10 +906,10 @@ rm -rf /usr'
   mkdir -p "$failing_bin"
   printf '#!/usr/bin/env bash\nexit 1\n' > "$failing_bin/git"
   chmod +x "$failing_bin/git"
-  gt_out=$(cd "$FIX_HOME" && printf 'rm -rf /' | \
+  (cd "$FIX_HOME" && printf 'rm -rf /' | \
     env PATH="$failing_bin:$BASE_PATH" FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
       FM_JEV_COMMAND_SCREENER="$FAKE_SCREENER" \
-      "$TRANSPORT" 2> "$TMP_ROOT/s6-err")
+      "$TRANSPORT" >/dev/null 2> "$TMP_ROOT/s6-err")
   gt_code=$?
   expect_code 0 "$gt_code" "GATE-S6 exit"
   assert_no_state "GATE-S6"
@@ -1177,10 +1177,10 @@ rm -rf /usr'
   mkdir -p "$wt_dir/bin"
   cp "$ROOT/bin/fm-jev-pretool-check.sh" "$wt_dir/bin/"
   cp "$ROOT/bin/fm-jev-gate-policy.mjs" "$wt_dir/bin/"
-  v25_out=$(cd "$FIX_HOME" && printf 'rm -rf /' | \
+  (cd "$FIX_HOME" && printf 'rm -rf /' | \
     env FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
       FM_JEV_COMMAND_SCREENER="$FAKE_SCREENER" \
-      "$wt_dir/bin/fm-jev-pretool-check.sh" 2> "$TMP_ROOT/v25-err")
+      "$wt_dir/bin/fm-jev-pretool-check.sh" >/dev/null 2> "$TMP_ROOT/v25-err")
   v25_code=$?
   expect_code 0 "$v25_code" "V2-25 exit"
   assert_no_state "V2-25"
@@ -1332,13 +1332,13 @@ fm_live_gate opt-in FM_JEV_GATE_LIVE curl
 {
   reset_gate_state
   set +e
-  live_out=$(cd "$FIX_HOME" && printf 'sudo apt-get upgrade' | \
+  (cd "$FIX_HOME" && printf 'sudo apt-get upgrade' | \
     env FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
-      "$TRANSPORT" 2> "$TMP_ROOT/live-err")
+      "$TRANSPORT" >/dev/null 2> "$TMP_ROOT/live-err")
   live_code=$?
   set -e
   expect_code 0 "$live_code" "LIVE-1 exit"
   pass "LIVE-1: real-API smoke completed without a hang"
-fi
+}
 
 echo "All tests complete."

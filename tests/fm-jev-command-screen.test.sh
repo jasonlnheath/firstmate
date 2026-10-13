@@ -12,6 +12,10 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# The no-key rows need a truly keyless environment; the ambient helm shell may
+# carry a real TYPESAFE_API_KEY.
+unset TYPESAFE_API_KEY
+
 TOOL="$ROOT/bin/fm-jev-command-screen.sh"
 TMP_ROOT=$(fm_test_tmproot fm-jev-command-screen)
 HOME_DIR="$TMP_ROOT/home"

@@ -18,7 +18,6 @@ FIX_STATE="$TMP_ROOT/state"
 HELPER="$ROOT/bin/fm-jev-gate-override.sh"
 TRANSPORT_SRC="$ROOT/bin/fm-jev-pretool-check.sh"
 POLICY_SRC="$ROOT/bin/fm-jev-gate-policy.mjs"
-BASE_PATH=$PATH
 
 mkdir -p "$FIX_STATE"
 

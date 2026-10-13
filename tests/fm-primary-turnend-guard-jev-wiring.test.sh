@@ -21,7 +21,6 @@ W_STATE="$TMP_ROOT/state"
 W_CONFIG="$TMP_ROOT/config"
 W_LOG="$TMP_ROOT/log"
 W_SCREENER="$TMP_ROOT/fake-screener.sh"
-BASE_PATH=$PATH
 PI_PACKAGE_DIR=${FM_PI_PACKAGE_DIR:-"$(npm root -g 2>/dev/null)/@earendil-works/pi-coding-agent"}
 TRANSPORT_SRC="$ROOT/bin/fm-jev-pretool-check.sh"
 POLICY_SRC="$ROOT/bin/fm-jev-gate-policy.mjs"
@@ -352,7 +351,8 @@ JS
   tail -n 3 "$W_LOG/gate.calls" > "$TMP_ROOT/w8-tail" || true
   assert_not_contains "$(cat "$TMP_ROOT/w8-tail" 2>/dev/null)" "override: 1" \
     "WIRE-8 override flag after shutdown"
-  if ls "$W_STATE/jev-gate/" 2>/dev/null | grep -qi 'override'; then
+  override_leftovers=("$W_STATE/jev-gate/"*override*)
+  if [ -e "${override_leftovers[0]}" ]; then
     fail "WIRE-8: an override file survived shutdown"
   fi
   pass "WIRE-8: in-memory window dies with the session"
@@ -416,7 +416,7 @@ JS
     || fail "WIRE-11: hung gate wedged the tool path"
   gate_pid=$(cat "$W_LOG/gate.pid" 2>/dev/null || true)
   if [ -n "$gate_pid" ]; then
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
       kill -0 "$gate_pid" 2>/dev/null || break
       sleep 0.2
     done
@@ -528,7 +528,8 @@ JS
   env "${REAL_STACK_ENV[@]}" scenario o3 "$TMP_ROOT/o3.js" > "$TMP_ROOT/o3-out"
   jq -e '.after.block == true' "$TMP_ROOT/o3-out" >/dev/null \
     || fail "GATE-O3: fresh session did not block"
-  if ls "$W_STATE/jev-gate/" 2>/dev/null | grep -qi 'override'; then
+  override_leftovers=("$W_STATE/jev-gate/"*override*)
+  if [ -e "${override_leftovers[0]}" ]; then
     fail "GATE-O3: override authority file present after shutdown"
   fi
   pass "GATE-O3: no window file survives the session"
@@ -539,7 +540,7 @@ JS
   reset_wire_log
   arm_activation
   set +e
-  direct_out=$(printf 'rm -rf /' | FM_JEV_GATE_OVERRIDE=1 "$W_BIN/gate-stub.sh" 2>/dev/null)
+  printf 'rm -rf /' | FM_JEV_GATE_OVERRIDE=1 "$W_BIN/gate-stub.sh" >/dev/null 2>&1
   direct_code=$?
   set -e
   expect_code 0 "$direct_code" "GATE-O4 direct invocation"
