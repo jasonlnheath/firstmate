@@ -1,0 +1,86 @@
+# Jev gate — development-verification suites (2026-10-13T02:30Z)
+
+== tests/fm-jev-command-screen.test.sh ==
+1..15
+ok - SCREEN-10: absent key makes no network call
+ok - SCREEN-12: request pins input, window, and the four-option criteria
+ok - SCREEN-14: FM_JEV_GATE_TIMEOUT_S reaches curl --max-time
+All tests complete.
+
+== tests/fm-jev-pretool-check.test.sh ==
+1..115
+ok - GATE-R19: event carries pattern and cmd_sha256
+ok - GATE-J1: event carries choice, confidence, floor
+ok - GATE-J2: low-confidence pass recorded
+ok - GATE-J8: degraded regex-only posture recorded
+ok - GATE-J10a: screener input carries the command text verbatim
+ok - GATE-J10b: oversized command capped with the truncated flag
+ok - GATE-B1: free allow without a consult
+ok - GATE-B2: quoted marker text stays a free allow
+ok - GATE-B3: echo payload stays a free allow
+ok - GATE-B6: interpreter payload stays a free allow
+ok - GATE-B7: empty command has no effects
+ok - GATE-B8: override tooling passes free
+ok - GATE-B9: printf payload stays a free allow
+ok - GATE-B10: watcher lifecycle commands pass free
+ok - GATE-B11: send-keys payload stays a free allow
+ok - GATE-B12: large command judged with no event
+ok - GATE-C5: malformed floors fall back to 0.8
+ok - GATE-C7: absent activation is fully inert
+ok - GATE-T1: screener timeout fails open with a timeout event
+ok - GATE-T4: override window skips the consult
+ok - GATE-P1: counters and a single event recorded
+ok - GATE-P2: Jev block event matches the pinned field set
+ok - GATE-P3: event cmd capped with truncated flag
+ok - GATE-P4: rotation, fresh chain, and the 3-rotation cap
+ok - GATE-P6: 20 sequential evaluations recorded cleanly
+ok - GATE-S1: linked worktree scope is inert
+ok - GATE-S5: missing git is inert
+ok - GATE-S6: failing git is inert
+ok - V2-17: self-alarm bounded the evaluation and reaped the child
+ok - V2-18: shadow records the would-block without denying
+ok - V2-21: breaker opens after 3 failures and suspends consults
+ok - V2-22: expired cooldown probes and closes on success
+ok - V2-24: destructive token outside argv recorded as near_miss
+ok - V2-25: worktree-derived scope is inert without overrides
+ok - V2-29: discard-shaped git blocks; teardown force consults
+ok - V2-37: unspaced redirect targets hit the protected-path rule
+ok - V2-38: /dev carve-outs pass without an event
+ok - V2-39: unspaced 2>/dev/null allows
+ok - V2-42: deny reason carries no cache hint
+ok - V2-43: cache-out flag forwards the cache line
+ok - V2-44a: dead-holder lock stolen and cleaned
+ok - V2-44b: live fresh holder keeps its lock
+ok - PERF-4: wall-clock kill fired and reaped the child
+skip: live: opt-in; set FM_JEV_GATE_LIVE=1 to run
+
+== tests/fm-jev-gate-override.test.sh ==
+1..2
+ok - GATE-O6: off without a window is an idempotent no-op
+ok - GATE-O7: status shows window, counters, breaker, chain, proxy
+All tests complete.
+
+== tests/fm-primary-turnend-guard-jev-wiring.test.sh ==
+1..21
+ok - WIRE-1: denying gate transport blocks with its reason
+ok - WIRE-2: disarmed pilot never spawns the gate
+ok - WIRE-3: non-bash tools skip the gate
+ok - WIRE-4: empty command spawns nothing
+ok - WIRE-5: allowing gate transport keeps the call silent
+ok - WIRE-6: broken gate transport fails open
+ok - WIRE-7: seat ordering short-circuits at the cd guard
+ok - WIRE-8: in-memory window dies with the session
+ok - WIRE-9: multi-line command delivered byte-exact
+ok - WIRE-10: foreign lock holder keeps the seat out
+ok - WIRE-11: wall-clock kill keeps the tool path alive
+ok - WIRE-12: operator-only command requires a reason and opens the window
+ok - WIRE-13: warm decision cache skips the repeat screener consult
+ok - WIRE-14: cached destructive verdict re-blocks without a consult
+ok - GATE-O1: operator window turns a block into a logged pass
+ok - GATE-O2: off closes the window and blocks resume
+ok - GATE-O3: no window file survives the session
+ok - GATE-O4: authority stays in the seat's memory
+ok - GATE-O5: deny text teaches nothing about bypassing
+ok - GATE-O8: seat-published view shows reason and TTL
+ok - GATE-O9: window pass skips the consult and logs the unknown
+All tests complete.
