@@ -104,6 +104,7 @@ const SCREENER_INPUT_CAP_BYTES = 8192;
 const BREAKER_FAILURE_THRESHOLD = 3;
 const BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
 const BLOCK_SHA_CAP = 256;
+const LOCK_STALE_MS = 30 * 1000;
 
 // ---- CLI -----------------------------------------------------------------------
 
@@ -148,6 +149,15 @@ const sha256Hex = (text) => createHash("sha256").update(text, "utf8").digest("he
 
 const sleepMs = (ms) =>
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function normalizeBytes(text) {
   return text
@@ -244,11 +254,11 @@ function tokenizeSegment(segment) {
         op += segment[i];
         i += 1;
       }
-      while (i + 1 < segment.length && segment[i + 1] === " ") i += 1;
+      while (i < segment.length && segment[i] === " ") i += 1;
       let target = "";
       let tSingle = false;
       let tDouble = false;
-      for (let j = i + 1; j < segment.length; j += 1) {
+      for (let j = i; j < segment.length; j += 1) {
         const tch = segment[j];
         if (tch === "'" && !tDouble) {
           tSingle = !tSingle;
@@ -263,7 +273,7 @@ function tokenizeSegment(segment) {
         }
       }
       if (target.length > 0) redirects.push({ op, target: makeToken(target) });
-      i += target.length;
+      i += target.length - 1;
     } else {
       raw += ch;
     }
@@ -511,11 +521,50 @@ class Store {
         sleepMs(5);
       }
     }
+    if (!acquired && this.lockIsStale()) {
+      try {
+        rmSync(this.lockPath, { force: true, recursive: true });
+        mkdirSync(this.lockPath, { mode: 0o700 });
+        acquired = true;
+      } catch {}
+    }
     try {
+      if (acquired) {
+        try {
+          writeFileSync(join(this.lockPath, "pid"), `${process.pid}\n`, { mode: 0o600 });
+        } catch {}
+      }
       return fn();
     } finally {
-      if (acquired) rmSync(this.lockPath, { force: true, recursive: true });
+      if (acquired) {
+        try {
+          if (readFileSync(join(this.lockPath, "pid"), "utf8").trim() === `${process.pid}`) {
+            rmSync(this.lockPath, { force: true, recursive: true });
+          }
+        } catch {
+          rmSync(this.lockPath, { force: true, recursive: true });
+        }
+      }
     }
+  }
+
+  // A lock orphaned by one of the designed hard kills (the transport's
+  // fm_run_timed bound, the seat's wall clock) must not wedge every later
+  // evaluation: a lock whose recorded holder is dead, or that has outlived
+  // every wall-clock bound the design allows, is stale and may be stolen.
+  // A live, fresh holder means genuine concurrency: not stale.
+  lockIsStale() {
+    let liveHolder = false;
+    try {
+      const holder = Number(readFileSync(join(this.lockPath, "pid"), "utf8").trim());
+      if (Number.isInteger(holder) && holder > 0 && pidAlive(holder)) liveHolder = true;
+    } catch {}
+    try {
+      if (Date.now() - statSync(this.lockPath).mtimeMs >= LOCK_STALE_MS) return true;
+    } catch {
+      return true;
+    }
+    return !liveHolder;
   }
 
   bumpCounter(key, by = 1) {
@@ -776,9 +825,9 @@ function inProtectedSet(path, protectedPaths) {
 
 // ---- markers -------------------------------------------------------------------
 
-function findMarker(cmds, analysis, primaryCwd, cwd, home, protectedPaths) {
+function findMarker(cmds, analysis, primaryCwd) {
   for (const entry of cmds) {
-    const { cmd, resolved, anyProtected } = entry;
+    const { cmd, anyProtected } = entry;
     const words = cmd.words;
     const argv0 = basename(words[0].text);
     const { longs, flags } = classifyFlags(words);
@@ -811,7 +860,6 @@ function findMarker(cmds, analysis, primaryCwd, cwd, home, protectedPaths) {
     if (fmName === "fm-teardown") return "fm-teardown";
     if (fmName.startsWith("fm-") &&
       flags.some((f) => ["--force", "--discard", "--allow-red"].includes(f))) return fmName;
-    if (resolved.length > 0 && argv0 === "sh" && false) return "shell-file";
   }
   const argv0s = cmds.map((c) => basename(c.cmd.words[0].text));
   const downloaders = argv0s.filter((a) => ["curl", "wget"].includes(a));
@@ -939,7 +987,7 @@ async function main() {
     return;
   }
 
-  const marker = findMarker(resolved.commands, analysis, primaryCwd, cwd, home, protectedPaths);
+  const marker = findMarker(resolved.commands, analysis, primaryCwd);
 
   if (cfg.overrideActive) {
     if (marker) {
@@ -1092,7 +1140,9 @@ function findRegexHit(resolved, protectedPaths, primaryCwd) {
     }
     if (argv0 === "git" &&
       ((words[1]?.text === "reset" && longs.has("hard")) ||
-        (words[1]?.text === "clean" && words.slice(2).some((w) => /^-f|^--force/.test(w.text)))) &&
+        (words[1]?.text === "clean" && words.slice(2).some((w) => /^-f|^--force/.test(w.text))) ||
+        (words[1]?.text === "checkout" && words.slice(2).some((w) => w.text === "--")) ||
+        words[1]?.text === "restore") &&
       primaryCwd) {
       return {
         code: "git-discard-primary",
@@ -1102,7 +1152,9 @@ function findRegexHit(resolved, protectedPaths, primaryCwd) {
   }
   for (const entry of resolved.redirectTargets) {
     if (!entry.redirect.op.includes(">")) continue;
-    const hit = entry.resolved.find((p) => inProtectedSet(p, protectedPaths));
+    const hit = entry.resolved.find(
+      (p) => inProtectedSet(p, protectedPaths) &&
+        !["/dev/null", "/dev/stdout", "/dev/stderr"].includes(p));
     if (hit) {
       return {
         code: "redirect-protected",

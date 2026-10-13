@@ -765,12 +765,12 @@ export default function (pi: ExtensionAPI) {
     }
     expireJevOverrideIfDue();
     const gate = await runJevGateCheck(command, jevOverrideWindow, jevDecisionCache);
+    const cacheMatch = gate.stdout.match(/^cache\t(\S+)\t([0-9.]+)$/m);
+    if (cacheMatch) {
+      const sha = createHash("sha256").update(command).digest("hex");
+      jevDecisionCache.set(sha, { choice: cacheMatch[1], confidence: Number(cacheMatch[2]) });
+    }
     if (gate.code !== 2) {
-      const cacheMatch = gate.stdout.match(/^cache\t(\S+)\t([0-9.]+)$/m);
-      if (cacheMatch) {
-        const sha = createHash("sha256").update(command).digest("hex");
-        jevDecisionCache.set(sha, { choice: cacheMatch[1], confidence: Number(cacheMatch[2]) });
-      }
       return {};
     }
     return { block: true, reason: gate.stderr.trim() || "denied by the Jev damage-control gate" };

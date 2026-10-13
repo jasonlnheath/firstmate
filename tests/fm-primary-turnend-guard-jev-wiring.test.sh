@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Wiring tests for the Jev gate seat in .pi/extensions/fm-primary-turnend-guard.ts.
 #
-# Owns WIRE-1..12 and the wiring half of the O suite (GATE-O1..O5, GATE-O8,
+# Owns WIRE-1..14 and the wiring half of the O suite (GATE-O1..O5, GATE-O8,
 # GATE-O9) per plan v2 §12.10/§12.9. Node-import harness in the
 # fm-calm-pi-extension pattern: a fixture project holds a copy of the modified
 # extension with a fake `pi` object capturing handlers, recording fakes for
@@ -203,7 +203,7 @@ JS
 cat "$TMP_ROOT/preamble.js" > "$W_PROJ/preamble.mjs"
 
 # common env for every run: state/config isolation plus the checker fakes.
-echo "1..19"
+echo "1..21"
 
 # ---- WIRE rows (stub gate) -----------------------------------------------------
 
@@ -452,6 +452,55 @@ JS
   [ "$override_lines" -eq 1 ] \
     || fail "WIRE-12: expected exactly one gated call with the override flag"
   pass "WIRE-12: operator-only command requires a reason and opens the window"
+}
+
+# WIRE-13: with the real transport, the seat's decision cache fills from the
+# forwarded cache hint line: the same marker command twice consults the
+# screener once.
+{
+  reset_wire_log
+  arm_activation
+  cp "$TRANSPORT_SRC" "$W_BIN/fm-jev-pretool-check.sh"
+  cp "$POLICY_SRC" "$W_BIN/fm-jev-gate-policy.mjs"
+  cp "$ROOT/bin/fm-timeout-lib.sh" "$W_BIN/fm-timeout-lib.sh"
+  cat > "$TMP_ROOT/w13.js" <<'JS'
+import { load, callTool } from "./preamble.mjs";
+const { handlers } = await load();
+const first = await callTool(handlers, "bash", "sudo apt-get upgrade");
+const second = await callTool(handlers, "bash", "sudo apt-get upgrade");
+console.log(JSON.stringify({ first, second }));
+JS
+  FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" \
+    scenario w13 "$TMP_ROOT/w13.js" > "$TMP_ROOT/w13-out"
+  jq -e '(.first | length) == 0 and (.second | length) == 0' "$TMP_ROOT/w13-out" >/dev/null \
+    || fail "WIRE-13: allowed marker command was not silent"
+  [ "$(wc -l < "$W_LOG/screen.calls")" -eq 1 ] \
+    || fail "WIRE-13: cache did not skip the repeat consult"
+  pass "WIRE-13: warm decision cache skips the repeat screener consult"
+}
+
+# WIRE-14: a destructive verdict blocks AND fills the cache; the identical
+# repeat blocks again without a second consult.
+{
+  reset_wire_log
+  arm_activation
+  cat > "$TMP_ROOT/w14.js" <<'JS'
+import { load, callTool } from "./preamble.mjs";
+const { handlers } = await load();
+const first = await callTool(handlers, "bash", "sudo apt-get upgrade");
+const second = await callTool(handlers, "bash", "sudo apt-get upgrade");
+console.log(JSON.stringify({ first, second }));
+JS
+  FAKE_SCREEN_CHOICE=destructive FAKE_SCREEN_CONF=0.95 \
+    FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" \
+    scenario w14 "$TMP_ROOT/w14.js" > "$TMP_ROOT/w14-out"
+  jq -e '.first.block == true and .second.block == true' "$TMP_ROOT/w14-out" >/dev/null \
+    || fail "WIRE-14: destructive marker did not block both times"
+  jq -r '.second.reason // ""' "$TMP_ROOT/w14-out" > "$TMP_ROOT/w14-reason"
+  assert_not_contains "$(cat "$TMP_ROOT/w14-reason")" "cache" "WIRE-14 deny reason clean"
+  [ "$(wc -l < "$W_LOG/screen.calls")" -eq 1 ] \
+    || fail "WIRE-14: repeat block re-consulted the screener"
+  pass "WIRE-14: cached destructive verdict re-blocks without a consult"
 }
 
 # ---- GATE O rows (real transport + policy + fake screener) ----------------------

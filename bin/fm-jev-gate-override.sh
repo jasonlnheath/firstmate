@@ -10,8 +10,8 @@
 #                             chain verification, and the pilot readout lines
 #   off                       scripted close: clears the seat-published view
 #                             and records an override_close audit event
-#   record <open|close|expire> [reason...]
-#                             append an audit event through the transport
+#                             (advisory - the window itself ends only via
+#                             /jev-override off, TTL expiry, or shutdown)
 #
 # State lives under ${FM_STATE_OVERRIDE:-${FM_HOME:-repo}/state}/jev-gate/.
 # status exits non-zero when the event hash chain fails verification.
@@ -21,7 +21,6 @@ usage() {
   cat <<'EOF'
 Usage: fm-jev-gate-override.sh status
        fm-jev-gate-override.sh off
-       fm-jev-gate-override.sh record <open|close|expire> [reason...]
 EOF
 }
 
@@ -122,21 +121,9 @@ cmd_off() {
   exit 0
 }
 
-cmd_record() {
-  local kind=${1:-}
-  shift 2>/dev/null || true
-  case "$kind" in
-    open|close|expire) ;;
-    *) echo "error: record needs open|close|expire" >&2; exit 2 ;;
-  esac
-  [ -x "$TRANSPORT" ] || { echo "error: transport not available: $TRANSPORT" >&2; exit 2; }
-  exec "$TRANSPORT" record-override "$kind" "$@"
-}
-
 case "${1:-}" in
   status) shift; cmd_status "$@" ;;
   off) cmd_off ;;
-  record) shift; cmd_record "$@" ;;
   -h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

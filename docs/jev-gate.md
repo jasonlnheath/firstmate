@@ -26,14 +26,14 @@ Outside that scope the gate does not exist; crewmate workers are never gated by 
 
 The regex stage recognizes a closed list of catastrophic shapes; each deny carries a `[JG-Rn]` label and cites its stage and confidence:
 
-- `rm-protected` — `rm` with `-r`/`-rf` semantics aimed at `/`, `$HOME`, `~`, `*`, or a git root.
+- `rm-protected` — forced recursive `rm` (`-rf`, `-r --force`) whose operand resolves into a protected path: `/`, system roots, `$HOME`/`~`, the firstmate home, its `state`/`data`/`projects`/`config`/`.env`, or key home dotdirs (`~/.ssh`, `~/.gnupg`, and similar). Unforced `rm -r` and glob targets like `*` consult the screener instead.
 - `git-push-force` — any forced push (`--force`, `-f`, `+refspec`).
 - `dd-device` — `dd of=` aimed at a device node.
 - `mkfs` — any `mkfs.*` invocation.
 - `partition-write` — `parted`/`fdisk`/`sgdisk`/`wipefs` writes.
-- `chmod-recursive-root` — recursive permission changes on `/` or `$HOME`.
-- `redirect-protected` — output redirection into a protected path, including `state/.lock` inside the firstmate home.
-- `overwrite-protected` — `cp`/`mv`/`tee`/`truncate` overwrite of a protected path.
+- `chmod-recursive-root` — recursive `chmod` to mode `777` or `000` on a protected path; other recursive permission changes consult.
+- `redirect-protected` — output redirection into a protected path (`/dev/null`, `/dev/stdout`, and `/dev/stderr` are carved out), including `state/.lock` inside the firstmate home.
+- `overwrite-protected` — `shred`/`truncate` overwrite of a protected path; `cp`/`mv`/`tee` overwrites consult.
 - `power-op` — `shutdown`, `reboot`, `halt`, `poweroff`.
 - `git-discard-primary` — discard-shaped git operations (`reset --hard`, `checkout -- .`, `clean -fd`, `restore`, and `fm-teardown --force`) that could tear down unlanded work in the primary checkout.
 
@@ -56,9 +56,9 @@ A wall-clock self-alarm (default: timeout + 5 seconds) reaps a hung evaluation a
 
 The captain can open a bounded override window in the helm session with `/jev-override <reason> [--ttl N]` (1-60 minutes, default 15).
 While the window is open, `destructive` verdicts that would block are recorded and allowed instead.
-The window lives in the extension's memory only; the shell helper `bin/fm-jev-gate-override.sh` reports status (`status`), requests a close (`off`), and appends the extension-published audit records (`record`).
+The window lives in the extension's memory only; the shell helper `bin/fm-jev-gate-override.sh` reports status (`status`) and requests a close (`off`).
 The published `state/jev-gate/override-status` view is advisory; the extension never reads it back as authority.
-The close request is honored only in the safe (close) direction: it can end a window early, never extend or start one.
+The close request is advisory too: `off` clears the published view and records an `override_close` audit event, but the in-memory window ends only via `/jev-override off`, TTL expiry, or session shutdown.
 
 ## Audit records
 

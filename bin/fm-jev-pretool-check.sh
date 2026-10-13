@@ -24,7 +24,10 @@
 #            or policy owner, an invalid or empty policy response, or a policy
 #            evaluation that hits the transport's own wall-clock bound.
 #   DENY   - exit 2, the plain-text deny reason (with its confidence line) on
-#            stderr, and stdout left empty.
+#            stderr, and stdout left empty. The one stdout exception: when
+#            FM_JEV_GATE_CACHE_OUT=1, the policy's trailing cache hint line
+#            (consult verdicts only) is forwarded verbatim for the seat's
+#            per-session decision cache.
 #
 # Environment:
 #   FM_ROOT_OVERRIDE / FM_HOME / FM_STATE_OVERRIDE / FM_CONFIG_OVERRIDE are
@@ -33,6 +36,9 @@
 #   carries the extension seat's in-memory operator window; the flag only ever
 #   affects the invocation the seat itself spawns. FM_JEV_GATE_CACHE carries
 #   the seat's cached verdict hint as "<choice>,<confidence>".
+#   FM_JEV_GATE_CACHE_OUT=1 asks the transport to re-emit the policy's
+#   trailing cache hint line on stdout so the seat can keep its decision
+#   cache warm; without it the hint is discarded.
 set -u
 
 usage() {
@@ -161,14 +167,34 @@ POLICY_OUTPUT=$(printf '%s' "$CMD" | fm_run_timed "$WALL_S" node "$POLICY" "${PO
 [ -n "$POLICY_OUTPUT" ] || exit 0
 
 TAB=$(printf '\t')
-DECISION=${POLICY_OUTPUT%%"$TAB"*}
+NL='
+'
+
+# A consult verdict appends one trailing cache hint line after the decision
+# line. It is never part of the decision: strip it before parsing (so the
+# deny reason stays clean), and forward it on stdout only when the seat
+# asked for it through FM_JEV_GATE_CACHE_OUT.
+DECISION_OUTPUT=$POLICY_OUTPUT
+LAST_LINE=${POLICY_OUTPUT##*"$NL"}
+case "$LAST_LINE" in
+  cache"$TAB"*)
+    DECISION_OUTPUT=${POLICY_OUTPUT%"$LAST_LINE"}
+    DECISION_OUTPUT=${DECISION_OUTPUT%"$NL"}
+    if [ "${FM_JEV_GATE_CACHE_OUT:-}" = "1" ]; then
+      printf '%s\n' "$LAST_LINE"
+    fi
+    ;;
+esac
+
+DECISION=${DECISION_OUTPUT%%"$TAB"*}
 [ "$DECISION" = "block" ] || exit 0
-REST=${POLICY_OUTPUT#*"$TAB"}
-[ "$REST" != "$POLICY_OUTPUT" ] || exit 0
+REST=${DECISION_OUTPUT#*"$TAB"}
+[ "$REST" != "$DECISION_OUTPUT" ] || exit 0
 CODE=${REST%%"$TAB"*}
 REASON=${REST#*"$TAB"}
 [ -n "$CODE" ] && [ -n "$REASON" ] && [ "$REASON" != "$REST" ] || exit 0
 
-# Pi render: plain text on stderr with the confidence line; stdout stays empty.
+# Pi render: plain text on stderr with the confidence line; stdout stays
+# empty (the cache hint forwarding above is the one flagged exception).
 printf '%s\n' "$REASON" >&2
 exit 2

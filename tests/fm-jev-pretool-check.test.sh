@@ -3,7 +3,7 @@
 #
 # Owns: GATE-R1..20 (regex blocks), GATE-J1..10 (Jev arm), GATE-B1..12 (benign
 # free allows), GATE-C1..8 (config), GATE-T1..4 (timeouts), GATE-P1..8 (pilot
-# counters/events), GATE-S1..6 (scope), V2-1..36 (review delta), PERF-4, and
+# counters/events), GATE-S1..6 (scope), V2-1..44 (review delta), PERF-4, and
 # LIVE-1 (plan v2 §12; each id's owning suite is this file per §12.12).
 #
 # Every case drives bin/fm-jev-pretool-check.sh with the command on stdin from
@@ -149,7 +149,7 @@ build_fixture
 
 _exit='' _out='' _err=''
 
-echo "1..106"
+echo "1..114"
 
 # ---- GATE-R: deterministic regex blocks ----------------------------------------
 
@@ -1320,6 +1320,108 @@ rm -rf /usr'
   set -e
   [ "$status_code" -ne 0 ] || fail "V2-36: status exited 0 on a broken chain"
   assert_contains "$status_out" "seq" "V2-36 broken seq reported"
+}
+
+# V2-37: unspaced redirect operators resolve the same target as spaced ones:
+# >>/etc/hosts and >~/.ssh/authorized_keys block redirect-protected.
+{
+  reset_gate_state
+  gt _out _err _exit 'echo x >>/etc/hosts'
+  expect_code 2 "$_exit" "V2-37a exit"
+  assert_contains "$_err" "[JG-R7]" "V2-37a label"
+  gt _out _err _exit 'echo x >~/.ssh/authorized_keys'
+  expect_code 2 "$_exit" "V2-37b exit"
+  assert_contains "$_err" "[JG-R7]" "V2-37b label"
+  pass "V2-37: unspaced redirect targets hit the protected-path rule"
+}
+
+# V2-38: /dev/null, /dev/stdout, and /dev/stderr are carved out of the
+# redirect rule (same list as dd) - common noise sinks never block.
+{
+  reset_gate_state
+  gt _out _err _exit 'echo hi > /dev/null'
+  expect_code 0 "$_exit" "V2-38a exit"
+  gt _out _err _exit 'grep foo bar.txt 2> /dev/stderr'
+  expect_code 0 "$_exit" "V2-38b exit"
+  [ "$(event_lines | wc -l)" -eq 0 ] || fail "V2-38: event written for a carved-out sink"
+  pass "V2-38: /dev carve-outs pass without an event"
+}
+
+# V2-39: the unspaced fd-redirect spelling 2>/dev/null also passes the
+# carve-out (operator and target both parsed without a gap).
+{
+  reset_gate_state
+  gt _out _err _exit 'grep foo bar.txt 2>/dev/null'
+  expect_code 0 "$_exit" "V2-39 exit"
+  [ -z "$_err" ] || fail "V2-39: deny text for an unspaced /dev/null sink"
+  pass "V2-39: unspaced 2>/dev/null allows"
+}
+
+# V2-40: git checkout -- . in the primary checkout blocks deterministically.
+{
+  reset_gate_state
+  gt _out _err _exit 'git checkout -- .'
+  expect_code 2 "$_exit" "V2-40 exit"
+  assert_contains "$_err" "[JG-R10]" "V2-40 label"
+}
+
+# V2-41: git restore in the primary checkout blocks deterministically.
+{
+  reset_gate_state
+  gt _out _err _exit 'git restore .'
+  expect_code 2 "$_exit" "V2-41 exit"
+  assert_contains "$_err" "[JG-R10]" "V2-41 label"
+}
+
+# V2-42: a Jev deny renders only the reason on stderr; the policy's trailing
+# cache hint line never reaches the model, and stdout stays empty without the
+# seat's cache-out flag.
+{
+  reset_gate_state
+  FAKE_SCREEN_CHOICE=destructive FAKE_SCREEN_CONF=0.95 \
+    gt _out _err _exit 'sudo apt-get upgrade'
+  expect_code 2 "$_exit" "V2-42 exit"
+  assert_contains "$_err" "stage: jev" "V2-42 jev deny"
+  assert_not_contains "$_err" "cache" "V2-42 cache line in deny text"
+  [ -z "$_out" ] || fail "V2-42: stdout not empty without the cache-out flag"
+  pass "V2-42: deny reason carries no cache hint"
+}
+
+# V2-43: with FM_JEV_GATE_CACHE_OUT=1 the trailing cache hint line is the one
+# stdout line the transport re-emits, deny or not.
+{
+  reset_gate_state
+  FAKE_SCREEN_CHOICE=destructive FAKE_SCREEN_CONF=0.95 \
+    gt _out _err _exit 'sudo apt-get upgrade' FM_JEV_GATE_CACHE_OUT=1
+  expect_code 2 "$_exit" "V2-43 exit"
+  assert_contains "$_out" "cache$(printf '\t')destructive$(printf '\t')0.95" \
+    "V2-43 cache line on stdout"
+  assert_not_contains "$_err" "cache" "V2-43 stderr clean"
+  pass "V2-43: cache-out flag forwards the cache line"
+}
+
+# V2-44: a lock dir orphaned by a killed holder is stolen, not honored
+# forever; a live fresh holder is never stolen from.
+{
+  reset_gate_state
+  gt _out _err _exit 'rm -rf /'
+  sleep 0.2 & dead_holder=$!
+  wait "$dead_holder"
+  mkdir -p "$FIX_STATE/jev-gate/.lock"
+  printf '%s\n' "$dead_holder" > "$FIX_STATE/jev-gate/.lock/pid"
+  gt _out _err _exit 'rm -rf /etc'
+  expect_code 2 "$_exit" "V2-44a exit"
+  [ ! -e "$FIX_STATE/jev-gate/.lock" ] || fail "V2-44a: stolen lock left behind"
+  pass "V2-44a: dead-holder lock stolen and cleaned"
+  sleep 5 & live_holder=$!
+  mkdir -p "$FIX_STATE/jev-gate/.lock"
+  printf '%s\n' "$live_holder" > "$FIX_STATE/jev-gate/.lock/pid"
+  gt _out _err _exit 'rm -rf /etc'
+  expect_code 2 "$_exit" "V2-44b exit"
+  [ -e "$FIX_STATE/jev-gate/.lock" ] || fail "V2-44b: live holder's lock was stolen"
+  kill "$live_holder" 2>/dev/null || true
+  wait "$live_holder" 2>/dev/null || true
+  pass "V2-44b: live fresh holder keeps its lock"
 }
 
 # ---- PERF / LIVE ---------------------------------------------------------------
