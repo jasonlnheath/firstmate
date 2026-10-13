@@ -694,6 +694,61 @@ Running: bash tests/x.sh" "working: mate progress note")
   pass "a secondmate .status signal surfaces with zero pre-screen consults"
 }
 
+# A mixed no-verb batch - the pre-screen clears the first pane and refuses the
+# second - forwards, and the fired wake must not leave the cleared pane's
+# benign classification in the triage log: that log records why a wake did not
+# fire, so its benign lines may only be written once the whole batch passes
+# and the absorb actually happens.
+test_jev_routine_signal_mixed_batch_forwards_without_benign_line() {
+  local dir state out pid consults
+  dir=$(make_jev_signal_case jev-routine-mixed jev-jmixa "● Bash(make lint)
+Running: bash tests/fm-watch.test.sh" "working: implementing the widen step")
+  state="$dir/state"; out="$dir/watch.out"
+  printf 'window=test:fm-jev-jmixb\nkind=ship\n' > "$state/jev-jmixb.meta"
+  printf 'working: implementing the widen step\n' > "$state/jev-jmixb.status"
+  cat > "$dir/jev-screen-fake" <<'SH'
+#!/usr/bin/env bash
+set -u
+log=${FM_FAKE_JEV_LOG:?FM_FAKE_JEV_LOG}
+input='' args='' prev=''
+for a in "$@"; do
+  args="$args[$a]"
+  case "$prev" in --idle-secs|--window) ;; *)
+    case "$a" in -*) ;; *) input=$a ;; esac ;;
+  esac
+  prev=$a
+done
+{
+  printf 'argv %s\n' "$args"
+  cat "$input" 2>/dev/null || true
+  printf '\n[end]\n'
+} >> "$log"
+case "$*" in
+  *fm-jev-jmixb*)
+    printf 'screen:\n  status: clear\n  choice: waiting-at-prompt\n  confidence: 0.9\n  latency_ms: 312\n  tokens: 340/28\n'
+    ;;
+  *)
+    printf 'screen:\n  status: clear\n  choice: actively-working\n  confidence: 0.92\n  latency_ms: 312\n  tokens: 340/28\n'
+    ;;
+esac
+exit 0
+SH
+  chmod +x "$dir/jev-screen-fake"
+  FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  wait_for_exit "$pid" 100 || fail "a mixed no-verb batch was not forwarded: $(cat "$out")"
+  grep -F "signal: $state/jev-jmixa.status" "$out" >/dev/null \
+    || fail "the mixed batch was not today's byte-identical reason: $(cat "$out")"
+  consults=$(grep -c '^argv' "$dir/jev.log")
+  [ "$consults" = 2 ] || fail "the mixed batch did not screen exactly both panes: $(cat "$dir/jev.log")"
+  if [ -e "$state/.watch-triage.log" ] \
+    && grep -qF 'benign no-verb signal' "$state/.watch-triage.log"; then
+    fail "the forwarded mixed batch left a benign triage line: $(cat "$state/.watch-triage.log")"
+  fi
+  pass "a mixed no-verb batch forwards without logging the passing pane's benign line"
+}
+
 # Stale-path widening: the FIRST inconclusive sight of a static pane consults
 # the same pre-screen. A high-confidence actively-working read absorbs and
 # starts the ordinary wedge timer, so the existing one-defer wedge budget stays
@@ -871,5 +926,6 @@ test_jev_routine_signal_afk_never_consulted
 test_jev_routine_signal_jev_unreachable_forwards
 test_jev_routine_signal_floor_from_config
 test_jev_routine_signal_secondmate_status_never_classified
+test_jev_routine_signal_mixed_batch_forwards_without_benign_line
 test_jev_first_sight_stale_absorbed_then_bounded_chain
 test_jev_first_sight_stale_waiting_pane_surfaced

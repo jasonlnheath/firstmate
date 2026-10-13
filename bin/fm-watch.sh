@@ -770,9 +770,9 @@ signal_turnend_panes_churned() {  # <file> ...
 # staleness backbone plus the wedge path's one-defer budget remain the bounded
 # backstop for a pane this verdict cleared and later stalled.
 signal_jev_classified_benign() {  # <file> ...
-  local f base task meta kind w key backend label tail verdict choice conf count i ti
+  local f base task meta kind w key backend label tail verdict choice conf count i ti line
   local rec_task rec_kind rec_w rec_backend rec_terminal
-  local -a batch_tasks=()
+  local -a batch_tasks=() benign_lines=()
   local -a snap_tasks=() snap_kinds=() snap_windows=() snap_keys=() snap_backends=() snap_labels=()
   [ "$#" -gt 0 ] || return 1
   for f in "$@"; do
@@ -834,7 +834,10 @@ signal_jev_classified_benign() {  # <file> ...
     conf=${verdict#*$'\t'}
     [ "$choice" = "actively-working" ] || return 1
     jev_conf_meets_floor "$conf" || return 1
-    triage_log "benign no-verb signal (Jev pre-screen: actively-working at confidence $conf): $label"
+    benign_lines+=("benign no-verb signal (Jev pre-screen: actively-working at confidence $conf): $label")
+  done
+  for line in "${benign_lines[@]}"; do
+    triage_log "$line"
   done
   return 0
 }
