@@ -783,7 +783,7 @@ signal_jev_classified_benign() {  # <file> ...
       *)            return 1 ;;
     esac
     [ -n "$task" ] || return 1
-    case " ${batch_tasks[*]} " in *" $task "*) ;; *) batch_tasks+=("$task") ;; esac
+    case " ${batch_tasks[*]+"${batch_tasks[*]}"} " in *" $task "*) ;; *) batch_tasks+=("$task") ;; esac
   done
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue

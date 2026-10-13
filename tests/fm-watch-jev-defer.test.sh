@@ -563,6 +563,35 @@ Running: bash tests/fm-watch.test.sh" "working: implementing the widen step")
   pass "a no-verb signal whose pane screens actively-working at the floor is absorbed"
 }
 
+# Stock-bash regression for the routine absorb's batch dedup: the dedup
+# case-word expands batch_tasks on the FIRST no-verb file, while the array is
+# still empty. Under `set -u`, stock macOS Bash 3.2.57 aborts the whole watcher
+# on that expansion where newer bash no-ops, so the absorb must land through
+# that first iteration untouched. The macos-stock-bash CI lane runs this case
+# under real /bin/bash 3.2 via FM_TEST_ONLY.
+test_jev_routine_signal_active_pane_absorbed_under_bash32() {
+  local dir state out pid
+  dir=$(make_jev_signal_case jev-routine-b32 jevb32a "● Bash(make lint)
+Running: bash tests/x.sh" "working: implementing")
+  state="$dir/state"; out="$dir/watch.out"
+  FM_FAKE_JEV_MODE=clear FM_FAKE_JEV_CONF=0.92 \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · no current-state source available' \
+    watch_jev_signal_bg "$dir" "$out"
+  pid=$!
+  if ! wait_poll_cycle "$state" "$pid"; then
+    reap "$pid"; fail "the watcher died or surfaced a no-verb signal the pre-screen cleared: $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || { reap "$pid"; fail "the pre-screened benign signal printed a wake reason: $(cat "$out")"; }
+  [ ! -s "$state/.wake-queue" ] || { reap "$pid"; fail "the pre-screened benign signal enqueued a durable wake"; }
+  [ -s "$state/.seen-jevb32a_status" ] \
+    || { reap "$pid"; fail "the pre-screened benign signal did not advance its .seen-* suppressor"; }
+  grep -F 'Jev pre-screen: actively-working at confidence 0.92' "$state/.watch-triage.log" >/dev/null \
+    || { reap "$pid"; fail "the absorb triage line did not name the screen verdict"; }
+  reap "$pid"
+  ack_stopped_cycle "$state" || fail "could not acknowledge the intentional watcher stop"
+  pass "a no-verb signal absorb lands through the empty first batch-dedup expansion"
+}
+
 # A non-working verdict on the same routine wake forwards exactly as today: the
 # crew may be done, waiting, or wedged, and the classifier never silences that.
 test_jev_routine_signal_waiting_pane_forwarded() {
@@ -920,6 +949,7 @@ test_jev_defer_budget_clears_after_a_delivered_resurface
 test_jev_defer_floor_comes_from_config
 test_jev_prescreen_covers_the_busy_over_age_path
 test_jev_routine_signal_active_pane_absorbed
+test_jev_routine_signal_active_pane_absorbed_under_bash32
 test_jev_routine_signal_waiting_pane_forwarded
 test_jev_routine_signal_captain_relevant_never_consulted
 test_jev_routine_signal_afk_never_consulted
