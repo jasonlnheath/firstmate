@@ -15,8 +15,8 @@ The confidence floor comes from `config/jev-gate-floor` using the same ladder as
 
 The gate is scoped to the helm session's own command path (the supervision branch's pretool seat), and it enforces four independent layers before any judgment:
 
-1. The seat only runs inside the primary Pi helm session.
-2. The checkout must be a plain firstmate checkout (a worktree of the pool, not a linked worktree).
+1. The seat only gates the primary Pi helm session; a second Pi session in this home (a foreign holder of the home lock) is never gated.
+2. The checkout must be a plain firstmate checkout where git-dir equals git-common-dir (the [`docs/cd-guard.md`](cd-guard.md) shape), so a spawned pool worktree or any other linked worktree is out of scope.
 3. The resolved home must not be a secondmate home.
 4. A per-task worker context (`FM_TASK_ID`) makes the gate inert.
 
@@ -26,23 +26,23 @@ Outside that scope the gate does not exist; crewmate workers are never gated by 
 
 The regex stage recognizes a closed list of catastrophic shapes; each deny carries a `[JG-Rn]` label and cites its stage and confidence:
 
-- `rm-protected` — forced recursive `rm` (`-rf`, `-r --force`) whose operand resolves into a protected path: `/`, system roots, `$HOME`/`~`, the firstmate home, its `state`/`data`/`projects`/`config`/`.env`, or key home dotdirs (`~/.ssh`, `~/.gnupg`, and similar). Unforced `rm -r` and glob targets like `*` consult the screener instead.
-- `git-push-force` — any forced push (`--force`, `-f`, `+refspec`).
-- `dd-device` — `dd of=` aimed at a device node.
-- `mkfs` — any `mkfs.*` invocation.
-- `partition-write` — `parted`/`fdisk`/`sgdisk`/`wipefs` writes.
-- `chmod-recursive-root` — recursive `chmod` to mode `777` or `000` on a protected path; other recursive permission changes consult.
-- `redirect-protected` — output redirection into a protected path (`/dev/null`, `/dev/stdout`, and `/dev/stderr` are carved out), including `state/.lock` inside the firstmate home.
-- `overwrite-protected` — `shred`/`truncate` overwrite of a protected path; `cp`/`mv`/`tee` overwrites consult.
-- `power-op` — `shutdown`, `reboot`, `halt`, `poweroff`.
-- `git-discard-primary` — discard-shaped git operations (`reset --hard`, `checkout -- .`, `clean -fd`, `restore`, and `fm-teardown --force`) that could tear down unlanded work in the primary checkout.
+- `rm-protected` - forced recursive `rm` (`-rf`, `-r --force`) whose operand resolves into a protected path: `/`, system roots, `$HOME`/`~`, the firstmate home, its `state`/`data`/`projects`/`config`/`.env`, or key home dotdirs (`~/.ssh`, `~/.gnupg`, and similar). Unforced `rm -r` consults the screener instead, and so does a forced `rm` whose operands - a bare `*` resolves against the current directory - stay outside the protected set.
+- `git-push-force` - any forced push (`--force`, `-f`, `+refspec`).
+- `dd-device` - `dd of=` aimed at a device node.
+- `mkfs` - any `mkfs.*` or `mke2fs` invocation.
+- `partition-write` - `wipefs`/`blkdiscard` always, and `fdisk`/`sfdisk`/`parted`/`gdisk`/`sgdisk` aimed at a `/dev` operand.
+- `chmod-recursive-root` - recursive `chmod` to mode `777` or `000` on a protected path; other recursive permission changes consult.
+- `redirect-protected` - output redirection into a protected path (`/dev/null`, `/dev/stdout`, and `/dev/stderr` are carved out), including `state/.lock` inside the firstmate home.
+- `overwrite-protected` - `shred`/`truncate` overwrite of a protected path; `cp`/`mv`/`tee` overwrites consult.
+- `power-op` - `shutdown`, `reboot`, `halt`, `poweroff`, and their `systemctl poweroff`/`reboot` and `init 0`/`6` spellings.
+- `git-discard-primary` - discard-shaped git operations (`reset --hard`, `checkout -- .`, `clean -fd`, `restore`) that could tear down unlanded work in the primary checkout.
 
 `fm-teardown --force` in the primary checkout consults the screener rather than blocking deterministically, so a captain-approved force can still pass through an override.
 
 ## Jev screen
 
-Commands that are not regex-denied but carry a marker (`sudo`, `rm -rf` outside protected paths, `git reset`, `--force`, firstmate force verbs, and others) consult the Jev screener (`bin/fm-jev-command-screen.sh`).
-The screener sends the command text to the local TYPESAFE_API_KEY model inside an 8 KiB input window and gets back one of `benign`, `grey-reversible`, `destructive`, or `uncertain` with a confidence.
+Commands that are not regex-denied but carry a marker (`sudo`, `rm -rf` outside protected paths, `git reset --hard` outside the primary checkout, `--force`, firstmate force verbs, and others) consult the Jev screener (`bin/fm-jev-command-screen.sh`).
+The screener sends the command text to the `TYPESAFE_API_KEY` Jev model ([`docs/configuration.md`](configuration.md) owns the shared key contract) inside an 8 KiB input window and gets back one of `benign`, `grey-reversible`, `destructive`, or `uncertain` with a confidence.
 `destructive` at or above the floor blocks with a `[JG-J1]` reason; anything else allows.
 An out-of-vocabulary or malformed reply is treated as an error and allows.
 
@@ -65,7 +65,8 @@ The close request is advisory too: `off` clears the published view and records a
 All gate activity is appended to `state/jev-gate/events.jsonl` as a hash-chained journal (each line commits the previous line's sha256, starting from a `chain-header`), rotated at 1 MiB with 3 rotations kept.
 Matching counters live in `state/jev-gate/counters`.
 `bin/fm-jev-gate-override.sh status` verifies the chain, prints counters, the breaker, and the override view, and exits non-zero on a broken chain.
-No command text or secret is ever written outside the local state directory; screener prompts contain the command only.
+Command text persists only under `state/jev-gate/`: events cap the command at 4 KiB and redact `Bearer`/`Authorization` material, and the screener input is one mode-0600 temp file deleted after the consult.
+The screener prompt carries the command and its resolved operand paths and nothing else - `TYPESAFE_API_KEY` reaches the request as a header, never as prompt text.
 
 ## Testing
 
