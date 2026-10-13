@@ -4,12 +4,12 @@
 # Usage:
 #   fm-jev-screen.sh [--idle-secs <n>] [--window <s>] <input-file>
 #
-# The input file holds the text to classify - for the wedge pre-screen, the
-# worker's terminal pane tail (last ~40 lines, plain text).  The tool wraps it
-# into the standard Jev systemone request shape as `state.screen.input`, pins
-# the C1 typed question and its five-option vocabulary in the question's
-# criteria, sends the request, validates the response, and prints a `screen:`
-# TOON block on stdout.
+# The input file holds the text to classify - for the watcher's Jev
+# pre-screen consults, the worker's terminal pane tail (last ~40 lines,
+# plain text).  The tool wraps it into the standard Jev systemone request
+# shape as `state.screen.input`, pins the C1 typed question and its
+# five-option vocabulary in the question's criteria, sends the request,
+# validates the response, and prints a `screen:` TOON block on stdout.
 #
 # Opt-in gate: TYPESAFE_API_KEY non-empty in the process environment, or
 #   a TYPESAFE_API_KEY= line in $FM_HOME/.env read via fmx_env_get.
