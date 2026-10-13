@@ -477,6 +477,18 @@ jobs:
             exit 1
           }
 
+          # Same shape for the routine-wake widening's signal absorb: the batch
+          # dedup case-word expands an empty array on the first no-verb file,
+          # which only stock Bash treats as an unbound variable under set -u.
+          jev_output=$(FM_TEST_ONLY=test_jev_routine_signal_active_pane_absorbed_under_bash32 \
+            /bin/bash tests/fm-watch-jev-defer.test.sh)
+          printf '%s\n' "$jev_output"
+          jev_count=$(printf '%s\n' "$jev_output" | grep -c '^ok - ')
+          [ "$jev_count" -eq 1 ] || {
+            echo "::error::expected 1 routine signal absorb bash 3.2 regression, got $jev_count"
+            exit 1
+          }
+
   invariants:
     name: Repo invariants
     runs-on: ubuntu-latest
