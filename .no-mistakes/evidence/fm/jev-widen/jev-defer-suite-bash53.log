@@ -1,0 +1,19 @@
+ok - the jev pre-screen absorbs one threshold window, then escalates with today's unchanged reason
+ok - positive deterministic evidence defers with zero pre-screen consults
+ok - a key-absent home escalates exactly as today with the screener's off verdict
+ok - below-floor, non-working, error, and malformed screens all escalate unchanged with no markers
+ok - a pane hash change clears the one-defer budget for the next quiet stretch
+ok - a delivered re-surface wake clears the one-defer budget
+ok - the deferral floor comes from config/jev-wedge-floor and compares inclusive, defaulting to 0.8 on an absent or malformed file
+ok - the busy-over-age path reaches the same pre-screen consult with its pane tail
+ok - a no-verb signal whose pane screens actively-working at the floor is absorbed
+ok - a no-verb signal absorb lands through the empty first batch-dedup expansion
+ok - a no-verb signal whose pane screens waiting-at-prompt forwards exactly as today
+ok - a captain-relevant done: signal surfaces with zero pre-screen consults
+ok - an afk routine signal is queued for the daemon with zero pre-screen consults
+ok - an unreachable Jev forwards the routine signal exactly as today
+ok - the routine consults read the same config/jev-wedge-floor, compared inclusively
+ok - a secondmate .status signal surfaces with zero pre-screen consults
+ok - a mixed no-verb batch forwards without logging the passing pane's benign line
+ok - a first-sight stale the pre-screen clears absorbs into the existing bounded wedge chain
+ok - a waiting first-sight stale forwards immediately with today's reason

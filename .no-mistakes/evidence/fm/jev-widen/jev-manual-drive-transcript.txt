@@ -1,0 +1,36 @@
+=== Product drive: bin/fm-watch.sh widened Jev routine-wake triage ===
+=== worktree: /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M4SW9KXB9Q66P7HQB5RAP0TC ===
+
+--- A: launch watcher; crew state unknown, churn absorb unconfigured,
+---    screener will answer actively-working at 0.92 (floor default 0.8)
+A result: suppressor marker advanced: 1 (1 = absorbed, echo never reached the helm)
+--- A watcher stdout (expected empty):
+(empty)
+--- A durable wake queue (expected absent):
+(absent)
+--- A triage log (records why no wake fired):
+[2026-10-13T02:54:18-0400] benign no-verb signal (Jev pre-screen: actively-working at confidence 0.92): fm-alpha
+[2026-10-13T02:54:18-0400] absorbed benign signal: /tmp/jev-manual-drive/scenario-a-absorb/state/alpha.status
+--- A screener consult log (pane tail + identity the classifier received):
+consult argv: --idle-secs  --window test:fm-alpha /tmp/tmp.tXtu8kHPz1
+--- pane tail delivered to the screener ---
+● Bash(make lint)
+● Edit(bin/fm-watch.sh)
+Running: bash tests/fm-watch.test.sh--- end pane tail ---
+
+--- B: same wake, screener answers waiting-at-prompt 0.9 -> must forward
+--- B watcher stdout (expected: today's byte-identical signal reason):
+signal: /tmp/jev-manual-drive/scenario-b-forward/state/bravo.status
+--- B durable wake queue via bin/fm-wake-drain.sh (the helm's pending wake):
+1791874463	2	signal	bravo.status	signal: /tmp/jev-manual-drive/scenario-b-forward/state/bravo.status
+wake annotation: latest wake-EVENT observed at drain, not current state: bravo.status: working: step finished, next queued
+--- B screener was consulted (routine triage, not skipped):
+1
+
+--- C: captain-relevant done: signal -> must surface, classifier never asked
+--- C watcher stdout (expected: today's signal reason):
+signal: /tmp/jev-manual-drive/scenario-c-done/state/charlie.status
+--- C screener consult count (expected 0):
+0
+
+=== drive complete ===
