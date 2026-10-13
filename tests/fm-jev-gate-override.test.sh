@@ -26,8 +26,10 @@ mkdir -p "$FIX_STATE"
 # status readout has genuine counters, events, and breaker state to show.
 fm_git_init_commit "$FIX_HOME"
 mkdir -p "$FIX_BIN" "$FIX_HOME/config"
+printf '# fixture\n' > "$FIX_HOME/AGENTS.md"
 cp "$TRANSPORT_SRC" "$FIX_BIN/"
 cp "$POLICY_SRC" "$FIX_BIN/"
+cp "$ROOT/bin/fm-timeout-lib.sh" "$FIX_BIN/"
 printf 'enforce\n' > "$FIX_HOME/config/jev-gate"
 
 FAKE_SCREENER="$TMP_ROOT/fake-screener.sh"
@@ -41,7 +43,7 @@ gt() {  # gt <command-text>: one real transport run from the fixture home
   (cd "$FIX_HOME" && printf '%s' "$1" | \
     env FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
       FM_JEV_COMMAND_SCREENER="$FAKE_SCREENER" \
-      "$FIX_BIN/fm-jev-pretool-check.sh" >/dev/null 2>&1)
+      "$FIX_BIN/fm-jev-pretool-check.sh" >/dev/null 2>&1) || true
 }
 
 helper() {  # helper <args...>: the override readout against the fixture state
@@ -70,8 +72,8 @@ echo "1..2"
   gt 'rm -rf /'
   gt 'rm -rf /etc'
   gt 'ls -la'
-  status_out=$(helper status 2>&1)
-  status_code=$?
+  status_code=0
+  status_out=$(helper status 2>&1) || status_code=$?
   expect_code 0 "$status_code" "GATE-O7 status exit"
   assert_contains "$status_out" "closed" "GATE-O7 window closed"
   assert_contains "$status_out" "block_regex" "GATE-O7 counters shown"

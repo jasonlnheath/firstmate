@@ -32,8 +32,10 @@ mkdir -p "$FIX_STATE" "$FIX_LOG"
 build_fixture() {
   fm_git_init_commit "$FIX_HOME"
   mkdir -p "$FIX_BIN" "$FIX_HOME/config"
+  printf '# fixture\n' > "$FIX_HOME/AGENTS.md"
   cp "$ROOT/bin/fm-jev-pretool-check.sh" "$TRANSPORT"
   cp "$ROOT/bin/fm-jev-gate-policy.mjs" "$POLICY"
+  cp "$ROOT/bin/fm-timeout-lib.sh" "$FIX_BIN/fm-timeout-lib.sh"
   printf 'enforce\n' > "$FIX_HOME/config/jev-gate"
 }
 
@@ -41,6 +43,7 @@ build_fixture() {
 
 FAKE_SCREENER="$TMP_ROOT/fake-screener.sh"
 FAKE_SCREEN_LOG="$FIX_LOG/screen"
+export FAKE_SCREEN_LOG
 mkdir -p "$FAKE_SCREEN_LOG"
 
 cat > "$FAKE_SCREENER" <<'SH'
@@ -53,7 +56,7 @@ conf=${FAKE_SCREEN_CONF:-0.95}
 mode=${FAKE_SCREEN_MODE:-}
 mkdir -p "$log"
 printf '%s\n' "${FAKE_SCREEN_CALLS_FILE:-$log/calls}" >/dev/null
-: >> "${FAKE_SCREEN_CALLS_FILE:-$log/calls}"
+printf 'call\n' >> "${FAKE_SCREEN_CALLS_FILE:-$log/calls}"
 if [ -n "${1:-}" ]; then
   cp "$1" "$log/input"
   printf '%s\n' "$1" > "$log/input-path"
@@ -128,6 +131,7 @@ assert_counter() {  # <key> <expected> <label>
 }
 
 assert_no_state() {  # <label>
+  local label=$1
   [ ! -e "$FIX_STATE/jev-gate" ] || fail "$label: gate state was written"
 }
 
@@ -154,7 +158,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'rm -rf /'
   expect_code 2 "$_exit" "GATE-R1 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R1 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R1 label"
   assert_contains "$_err" "confidence: 1.00" "GATE-R1 confidence"
 }
 
@@ -163,7 +167,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'rm -rf ~'
   expect_code 2 "$_exit" "GATE-R2 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R2 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R2 label"
 }
 
 # GATE-R3: rm -fr <FM_HOME> -> block (flag order-insensitive, home root).
@@ -171,7 +175,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit "rm -fr $FIX_HOME"
   expect_code 2 "$_exit" "GATE-R3 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R3 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R3 label"
 }
 
 # GATE-R4: rm -rf <FM_HOME>/state -> block (protected state dir).
@@ -179,7 +183,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit "rm -rf $FIX_HOME/state"
   expect_code 2 "$_exit" "GATE-R4 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R4 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R4 label"
 }
 
 # GATE-R5: rm -rf /etc -> block.
@@ -187,7 +191,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'rm -rf /etc'
   expect_code 2 "$_exit" "GATE-R5 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R5 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R5 label"
 }
 
 # GATE-R6: git push --force origin main -> block git-push-force.
@@ -195,7 +199,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'git push --force origin main'
   expect_code 2 "$_exit" "GATE-R6 exit"
-  assert_contains "$_err" "git-push-force" "GATE-R6 code"
+  assert_contains "$_err" "[JG-R2]" "GATE-R6 label"
 }
 
 # GATE-R7: git push -f -> block.
@@ -203,7 +207,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'git push -f'
   expect_code 2 "$_exit" "GATE-R7 exit"
-  assert_contains "$_err" "git-push-force" "GATE-R7 code"
+  assert_contains "$_err" "[JG-R2]" "GATE-R7 label"
 }
 
 # GATE-R8: git push origin +main -> block (+refspec).
@@ -211,7 +215,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'git push origin +main'
   expect_code 2 "$_exit" "GATE-R8 exit"
-  assert_contains "$_err" "git-push-force" "GATE-R8 code"
+  assert_contains "$_err" "[JG-R2]" "GATE-R8 label"
 }
 
 # GATE-R9: dd of=/dev/sda -> block dd-device.
@@ -219,7 +223,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'dd if=/dev/zero of=/dev/sda bs=1M'
   expect_code 2 "$_exit" "GATE-R9 exit"
-  assert_contains "$_err" "dd-device" "GATE-R9 code"
+  assert_contains "$_err" "[JG-R3]" "GATE-R9 label"
 }
 
 # GATE-R10: mkfs.ext4 and bare mkfs -> block mkfs.
@@ -227,11 +231,11 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'mkfs.ext4 /dev/sdb1'
   expect_code 2 "$_exit" "GATE-R10a exit"
-  assert_contains "$_err" "mkfs" "GATE-R10a code"
+  assert_contains "$_err" "[JG-R4]" "GATE-R10a label"
   reset_gate_state
   gt _out _err _exit 'mkfs'
   expect_code 2 "$_exit" "GATE-R10b exit"
-  assert_contains "$_err" "mkfs" "GATE-R10b code"
+  assert_contains "$_err" "[JG-R4]" "GATE-R10b label"
 }
 
 # GATE-R11: sudo chmod -R 777 / -> block chmod-recursive-root (sudo stripped).
@@ -239,7 +243,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'sudo chmod -R 777 /'
   expect_code 2 "$_exit" "GATE-R11 exit"
-  assert_contains "$_err" "chmod-recursive-root" "GATE-R11 code"
+  assert_contains "$_err" "[JG-R6]" "GATE-R11 label"
 }
 
 # GATE-R12 (v2 reshape): bin/fm-teardown.sh --force consults, never a
@@ -259,7 +263,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'sudo wipefs -a /dev/sda'
   expect_code 2 "$_exit" "GATE-R13 exit"
-  assert_contains "$_err" "partition-write" "GATE-R13 code"
+  assert_contains "$_err" "[JG-R5]" "GATE-R13 label"
 }
 
 # GATE-R14: shutdown -h now -> block power-op.
@@ -267,7 +271,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit 'shutdown -h now'
   expect_code 2 "$_exit" "GATE-R14 exit"
-  assert_contains "$_err" "power-op" "GATE-R14 code"
+  assert_contains "$_err" "[JG-R9]" "GATE-R14 label"
 }
 
 # GATE-R15: shred -u <FM_HOME>/data/backlog.md -> block overwrite-protected.
@@ -275,7 +279,7 @@ echo "1..106"
   reset_gate_state
   gt _out _err _exit "shred -u $FIX_HOME/data/backlog.md"
   expect_code 2 "$_exit" "GATE-R15 exit"
-  assert_contains "$_err" "overwrite-protected" "GATE-R15 code"
+  assert_contains "$_err" "[JG-R8]" "GATE-R15 label"
 }
 
 # GATE-R16: newline-joined ls + rm -rf /usr -> block (segment join).
@@ -284,7 +288,7 @@ echo "1..106"
   gt _out _err _exit 'ls
 rm -rf /usr'
   expect_code 2 "$_exit" "GATE-R16 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R16 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R16 label"
 }
 
 # GATE-R17: rm "-rf" /etc -> block (quote-stripped match).
@@ -292,7 +296,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'rm "-rf" /etc'
   expect_code 2 "$_exit" "GATE-R17 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R17 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R17 label"
 }
 
 # GATE-R18: bash -c 'dd of=/dev/nvme0n1 if=img' -> block (one-level recursion).
@@ -300,7 +304,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit "bash -c 'dd of=/dev/nvme0n1 if=img'"
   expect_code 2 "$_exit" "GATE-R18 exit"
-  assert_contains "$_err" "dd-device" "GATE-R18 code"
+  assert_contains "$_err" "[JG-R3]" "GATE-R18 label"
 }
 
 # GATE-R19: any R-hit -> reason carries confidence: 1.00; event has pattern
@@ -321,7 +325,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit "rm -rf $FIX_HOME/projects/some-clone"
   expect_code 2 "$_exit" "GATE-R20 exit"
-  assert_contains "$_err" "rm-protected" "GATE-R20 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-R20 label"
 }
 
 # ---- GATE-J: the Jev arm -------------------------------------------------------
@@ -769,6 +773,7 @@ rm -rf /usr'
 {
   reset_gate_state
   for i in 1 2 3 4; do
+    mkdir -p "$FIX_STATE/jev-gate"
     head -c 1153434 /dev/zero | tr '\0' 'x' >> "$FIX_STATE/jev-gate/events.jsonl" 2>/dev/null \
       || true
     [ -f "$FIX_STATE/jev-gate/events.jsonl" ] \
@@ -847,6 +852,7 @@ rm -rf /usr'
   mkdir -p "$wt_dir/bin"
   cp "$ROOT/bin/fm-jev-pretool-check.sh" "$wt_dir/bin/" 2>/dev/null || true
   cp "$ROOT/bin/fm-jev-gate-policy.mjs" "$wt_dir/bin/" 2>/dev/null || true
+  cp "$ROOT/bin/fm-timeout-lib.sh" "$wt_dir/bin/" 2>/dev/null || true
   (cd "$FIX_HOME" && printf 'rm -rf /' | \
     env FM_ROOT_OVERRIDE="$wt_dir" FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
       FM_JEV_COMMAND_SCREENER="$FAKE_SCREENER" \
@@ -882,7 +888,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'rm -rf /'
   expect_code 2 "$_exit" "GATE-S4 exit"
-  assert_contains "$_err" "rm-protected" "GATE-S4 code"
+  assert_contains "$_err" "[JG-R1]" "GATE-S4 label"
 }
 
 # GATE-S5: git missing from PATH -> inert (scope failure never denies).
@@ -923,7 +929,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'command rm -rf /'
   expect_code 2 "$_exit" "V2-1 exit"
-  assert_contains "$_err" "rm-protected" "V2-1 code"
+  assert_contains "$_err" "[JG-R1]" "V2-1 label"
 }
 
 # V2-2: env rm -rf / -> block.
@@ -931,7 +937,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'env rm -rf /'
   expect_code 2 "$_exit" "V2-2 exit"
-  assert_contains "$_err" "rm-protected" "V2-2 code"
+  assert_contains "$_err" "[JG-R1]" "V2-2 label"
 }
 
 # V2-3: /usr/bin/rm -rf / -> block (basename resolution).
@@ -939,7 +945,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit '/usr/bin/rm -rf /'
   expect_code 2 "$_exit" "V2-3 exit"
-  assert_contains "$_err" "rm-protected" "V2-3 code"
+  assert_contains "$_err" "[JG-R1]" "V2-3 label"
 }
 
 # V2-4: nohup rm -rf / -> block.
@@ -947,7 +953,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'nohup rm -rf /'
   expect_code 2 "$_exit" "V2-4 exit"
-  assert_contains "$_err" "rm-protected" "V2-4 code"
+  assert_contains "$_err" "[JG-R1]" "V2-4 label"
 }
 
 # V2-5: timeout 5 rm -rf / -> block.
@@ -955,7 +961,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'timeout 5 rm -rf /'
   expect_code 2 "$_exit" "V2-5 exit"
-  assert_contains "$_err" "rm-protected" "V2-5 code"
+  assert_contains "$_err" "[JG-R1]" "V2-5 label"
 }
 
 # V2-6: nice -n 5 rm -rf / -> block.
@@ -963,7 +969,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'nice -n 5 rm -rf /'
   expect_code 2 "$_exit" "V2-6 exit"
-  assert_contains "$_err" "rm-protected" "V2-6 code"
+  assert_contains "$_err" "[JG-R1]" "V2-6 label"
 }
 
 # V2-7: \rm -rf / -> block (backslash strip).
@@ -971,7 +977,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit '\rm -rf /'
   expect_code 2 "$_exit" "V2-7 exit"
-  assert_contains "$_err" "rm-protected" "V2-7 code"
+  assert_contains "$_err" "[JG-R1]" "V2-7 label"
 }
 
 # V2-8: echo dir | xargs rm -rf -> the xargs wrapper never escapes; the wrapped
@@ -990,7 +996,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit ": > $FIX_HOME/state/.lock"
   expect_code 2 "$_exit" "V2-9 exit"
-  assert_contains "$_err" "redirect-protected" "V2-9 code"
+  assert_contains "$_err" "[JG-R7]" "V2-9 label"
 }
 
 # V2-10: > ~/.ssh/authorized_keys -> block redirect-protected.
@@ -998,7 +1004,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit '> ~/.ssh/authorized_keys'
   expect_code 2 "$_exit" "V2-10 exit"
-  assert_contains "$_err" "redirect-protected" "V2-10 code"
+  assert_contains "$_err" "[JG-R7]" "V2-10 label"
 }
 
 # V2-11: tee into a protected file -> consult-routed; destructive blocks.
@@ -1025,7 +1031,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'rm -rf state'
   expect_code 2 "$_exit" "V2-13 exit"
-  assert_contains "$_err" "rm-protected" "V2-13 code"
+  assert_contains "$_err" "[JG-R1]" "V2-13 label"
 }
 
 # V2-14: rm -rf . from the home cwd -> block (cwd is the protected root).
@@ -1033,7 +1039,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'rm -rf .'
   expect_code 2 "$_exit" "V2-14 exit"
-  assert_contains "$_err" "rm-protected" "V2-14 code"
+  assert_contains "$_err" "[JG-R1]" "V2-14 label"
 }
 
 # V2-15: rm -rf ../sibling -> consult-routed outside the P-set; the screener
@@ -1050,11 +1056,11 @@ rm -rf /usr'
 # V2-16: a 200 KiB command carrying rm -rf / is judged (no argv cliff).
 {
   reset_gate_state
-  big_cmd="$(printf 'ls -la; %.0s' $(seq 1 4000)) rm -rf /"
+  big_cmd="$(printf 'ls -la; %.0s' $(seq 1 25000)) rm -rf /"
   [ "${#big_cmd}" -gt 150000 ] || fail "V2-16 fixture too small"
   gt _out _err _exit "$big_cmd"
   expect_code 2 "$_exit" "V2-16 exit"
-  assert_contains "$_err" "rm-protected" "V2-16 code"
+  assert_contains "$_err" "[JG-R1]" "V2-16 label"
 }
 
 # V2-17: a hung policy evaluation hits the self-alarm: the transport renders
@@ -1103,7 +1109,7 @@ rm -rf /usr'
   printf 'enforce\n' > "$FIX_HOME/config/jev-gate"
   gt _out _err _exit 'rm -rf /'
   expect_code 2 "$_exit" "V2-20 exit"
-  assert_contains "$_err" "rm-protected" "V2-20 code"
+  assert_contains "$_err" "[JG-R1]" "V2-20 label"
 }
 
 # V2-21: three consecutive failing consults open the breaker; the next marker
@@ -1152,7 +1158,9 @@ rm -rf /usr'
     gt _out _err _exit 'sudo apt-get upgrade'
   expect_code 0 "$_exit" "V2-23 exit"
   assert_counter jev_error 1 "V2-23 jev_error"
-  assert_counter consult_benign '' "V2-23 no vocabulary-mapped counter"
+  [ "$(counter_value consult_benign)" = "0" ] \
+    || [ -z "$(counter_value consult_benign)" ] \
+    || fail "V2-23: consult_benign was incremented"
 }
 
 # V2-24: echo 'rm -rf /' -> allow free plus a near_miss event and counter.
@@ -1177,6 +1185,7 @@ rm -rf /usr'
   mkdir -p "$wt_dir/bin"
   cp "$ROOT/bin/fm-jev-pretool-check.sh" "$wt_dir/bin/"
   cp "$ROOT/bin/fm-jev-gate-policy.mjs" "$wt_dir/bin/"
+  cp "$ROOT/bin/fm-timeout-lib.sh" "$wt_dir/bin/"
   (cd "$FIX_HOME" && printf 'rm -rf /' | \
     env FM_HOME="$FIX_HOME" FM_STATE_OVERRIDE="$FIX_STATE" \
       FM_JEV_COMMAND_SCREENER="$FAKE_SCREENER" \
@@ -1209,7 +1218,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'git reset --hard'
   expect_code 2 "$_exit" "V2-28 exit"
-  assert_contains "$_err" "git-discard-primary" "V2-28 code"
+  assert_contains "$_err" "[JG-R10]" "V2-28 label"
   assert_contains "$_err" "confidence: 1.00" "V2-28 confidence"
 }
 
@@ -1219,7 +1228,7 @@ rm -rf /usr'
   reset_gate_state
   gt _out _err _exit 'git clean -fdx'
   expect_code 2 "$_exit" "V2-29a exit"
-  assert_contains "$_err" "git-discard-primary" "V2-29a code"
+  assert_contains "$_err" "[JG-R10]" "V2-29a label"
   reset_gate_state
   FAKE_SCREEN_CHOICE=benign gt _out _err _exit 'bin/fm-teardown.sh --force t'
   expect_code 0 "$_exit" "V2-29b exit"

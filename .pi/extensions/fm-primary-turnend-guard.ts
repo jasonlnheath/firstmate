@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -508,9 +508,153 @@ function runCdCheck(command: string): Promise<{ code: number; stderr: string }> 
   return runChecker("fm-cd-pretool-check.sh", command);
 }
 
+// Jev damage-control gate (docs/jev-gate.md). Third seatbelt in this same
+// tool_call handler. Inert unless config/jev-gate exists in this home; the
+// transport re-verifies scope independently, and a foreign lock holder (a
+// second Pi session in this home) is never gated. The dangerous-mode override
+// window opens only through the operator's /jev-override command below and
+// lives in this process's memory - never in a file, so nothing a bash call
+// can reach opens or fakes it. Command acquisition is on stdin, and the child
+// runs under a hard wall-clock kill so a hung gate can never wedge the tool
+// path.
+const jevGateConfigPath = `${process.env.FM_CONFIG_OVERRIDE || `${fmHome}/config`}/jev-gate`;
+type JevOverrideWindow = { openedAt: number; expiresAt: number; reason: string };
+
+function runJevGateCheck(
+  command: string,
+  window: JevOverrideWindow | null,
+  cache: Map<string, { choice: string; confidence: number }>,
+  recordAction?: { action: string; reason: string },
+): Promise<{ code: number; stderr: string; stdout: string }> {
+  return new Promise((resolveResult) => {
+    if (!existsSync(jevGateConfigPath)) {
+      resolveResult({ code: 0, stderr: "", stdout: "" });
+      return;
+    }
+    if (lockOwnership() === "other") {
+      resolveResult({ code: 0, stderr: "", stdout: "" });
+      return;
+    }
+    const script = process.env.FM_JEV_GATE_CHECK || `${root}/bin/fm-jev-pretool-check.sh`;
+    const args = recordAction
+      ? ["record-override", recordAction.action, recordAction.reason]
+      : [];
+    const invocation = firstmateShellInvocation(script, args);
+    const env = { ...process.env };
+    if (!recordAction) {
+      const sha = createHash("sha256").update(command).digest("hex");
+      const cached = cache.get(sha);
+      env.FM_JEV_GATE_OVERRIDE = window ? "1" : "";
+      env.FM_JEV_GATE_CACHE = cached ? `${cached.choice},${cached.confidence}` : "";
+      env.FM_JEV_GATE_CACHE_OUT = "1";
+    }
+    let wallMs = Number(process.env.FM_JEV_GATE_WALL_MS ?? "");
+    if (!Number.isFinite(wallMs) || wallMs <= 0) wallMs = 12000;
+    let child: ChildProcess;
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (result: { code: number; stderr: string; stdout: string }) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      resolveResult(result);
+    };
+    const killGroup = () => {
+      if (!child || child.pid === undefined) return;
+      try {
+        if (process.platform === "win32") child.kill("SIGKILL");
+        else process.kill(-child.pid, "SIGTERM");
+      } catch {
+      }
+      killTimer = setTimeout(() => {
+        try {
+          if (process.platform !== "win32" && child?.pid !== undefined) {
+            process.kill(-child.pid, "SIGKILL");
+          }
+        } catch {
+        }
+      }, 500);
+      killTimer.unref();
+    };
+    try {
+      child = spawn(invocation.command, invocation.args, {
+        stdio: ["pipe", "pipe", "pipe"],
+        env,
+        detached: process.platform !== "win32",
+      });
+    } catch {
+      finish({ code: 0, stderr: "", stdout: "" });
+      return;
+    }
+    let stderr = "";
+    let stdout = "";
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stdin?.on("error", () => {});
+    child.on("error", () => finish({ code: 0, stderr: "", stdout: "" }));
+    child.on("close", (code) => finish({ code: code ?? 0, stderr, stdout }));
+    if (!recordAction) child.stdin?.end(command);
+    else child.stdin?.end();
+    timer = setTimeout(() => {
+      killGroup();
+      finish({ code: 0, stderr: "", stdout: "" });
+    }, wallMs);
+    timer.unref();
+  });
+}
+
 export default function (pi: ExtensionAPI) {
   let sessionstartGeneration: SessionstartGeneration | null = null;
   let sessionstartExitListenerRegistered = false;
+  let jevOverrideWindow: JevOverrideWindow | null = null;
+  const jevDecisionCache = new Map<string, { choice: string; confidence: number }>();
+  const jevOverrideViewPath = `${state}/jev-gate/override-status`;
+  const clearJevOverride = async (closeAction: string): Promise<void> => {
+    if (!jevOverrideWindow) return;
+    jevOverrideWindow = null;
+    try {
+      rmSync(jevOverrideViewPath, { force: true });
+    } catch {
+    }
+    await runJevGateCheck("", null, jevDecisionCache, {
+      action: closeAction,
+      reason: closeAction === "expire" ? "ttl expired" : "session ended",
+    });
+  };
+  const expireJevOverrideIfDue = (): void => {
+    if (jevOverrideWindow && Date.now() >= jevOverrideWindow.expiresAt) {
+      clearJevOverride("expire");
+    }
+  };
+  const openJevOverride = async (reason: string, ttlMinutes: number): Promise<void> => {
+    const now = Date.now();
+    const ttl = Math.max(1, Math.min(60, Math.floor(ttlMinutes || 15)));
+    jevOverrideWindow = { openedAt: now, expiresAt: now + ttl * 60_000, reason };
+    try {
+      mkdirSync(`${state}/jev-gate`, { recursive: true, mode: 0o700 });
+      writeFileSync(
+        jevOverrideViewPath,
+        `${JSON.stringify({
+          reason,
+          opened_at: now,
+          expires_at: jevOverrideWindow.expiresAt,
+          ttl_minutes: ttl,
+        })}\n`,
+        { mode: 0o600 },
+      );
+    } catch {
+    }
+    await runJevGateCheck("", null, jevDecisionCache, {
+      action: "open",
+      reason,
+    });
+  };
   const cleanupSessionstartOnProcessExit = (): void => {
     const generation = sessionstartGeneration;
     if (!generation) return;
@@ -578,6 +722,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on?.("session_shutdown", async () => {
+    await clearJevOverride("close");
     const generation = sessionstartGeneration;
     try {
       if (generation) await stopSessionstartGeneration(generation);
@@ -585,6 +730,25 @@ export default function (pi: ExtensionAPI) {
       if (sessionstartGeneration === generation) sessionstartGeneration = null;
       removeSessionstartExitListener();
     }
+  });
+
+  // Operator-only dangerous-mode window. Typed at the TUI by the operator;
+  // the model has no channel that reaches it, and no file confers authority.
+  pi.registerCommand?.("jev-override", {
+    handler: async (args: string) => {
+      const text = String(args ?? "").trim();
+      if (text === "off" || text === "--off") {
+        await clearJevOverride("close");
+        return;
+      }
+      const ttlMatch = text.match(/--ttl\s+(\d+)/);
+      const reason = text
+        .replace(/--ttl\s+\d+/, "")
+        .replace(/--reason/, "")
+        .trim();
+      if (!reason) return;
+      await openJevOverride(reason, ttlMatch ? Number(ttlMatch[1]) : 15);
+    },
   });
 
   pi.on("tool_call", async (event) => {
@@ -596,8 +760,20 @@ export default function (pi: ExtensionAPI) {
       return { block: true, reason: cdResult.stderr.trim() || "denied by the cd-guard PreToolUse seatbelt" };
     }
     const result = await runPretoolCheck(command);
-    if (result.code !== 2) return {};
-    return { block: true, reason: result.stderr.trim() || "denied by the watcher-arm PreToolUse seatbelt" };
+    if (result.code === 2) {
+      return { block: true, reason: result.stderr.trim() || "denied by the watcher-arm PreToolUse seatbelt" };
+    }
+    expireJevOverrideIfDue();
+    const gate = await runJevGateCheck(command, jevOverrideWindow, jevDecisionCache);
+    if (gate.code !== 2) {
+      const cacheMatch = gate.stdout.match(/^cache\t(\S+)\t([0-9.]+)$/m);
+      if (cacheMatch) {
+        const sha = createHash("sha256").update(command).digest("hex");
+        jevDecisionCache.set(sha, { choice: cacheMatch[1], confidence: Number(cacheMatch[2]) });
+      }
+      return {};
+    }
+    return { block: true, reason: gate.stderr.trim() || "denied by the Jev damage-control gate" };
   });
 
   pi.on("agent_settled", async () => {

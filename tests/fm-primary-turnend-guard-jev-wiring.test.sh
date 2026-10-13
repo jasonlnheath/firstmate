@@ -112,7 +112,7 @@ cat > "$W_SCREENER" <<'SH'
 set -u
 log="${WIRE_LOG:?}"
 mkdir -p "$log"
-: >> "${WIRE_LOG:?}/screen.calls"
+printf 'call\n' >> "${WIRE_LOG:?}/screen.calls"
 [ -n "${1:-}" ] && cp "$1" "$log/screen.input"
 if [ "${FAKE_SCREEN_MODE:-}" = "sleep" ]; then
   sleep "${FAKE_SCREEN_SLEEP_SECS:-30}"
@@ -135,9 +135,11 @@ disarm_activation() {
   rm -f "$W_CONFIG/jev-gate"
 }
 
-# wire_run <js-file>: run a scenario file inside the fixture project.
+# wire_run <js-file>: run a scenario file inside the fixture project with
+# state/config isolation applied to every scenario.
 wire_run() {
-  (cd "$W_PROJ" && WIRE_EXT="$W_PROJ/.pi/extensions/fm-primary-turnend-guard.ts" \
+  (cd "$W_PROJ" && FM_STATE_OVERRIDE="$W_STATE" FM_CONFIG_OVERRIDE="$W_CONFIG" \
+    WIRE_EXT="$W_PROJ/.pi/extensions/fm-primary-turnend-guard.ts" \
     WIRE_LOG="$W_LOG" node "$1" 2> "$TMP_ROOT/node-err")
 }
 
@@ -145,6 +147,10 @@ wire_run() {
 scenario() {
   cp "$2" "$W_PROJ/scenario.mjs"
   wire_run "$W_PROJ/scenario.mjs"
+  if [ -s "$TMP_ROOT/node-err" ]; then
+    printf 'node-err (%s):\n' "$1" >&2
+    head -6 "$TMP_ROOT/node-err" >&2
+  fi
 }
 
 cat > "$TMP_ROOT/preamble.js" <<'JS'
@@ -197,13 +203,6 @@ JS
 cat "$TMP_ROOT/preamble.js" > "$W_PROJ/preamble.mjs"
 
 # common env for every run: state/config isolation plus the checker fakes.
-wire_env() {
-  printf '%s\n' \
-    "FM_STATE_OVERRIDE=$W_STATE" \
-    "FM_CONFIG_OVERRIDE=$W_CONFIG" \
-    "WIRE_LOG=$W_LOG"
-}
-
 echo "1..19"
 
 # ---- WIRE rows (stub gate) -----------------------------------------------------
@@ -457,9 +456,6 @@ JS
 
 # ---- GATE O rows (real transport + policy + fake screener) ----------------------
 
-REAL_STACK_ENV=(FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh"
-  FM_JEV_COMMAND_SCREENER="$W_SCREENER")
-
 # GATE-O1: block, then the operator opens the window, then the same command
 # allows - with override_pass, overridden_block, and both audit events.
 {
@@ -467,6 +463,7 @@ REAL_STACK_ENV=(FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh"
   arm_activation
   cp "$TRANSPORT_SRC" "$W_BIN/fm-jev-pretool-check.sh"
   cp "$POLICY_SRC" "$W_BIN/fm-jev-gate-policy.mjs"
+  cp "$ROOT/bin/fm-timeout-lib.sh" "$W_BIN/fm-timeout-lib.sh"
   cat > "$TMP_ROOT/o1.js" <<'JS'
 import { load, callTool } from "./preamble.mjs";
 const { handlers, commands } = await load();
@@ -475,7 +472,7 @@ await commands.get("jev-override").handler("--reason o1 check", {});
 const second = await callTool(handlers, "bash", "rm -rf /");
 console.log(JSON.stringify({ first, second }));
 JS
-  env "${REAL_STACK_ENV[@]}" scenario o1 "$TMP_ROOT/o1.js" > "$TMP_ROOT/o1-out"
+  FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" scenario o1 "$TMP_ROOT/o1.js" > "$TMP_ROOT/o1-out"
   jq -e '.first.block == true and (".second.block" | length) >= 0' "$TMP_ROOT/o1-out" >/dev/null \
     || fail "GATE-O1: first call did not block"
   jq -e '(.second.block | not) and (.second.threw | not)' "$TMP_ROOT/o1-out" >/dev/null \
@@ -504,7 +501,7 @@ await commands.get("jev-override").handler("off", {});
 const closed = await callTool(handlers, "bash", "rm -rf /");
 console.log(JSON.stringify({ open, closed }));
 JS
-  env "${REAL_STACK_ENV[@]}" scenario o2 "$TMP_ROOT/o2.js" > "$TMP_ROOT/o2-out"
+  FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" scenario o2 "$TMP_ROOT/o2.js" > "$TMP_ROOT/o2-out"
   jq -e '(.open.block | not) and .closed.block == true' "$TMP_ROOT/o2-out" >/dev/null \
     || fail "GATE-O2: window did not close"
   grep -q 'override_close' "$W_STATE/jev-gate/events.jsonl" \
@@ -525,7 +522,7 @@ await fireShutdown(handlers);
 const after = await callTool(handlers, "bash", "rm -rf /");
 console.log(JSON.stringify({ after }));
 JS
-  env "${REAL_STACK_ENV[@]}" scenario o3 "$TMP_ROOT/o3.js" > "$TMP_ROOT/o3-out"
+  FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" scenario o3 "$TMP_ROOT/o3.js" > "$TMP_ROOT/o3-out"
   jq -e '.after.block == true' "$TMP_ROOT/o3-out" >/dev/null \
     || fail "GATE-O3: fresh session did not block"
   override_leftovers=("$W_STATE/jev-gate/"*override*)
@@ -540,7 +537,8 @@ JS
   reset_wire_log
   arm_activation
   set +e
-  printf 'rm -rf /' | FM_JEV_GATE_OVERRIDE=1 "$W_BIN/gate-stub.sh" >/dev/null 2>&1
+  printf 'rm -rf /' | WIRE_LOG="$W_LOG" FM_JEV_GATE_OVERRIDE=1 \
+    "$W_BIN/gate-stub.sh" >/dev/null 2>&1
   direct_code=$?
   set -e
   expect_code 0 "$direct_code" "GATE-O4 direct invocation"
@@ -569,7 +567,7 @@ const { handlers } = await load();
 const result = await callTool(handlers, "bash", "rm -rf /");
 console.log(JSON.stringify(result));
 JS
-  env "${REAL_STACK_ENV[@]}" scenario o5 "$TMP_ROOT/o5.js" > "$TMP_ROOT/o5-out"
+  FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" scenario o5 "$TMP_ROOT/o5.js" > "$TMP_ROOT/o5-out"
   reason=$(jq -r '.reason // ""' "$TMP_ROOT/o5-out")
   [ -n "$reason" ] || fail "GATE-O5: no block reason"
   assert_not_contains "$reason" "override" "GATE-O5 no override word"
@@ -587,7 +585,7 @@ const { commands } = await load();
 await commands.get("jev-override").handler("--ttl 30 --reason expensive cleanup approved", {});
 console.log(JSON.stringify({ ok: true }));
 JS
-  env "${REAL_STACK_ENV[@]}" scenario o8 "$TMP_ROOT/o8.js" > "$TMP_ROOT/o8-out" \
+  FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" scenario o8 "$TMP_ROOT/o8.js" > "$TMP_ROOT/o8-out" \
     || fail "GATE-O8: opening the window failed"
   status_out=$(FM_HOME="$W_PROJ" FM_STATE_OVERRIDE="$W_STATE" \
     "$ROOT/bin/fm-jev-gate-override.sh" status 2>&1)
@@ -609,7 +607,7 @@ const result = await callTool(handlers, "bash", "sudo apt-get upgrade");
 console.log(JSON.stringify(result));
 JS
   FAKE_SCREEN_CHOICE=destructive FAKE_SCREEN_CONF=0.95 \
-    env "${REAL_STACK_ENV[@]}" scenario o9 "$TMP_ROOT/o9.js" > "$TMP_ROOT/o9-out"
+    FM_JEV_GATE_CHECK="$W_BIN/fm-jev-pretool-check.sh" FM_JEV_COMMAND_SCREENER="$W_SCREENER" scenario o9 "$TMP_ROOT/o9.js" > "$TMP_ROOT/o9-out"
   jq -e '(.block | not)' "$TMP_ROOT/o9-out" >/dev/null \
     || fail "GATE-O9: marker command blocked during the window"
   [ ! -s "$W_LOG/screen.calls" ] || fail "GATE-O9: screener consulted during the window"
