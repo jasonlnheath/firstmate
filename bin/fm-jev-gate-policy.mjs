@@ -254,7 +254,7 @@ function tokenizeSegment(segment) {
         op += segment[i];
         i += 1;
       }
-      while (i < segment.length && segment[i] === " ") i += 1;
+      while (i < segment.length && (segment[i] === " " || segment[i] === "\t")) i += 1;
       let target = "";
       let tSingle = false;
       let tDouble = false;

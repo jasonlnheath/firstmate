@@ -3,7 +3,7 @@
 #
 # Owns: GATE-R1..20 (regex blocks), GATE-J1..10 (Jev arm), GATE-B1..12 (benign
 # free allows), GATE-C1..8 (config), GATE-T1..4 (timeouts), GATE-P1..8 (pilot
-# counters/events), GATE-S1..6 (scope), V2-1..44 (review delta), PERF-4, and
+# counters/events), GATE-S1..6 (scope), V2-1..45 (review delta), PERF-4, and
 # LIVE-1 (plan v2 §12; each id's owning suite is this file per §12.12).
 #
 # Every case drives bin/fm-jev-pretool-check.sh with the command on stdin from
@@ -149,7 +149,7 @@ build_fixture
 
 _exit='' _out='' _err=''
 
-echo "1..114"
+echo "1..115"
 
 # ---- GATE-R: deterministic regex blocks ----------------------------------------
 
@@ -1422,6 +1422,16 @@ rm -rf /usr'
   kill "$live_holder" 2>/dev/null || true
   wait "$live_holder" 2>/dev/null || true
   pass "V2-44b: live fresh holder keeps its lock"
+}
+
+# V2-45: a tab between the redirect operator and its target records the same
+# target as every space spelling - the tokenizer's word separators (space and
+# tab) must all resolve the operator's operand identically.
+{
+  reset_gate_state
+  gt _out _err _exit "$(printf 'echo x >\t/etc/hosts')"
+  expect_code 2 "$_exit" "V2-45 exit"
+  assert_contains "$_err" "[JG-R7]" "V2-45 label"
 }
 
 # ---- PERF / LIVE ---------------------------------------------------------------
