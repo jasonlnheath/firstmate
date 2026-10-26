@@ -17,14 +17,23 @@ TEARDOWN="$ROOT/bin/fm-teardown.sh"
 KIMI_HOOK="$ROOT/bin/fm-kimi-turnend-hook.sh"
 TMP_ROOT=$(fm_test_tmproot fm-kimi-harness)
 KIMI_RUNTIME_TASK_TMP=
+KIMI_RUNTIME_LAUNCH_DIR=
 PYTHON_BIN=$(command -v python3) || fail "test needs python3"
 PYTHON_BIN_DIR=$(dirname "$PYTHON_BIN")
 JQ_BIN=$(command -v jq) || fail "test needs jq"
 BASE_PATH=${FM_TEST_BASE_PATH:-$PYTHON_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
 
+task_inbox_export() {  # <home> <id>
+  local state
+  state=$(CDPATH='' cd -- "$1/state" && pwd -P) || fail "cannot resolve state dir $1/state"
+  printf "export FM_TASK_INBOX='%s'; " "$state/$2.inbox"
+}
+
+
 cleanup_kimi_harness() {
-  [ -z "$KIMI_RUNTIME_TASK_TMP" ] || rm -rf "$KIMI_RUNTIME_TASK_TMP"
-  rm -rf "$TMP_ROOT"
+  [ -z "$KIMI_RUNTIME_TASK_TMP" ] || fm_test_remove_tree "$KIMI_RUNTIME_TASK_TMP"
+  [ -z "$KIMI_RUNTIME_LAUNCH_DIR" ] || fm_test_remove_tree "$KIMI_RUNTIME_LAUNCH_DIR"
+  fm_test_remove_tree "$TMP_ROOT"
 }
 trap cleanup_kimi_harness EXIT
 
@@ -61,6 +70,18 @@ fake_screen() {
     trust-wrapped)
       printf '╭─ Trust this folder? ─╮\n│ ↑↓ navigate ·        │\n│ Enter select · Esc   │\n│ exit                 │\n│ %s │\n│ ❯ Trust this folder  │\n│   Don'"'"'t trust         │\n╰──────────────────────╯\n' "$FM_FAKE_PANE_PATH"
       ;;
+    trust-230|trust-230-rootmcp|trust-230-kimimcp|trust-230-small|trust-230-paged)
+      # Recorded from Kimi Code CLI 2.3.0; tests/captures/kimi-code-2.3.0/README.md
+      # owns the provenance. The directory line becomes the fake pane's path.
+      case "$state" in
+        trust-230) capture=plain.pane ;;
+        trust-230-rootmcp) capture=root-mcp-json.pane ;;
+        trust-230-kimimcp) capture=kimi-code-mcp-json.pane ;;
+        trust-230-small) capture=small-terminal.pane ;;
+        trust-230-paged) capture=paged.pane ;;
+      esac
+      sed "s|{WORKDIR}|$FM_FAKE_PANE_PATH|g" "$FM_FAKE_KIMI_CAPTURES/$capture"
+      ;;
     pointer-typed)
       printf 'context: 0%% (0/256k)\n╭────────────────────────────────╮\n│ > Read the brief and follow it │\n│                                │\n╰────────────────────────────────╯\n'
       ;;
@@ -91,8 +112,20 @@ case "$*" in
 esac
 case "${1:-}" in
   display-message) printf 'firstmate\n'; exit 0 ;;
-  list-windows) exit 0 ;;
-  has-session|new-session|new-window|kill-window) exit 0 ;;
+  list-windows)
+    [ ! -s "$FM_FAKE_KIMI_STATE.window" ] || cat "$FM_FAKE_KIMI_STATE.window"
+    exit 0 ;;
+  new-window)
+    name=
+    previous=
+    for arg in "$@"; do
+      [ "$previous" = -n ] && name=$arg
+      previous=$arg
+    done
+    printf '%s\n' "$name" > "$FM_FAKE_KIMI_STATE.window"
+    exit 0 ;;
+  kill-window) : > "$FM_FAKE_KIMI_STATE.window"; exit 0 ;;
+  has-session|new-session) exit 0 ;;
   send-keys)
     prev=
     literal=
@@ -102,6 +135,9 @@ case "${1:-}" in
     done
     if [ -n "$literal" ]; then
       case "$literal" in
+        ". '"*"'") staged=${literal#". '"}; staged=${staged%"'"}; [ ! -f "$staged" ] || literal=$(cat "$staged") ;;
+      esac
+      case "$literal" in
         *' --auto')
           printf '%s\n' "$literal" >> "$FM_FAKE_LAUNCH_LOG"
           printf 'launched\n' > "$FM_FAKE_KIMI_STATE"
@@ -109,7 +145,7 @@ case "${1:-}" in
         *)
           printf '%s\n' "$literal" >> "$FM_FAKE_POINTER_LOG"
           case "$state" in
-            trust|trust-wrapped|trust-partial|trust-decoy|booting|banner-only|banner-first|blank-frame) ;;
+            trust|trust-wrapped|trust-partial|trust-decoy|trust-230|trust-230-rootmcp|trust-230-kimimcp|trust-230-small|trust-230-paged|booting|banner-only|banner-first|blank-frame) ;;
             *) printf 'pointer-typed\n' > "$FM_FAKE_KIMI_STATE" ;;
           esac
           ;;
@@ -128,11 +164,16 @@ case "${1:-}" in
                 late) printf 'booting\n' > "$FM_FAKE_KIMI_STATE" ;;
                 blink) printf 'banner-first\n' > "$FM_FAKE_KIMI_STATE" ;;
                 wrapped) printf 'trust-wrapped\n' > "$FM_FAKE_KIMI_STATE" ;;
+                230) printf 'trust-230\n' > "$FM_FAKE_KIMI_STATE" ;;
+                230-rootmcp) printf 'trust-230-rootmcp\n' > "$FM_FAKE_KIMI_STATE" ;;
+                230-kimimcp) printf 'trust-230-kimimcp\n' > "$FM_FAKE_KIMI_STATE" ;;
+                230-small) printf 'trust-230-small\n' > "$FM_FAKE_KIMI_STATE" ;;
+                230-paged) printf 'trust-230-paged\n' > "$FM_FAKE_KIMI_STATE" ;;
                 *) printf 'ready\n' > "$FM_FAKE_KIMI_STATE" ;;
               esac
             fi
             ;;
-          trust|trust-wrapped)
+          trust|trust-wrapped|trust-230)
             printf 'enter\n' >> "$FM_FAKE_KIMI_TRUST_ENTER_LOG"
             trust_enters=$(wc -l < "$FM_FAKE_KIMI_TRUST_ENTER_LOG" | tr -d ' ')
             case "${FM_FAKE_KIMI_TRUST_CLEARS:-yes}" in
@@ -141,6 +182,18 @@ case "${1:-}" in
                 [ "$trust_enters" -lt 2 ] || printf 'ready\n' > "$FM_FAKE_KIMI_STATE"
                 ;;
             esac
+            ;;
+          trust-230-rootmcp|trust-230-kimimcp|trust-230-paged)
+            # Observed live on Kimi 2.3.0: Enter on a prompt that announces
+            # project servers starts the declared command before any login,
+            # and the paged prompt is that same prompt with the announcement
+            # on a page that is not shown.
+            printf 'enter\n' >> "$FM_FAKE_KIMI_TRUST_ENTER_LOG"
+            printf 'started-by-fake-kimi\n' >> "$FM_FAKE_MCP_MARKER_LOG"
+            printf 'ready\n' > "$FM_FAKE_KIMI_STATE"
+            ;;
+          trust-230-small)
+            printf 'enter\n' >> "$FM_FAKE_KIMI_TRUST_ENTER_LOG"
             ;;
           ready|delivered)
             printf 'enter\n' >> "$FM_FAKE_KIMI_STRAY_ENTER_LOG"
@@ -258,6 +311,8 @@ run_spawn() {
     FM_FAKE_KIMI_SWALLOWED="$case_dir/kimi.swallowed" \
     FM_FAKE_KIMI_SWALLOW_FIRST="${FM_FAKE_KIMI_SWALLOW_FIRST:-no}" \
     FM_FAKE_TMUX_CALL_LOG="$case_dir/tmux-calls.log" \
+    FM_FAKE_KIMI_CAPTURES="$ROOT/tests/captures/kimi-code-2.3.0" \
+    FM_FAKE_MCP_MARKER_LOG="$case_dir/marker.log" \
     FM_FAKE_BRIEF_REAL="$(cd "$home/data/$id" && pwd -P)/launch-brief.md" \
     FM_KIMI_READY_POLLS="${FM_KIMI_READY_POLLS:-2}" FM_KIMI_DELIVERY_POLLS=2 FM_KIMI_POLL_INTERVAL=0 \
     PATH="$fakebin:$BASE_PATH" \
@@ -271,13 +326,16 @@ EOF
 }
 
 test_kimi_launch_then_send_is_verified() {
-  local id rec out rc launch pointer brief_real meta task_tmp
+  local id rec out rc launch pointer brief_real meta task_tmp launch_dir launch_file launch_base
   id="kimi-success-z1-$$"
   task_tmp="/tmp/fm-$id"
   KIMI_RUNTIME_TASK_TMP=$task_tmp
   rm -rf "$task_tmp"
   rec=$(make_spawn_case success "$id")
   read_spawn_record "$rec"
+  launch_dir=$(kimi_launch_dir "$id" "$HOME_DIR")
+  KIMI_RUNTIME_LAUNCH_DIR=$launch_dir
+  rm -rf "$launch_dir"
   out=$(FM_FAKE_KIMI_SWALLOW_FIRST=yes run_spawn \
     "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
     --model kimi-code/k3 --effort high)
@@ -286,7 +344,7 @@ test_kimi_launch_then_send_is_verified() {
   assert_contains "$out" "spawned $id harness=kimi" "kimi spawn did not report success"
 
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
+  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")$(fm_test_launch_git_prefix "$launch")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
     || fail "kimi launch did not use the absolute binary, model, and --auto only: $launch"
   assert_not_contains "$launch" "--effort" "kimi launch emitted a nonexistent effort flag"
   assert_not_contains "$launch" "turn-ended" "kimi launch embedded a turn-end path"
@@ -301,6 +359,24 @@ test_kimi_launch_then_send_is_verified() {
   assert_grep 'effort=high' "$meta" "kimi meta did not retain the unsupported effort axis"
   assert_grep "tasktmp=$task_tmp" "$meta" "kimi meta did not record its task temp root"
   assert_present "$task_tmp/gotmp" "kimi spawn did not create its Go temp directory"
+  [ "$(path_mode "$task_tmp")" = 700 ] \
+    || fail "kimi spawn left its task temp root readable by others: $(path_mode "$task_tmp")"
+  launch_file=$(kimi_typed_launch_file "$CASE_DIR/tmux-calls.log")
+  launch_base=$(basename "$launch_file")
+  case "$launch_file" in
+    "$launch_dir"/launch.*) ;;
+    *) fail "kimi spawn typed a launch path outside its home namespace: $launch_file" ;;
+  esac
+  [ "$launch_base" != launch.sh ] \
+    || fail "kimi spawn reused a mutable launch.sh name"
+  [ "$launch_file" != "$task_tmp/launch.sh" ] \
+    || fail "kimi spawn staged its launch command at the shared per-id path"
+  [ "$(path_mode "$launch_dir")" = 700 ] \
+    || fail "kimi spawn left its launch directory readable by others: $(path_mode "$launch_dir")"
+  [ "$(path_mode "$launch_file")" = 600 ] \
+    || fail "kimi spawn staged its launch command without mode 0600: $(path_mode "$launch_file")"
+  grep -qF -- "-l . '$launch_file'" "$CASE_DIR/tmux-calls.log" \
+    || fail "kimi spawn did not type a short line sourcing its staged launch command"
   assert_grep "export GOTMPDIR=$task_tmp/gotmp" "$CASE_DIR/tmux-calls.log" \
     "kimi spawn did not export its Go temp directory into the pane"
   assert_grep "export FM_TASK_ID=$id" "$CASE_DIR/tmux-calls.log" \
@@ -310,6 +386,94 @@ test_kimi_launch_then_send_is_verified() {
   assert_grep 'token=' "$WT_DIR/.fm-kimi-turnend" "kimi spawn did not write its token pointer"
   assert_present "$HOME_DIR/state/$id.kimi-turnend-token" "kimi spawn did not record its token"
   pass "fm-spawn: kimi launches, delivers its brief, and registers a guarded turn-end token"
+}
+
+path_mode() {
+  stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+}
+
+kimi_launch_dir() {
+  local id=$1 home=$2 root hash
+  root=$(cd "$home" 2>/dev/null && pwd -P) || root=$home
+  if command -v shasum >/dev/null 2>&1; then
+    hash=$(printf '%s' "$root" | shasum -a 256 | awk '{print $1}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash=$(printf '%s' "$root" | sha256sum | awk '{print $1}')
+  else
+    fail "test needs shasum or sha256sum"
+  fi
+  printf '/tmp/fm-%s+%s' "$id" "$hash"
+}
+
+kimi_typed_launch_file() {
+  local log=$1 src
+  src=$(grep -o "\. '/tmp/fm-[^']*'" "$log" | tail -1)
+  src=${src#". '"}
+  src=${src%"'"}
+  [ -n "$src" ] || fail "spawn did not type a staged launch source line"
+  printf '%s' "$src"
+}
+
+test_kimi_spawn_refuses_shared_task_temp_root() {
+  local id rec out rc task_tmp launch_dir launch_file stale_file
+  id="kimi-sharedtmp-z1-$$"
+  task_tmp="/tmp/fm-$id"
+  KIMI_RUNTIME_TASK_TMP=$task_tmp
+  rm -rf "$task_tmp"
+  mkdir "$task_tmp"
+  chmod 777 "$task_tmp"
+  rec=$(make_spawn_case sharedtmp "$id")
+  read_spawn_record "$rec"
+  launch_dir=$(kimi_launch_dir "$id" "$HOME_DIR")
+  KIMI_RUNTIME_LAUNCH_DIR=$launch_dir
+  rm -rf "$launch_dir"
+  out=$(run_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  [ "$rc" -ne 0 ] || fail "kimi spawn accepted a world-writable task temp root"
+  assert_contains "$out" "is not a private directory owned by this user" \
+    "kimi spawn did not name the unsafe task temp root"
+  assert_absent "$task_tmp/launch.sh" "kimi spawn staged its launch command in a shared directory"
+  assert_absent "$launch_dir" "kimi spawn staged a namespaced launch directory after refusing the shared temp root"
+  [ ! -s "$CASE_DIR/launch.log" ] || fail "kimi spawn launched despite an unsafe task temp root"
+  rm -rf "$task_tmp"
+  mkdir "$task_tmp"
+  chmod 755 "$task_tmp"
+  rec=$(make_spawn_case ownedtmp "$id")
+  read_spawn_record "$rec"
+  launch_dir=$(kimi_launch_dir "$id" "$HOME_DIR")
+  KIMI_RUNTIME_LAUNCH_DIR=$launch_dir
+  rm -rf "$launch_dir"
+  mkdir "$launch_dir"
+  chmod 755 "$launch_dir"
+  stale_file="$launch_dir/launch.sh"
+  printf 'stale launch command\n' > "$stale_file"
+  chmod 644 "$stale_file"
+  printf 'stale shared launch command\n' > "$task_tmp/launch.sh"
+  chmod 644 "$task_tmp/launch.sh"
+  out=$(run_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
+  rc=$?
+  expect_code 0 "$rc" "kimi spawn should reuse an existing temp root it owns: $out"
+  launch_file=$(kimi_typed_launch_file "$CASE_DIR/tmux-calls.log")
+  [ "$(path_mode "$task_tmp")" = 700 ] \
+    || fail "kimi spawn did not tighten its reused task temp root: $(path_mode "$task_tmp")"
+  [ "$(path_mode "$launch_dir")" = 700 ] \
+    || fail "kimi spawn did not tighten its reused launch directory: $(path_mode "$launch_dir")"
+  case "$launch_file" in
+    "$launch_dir"/launch.*) ;;
+    *) fail "kimi spawn typed a launch path outside its home namespace: $launch_file" ;;
+  esac
+  [ "$launch_file" != "$stale_file" ] \
+    || fail "kimi spawn rebound a pre-existing launch.sh instead of writing a new nonce file"
+  [ "$(path_mode "$launch_file")" = 600 ] \
+    || fail "kimi spawn staged its launch command without mode 0600: $(path_mode "$launch_file")"
+  [ "$(path_mode "$stale_file")" = 644 ] \
+    || fail "kimi spawn overwrote a pre-existing launch.sh"
+  [ "$(path_mode "$task_tmp/launch.sh")" = 644 ] \
+    || fail "kimi spawn reused the shared per-id launch file"
+  grep -qF -- "-l . '$launch_file'" "$CASE_DIR/tmux-calls.log" \
+    || fail "kimi spawn did not type a short line sourcing its namespaced launch command"
+  rm -rf "$task_tmp" "$launch_dir"
+  pass "fm-spawn: unsafe task roots are refused, owned roots are tightened, and launch files stay unique and 0600"
 }
 
 test_kimi_hook_install_is_surgical_idempotent_and_removable() {
@@ -512,14 +676,19 @@ test_kimi_spawn_refuses_unsafe_global_config_before_pane_creation() {
 }
 
 test_kimi_teardown_removes_pointer_and_registry_token() {
-  local id rec out rc token
+  local id rec out rc token launch_dir foreign_dir
   id=kimi-teardown-z8
   rec=$(make_spawn_case teardown "$id")
   read_spawn_record "$rec"
+  launch_dir=$(kimi_launch_dir "$id" "$HOME_DIR")
+  KIMI_RUNTIME_LAUNCH_DIR=$launch_dir
+  foreign_dir="/tmp/fm-$id+zzzzzzzz"
   out=$(run_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id")
   rc=$?
   expect_code 0 "$rc" "Kimi spawn should succeed before teardown"
   token=$(sed -n 's/^token=//p' "$WT_DIR/.fm-kimi-turnend")
+  mkdir -p "$foreign_dir"
+  printf 'other home\n' > "$foreign_dir/launch.sh"
 
   HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
     FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
@@ -529,6 +698,12 @@ test_kimi_teardown_removes_pointer_and_registry_token() {
   assert_absent "$WT_DIR/.fm-kimi-turnend" "Kimi token pointer survived teardown"
   assert_absent "$HOME_DIR/.kimi-code/fm-turn-end.d/$token" "Kimi registry token survived teardown"
   assert_absent "$HOME_DIR/state/$id.kimi-turnend-token" "Kimi token state survived teardown"
+  assert_absent "$launch_dir" "Kimi staged launch directory survived teardown"
+  if [ ! -f "$foreign_dir/launch.sh" ]; then
+    rm -rf "$foreign_dir"
+    fail "teardown removed another home's staged launch directory"
+  fi
+  rm -rf "$foreign_dir"
   pass "fm-teardown: Kimi task pointer and registry token are removed"
 }
 
@@ -545,7 +720,7 @@ test_kimi_falls_back_to_expanded_home_binary() {
   rc=$?
   expect_code 0 "$rc" "Kimi HOME fallback spawn should succeed"
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$fallback' --auto" ] \
+  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")$(fm_test_launch_git_prefix "$launch")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$fallback' --auto" ] \
     || fail "Kimi fallback did not expand HOME into an absolute executable: $launch"
   pass "fm-spawn: Kimi fallback expands the active HOME"
 }
@@ -579,7 +754,7 @@ test_kimi_unconfirmed_delivery_fails_loudly() {
   [ "$rc" -ne 0 ] || fail "an unconfirmed kimi delivery should fail"
   assert_contains "$out" "kimi brief pointer delivery was not confirmed" \
     "unconfirmed kimi delivery lacked a loud diagnostic"
-  assert_grep 'failed: kimi brief pointer delivery was not confirmed' "$HOME_DIR/state/$id.status" \
+  assert_grep 'failed: kimi brief pointer delivery was not confirmed' <(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status") \
     "unconfirmed kimi delivery did not leave a supervisor-visible failure"
   pass "fm-spawn: kimi treats a silent pointer drop as a failed spawn"
 }
@@ -809,7 +984,7 @@ test_kimi_stuck_trust_dialog_fails_before_delivery() {
   [ "$(wc -l < "$CASE_DIR/trust-enter.log" | tr -d ' ')" -gt 1 ] \
     || fail "stuck Kimi trust dialog was not re-answered while it stayed on screen"
   [ ! -s "$CASE_DIR/pointer.log" ] || fail "Kimi pointer was sent through a stuck trust dialog"
-  assert_grep 'failed: kimi trust dialog did not clear' "$HOME_DIR/state/$id.status" \
+  assert_grep 'failed: kimi trust dialog did not clear' <(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status") \
     "stuck Kimi trust dialog did not leave a supervisor-visible failure"
   pass "fm-spawn: a Kimi trust dialog must visibly clear before brief delivery"
 }
@@ -990,11 +1165,104 @@ test_kimi_bordered_prompt_needs_no_override() {
   pass "composer classifier: kimi's existing bordered > shape is already safe without an override"
 }
 
+assert_project_server_stayed_idle() {
+  [ ! -s "$CASE_DIR/marker.log" ] \
+    || fail "the declared project MCP server started: $(cat "$CASE_DIR/marker.log")"
+}
+
+test_kimi_230_prompt_with_no_project_servers_is_answered_and_verified() {
+  local id rec out rc
+  id=kimi-230-plain-a1
+  rec=$(make_spawn_case trust-230 "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_KIMI_READY_POLLS=3 FM_FAKE_KIMI_TRUST=230 run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  expect_code 0 "$rc" "the recorded 2.3.0 prompt with no project servers should be answered into a verified spawn"
+  assert_contains "$out" "spawned $id harness=kimi" "Kimi spawn did not continue after the 2.3.0 prompt cleared"
+  [ "$(wc -l < "$CASE_DIR/trust-enter.log" | tr -d ' ')" = 1 ] \
+    || fail "the 2.3.0 prompt was not answered exactly once"
+  assert_grep 'Read the brief at' "$CASE_DIR/pointer.log" \
+    "Kimi brief pointer was not delivered after the 2.3.0 prompt"
+  assert_contains "$(cat "$CASE_DIR/launch.log")" "--auto" "the launch did not stay kimi --auto"
+  assert_project_server_stayed_idle
+  pass "fm-spawn: the recorded Kimi 2.3.0 prompt with no project servers is answered once and the brief is delivered"
+}
+
+test_kimi_230_prompt_announcing_a_root_mcp_json_server_receives_no_key() {
+  local id rec out rc
+  id=kimi-230-rootmcp-a2
+  rec=$(make_spawn_case trust-230-rootmcp "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_KIMI_READY_POLLS=3 FM_FAKE_KIMI_TRUST=230-rootmcp run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a 2.3.0 prompt announcing a root .mcp.json server should not pass readiness"
+  [ ! -s "$CASE_DIR/trust-enter.log" ] || fail "a key was sent to a 2.3.0 prompt announcing a root .mcp.json server"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "the brief pointer was sent to a 2.3.0 prompt announcing project servers"
+  assert_contains "$out" "announces project MCP servers" "the refusal did not name the announcement"
+  assert_contains "$out" "Config line names the file" "the refusal did not tell the operator where the declaration is"
+  assert_grep "failed: kimi's folder prompt announces project MCP servers" \
+    <(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status") \
+    "the announcing prompt did not leave a supervisor-visible failure"
+  assert_project_server_stayed_idle
+  pass "fm-spawn: a recorded Kimi 2.3.0 prompt announcing a root .mcp.json server receives no key and reports why"
+}
+
+test_kimi_230_prompt_announcing_a_kimi_code_mcp_json_server_receives_no_key() {
+  local id rec out rc
+  id=kimi-230-kimimcp-a3
+  rec=$(make_spawn_case trust-230-kimimcp "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_KIMI_READY_POLLS=3 FM_FAKE_KIMI_TRUST=230-kimimcp run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a 2.3.0 prompt announcing a .kimi-code/mcp.json server should not pass readiness"
+  [ ! -s "$CASE_DIR/trust-enter.log" ] || fail "a key was sent to a 2.3.0 prompt announcing a .kimi-code/mcp.json server"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "the brief pointer was sent to a 2.3.0 prompt announcing project servers"
+  assert_contains "$out" "announces project MCP servers" "the refusal did not name the announcement"
+  assert_project_server_stayed_idle
+  pass "fm-spawn: a recorded Kimi 2.3.0 prompt announcing a .kimi-code/mcp.json server receives no key and reports why"
+}
+
+test_kimi_230_prompt_in_a_terminal_too_small_to_confirm_receives_no_key() {
+  local id rec out rc
+  id=kimi-230-small-a4
+  rec=$(make_spawn_case trust-230-small "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_KIMI_TRUST=230-small run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a 2.3.0 prompt collapsed to its title should not pass readiness"
+  [ ! -s "$CASE_DIR/trust-enter.log" ] || fail "a key was sent to a 2.3.0 prompt collapsed to its title"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "the brief pointer was sent to a 2.3.0 prompt collapsed to its title"
+  assert_contains "$out" "trust dialog text stayed on screen without the complete dialog" \
+    "the collapsed prompt did not report that it was never safe to answer"
+  pass "fm-spawn: a recorded Kimi 2.3.0 prompt collapsed to its title receives no key and reports that it is not ready"
+}
+
+test_kimi_230_prompt_that_pages_its_disclosure_receives_no_key() {
+  local id rec out rc
+  id=kimi-230-paged-a5
+  rec=$(make_spawn_case trust-230-paged "$id")
+  read_spawn_record "$rec"
+  rc=0
+  out=$(FM_KIMI_READY_POLLS=3 FM_FAKE_KIMI_TRUST=230-paged run_spawn \
+    "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a 2.3.0 prompt that pages its disclosure should not pass readiness"
+  [ ! -s "$CASE_DIR/trust-enter.log" ] || fail "a key was sent to a 2.3.0 prompt that pages its disclosure"
+  [ ! -s "$CASE_DIR/pointer.log" ] || fail "the brief pointer was sent to a 2.3.0 prompt that pages its disclosure"
+  assert_contains "$out" "pages what trusting would activate" "the paged prompt did not report why it was not answered"
+  assert_project_server_stayed_idle
+  pass "fm-spawn: a recorded Kimi 2.3.0 prompt that pages its disclosure receives no key, because the announcement can sit on a hidden page"
+}
+
 test_kimi_hook_install_is_surgical_idempotent_and_removable
 test_kimi_hook_remove_preserves_owned_newline_boundary
 test_kimi_hook_fails_closed_on_missing_malformed_or_partial_config
 test_kimi_hook_install_refuses_without_jq
 test_kimi_launch_then_send_is_verified
+test_kimi_spawn_refuses_shared_task_temp_root
 test_kimi_hook_is_silent_and_requires_registered_workspace_token
 test_kimi_spawn_refuses_unsafe_global_config_before_pane_creation
 test_kimi_teardown_removes_pointer_and_registry_token
@@ -1019,3 +1287,8 @@ test_kimi_session_lock_identity
 test_kimi_busy_signature_is_scoped_to_spinner_lines
 test_watcher_never_classifies_kimi_from_its_spinner
 test_kimi_bordered_prompt_needs_no_override
+test_kimi_230_prompt_with_no_project_servers_is_answered_and_verified
+test_kimi_230_prompt_announcing_a_root_mcp_json_server_receives_no_key
+test_kimi_230_prompt_announcing_a_kimi_code_mcp_json_server_receives_no_key
+test_kimi_230_prompt_in_a_terminal_too_small_to_confirm_receives_no_key
+test_kimi_230_prompt_that_pages_its_disclosure_receives_no_key

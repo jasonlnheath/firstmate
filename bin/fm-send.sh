@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Steer a task by durable record: write the message into the task's steering
-# inbox and ring a constant doorbell line into its terminal, best-effort.
+# inbox and ring a constant doorbell through its backend endpoint, best-effort.
 # Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
@@ -8,12 +8,13 @@
 #   tmux window search, because a "successful" send to the wrong endpoint is
 #   worse than a loud failure.
 # The text must be nonempty: an empty or whitespace-only message is refused
-# before anything is marked, recorded, or typed, because an empty marked
+# before anything is marked, recorded, or submitted, because an empty marked
 # secondmate request delivers only marker and correlation bytes and leaves the
 # parent waiting on a reply to nothing.
 # Special keys instead of text: fm-send.sh <target> --key Enter
 # Key support is backend-specific: tmux/herdr support Escape, Enter, and C-c;
-# Orca currently supports Enter and C-c only, and rejects Escape.
+# Orca supports Enter and C-c only; T3 Code maps Escape and C-c to a native
+# turn interrupt and treats Enter as a no-op.
 #
 # Two data planes:
 #
@@ -21,8 +22,9 @@
 # remote alike. The message is appended as a durable sequenced record under
 # the task's steering inbox (newlines are legal) - state/<id>.inbox/ for a
 # local task, or the remote home's host-local inbox reached through fm-on.sh
-# for a remote secondmate - and the terminal receives only one short constant
-# self-describing doorbell line plus Enter, best-effort. The durable record IS
+# for a remote secondmate - and the endpoint receives only one short constant
+# self-describing doorbell, best-effort. Pane backends type its line plus Enter;
+# T3 Code starts one native turn. The durable record IS
 # the delivery, so the record's fate alone governs the exit: 0 = the steer is
 # durably sent (recorded); nonzero = nothing was confirmed delivered and a
 # resend is appropriate (unresolvable target, an endpoint that cannot be
@@ -47,29 +49,27 @@
 # instruction. There is no delivered-unconfirmed
 # outcome on this plane: "did the doorbell land" is no longer the question -
 # "was the message acted on" is, and that is answered asynchronously for an
-# ordinary record by the worker's acknowledgement move into handled/. The
-# watcher re-rings an unacknowledged message while its endpoint remains
-# available, escalates after the bounded ladder, and instead routes a positively
-# dead or missing endpoint directly to recovery without typing. An explicit
-# fire-and-forget record is excluded from that ladder.
-# bin/fm-task-inbox-lib.sh owns the record format, the doorbell line, and the
-# re-ring ladder. The composer pre-check before the ring is ADVISORY only: when
+# ordinary record by the worker's acknowledgement move into handled/.
+# bin/fm-task-inbox-lib.sh owns the record format, doorbell line, and retry and
+# escalation policy for ordinary and fire-and-forget records.
+# On pane backends, the composer pre-check before the ring is ADVISORY only: when
 # the composer visibly holds pending text the ring is skipped with a notice and
 # the watcher re-rings an ordinary record later; no composer verdict is
 # delivery proof on this plane, and a failed ring never fails the send.
 #
-# TYPED - the LOCAL text that must reach the terminal itself: a harness-native
-# invocation (a leading "/", or a leading "$" to a codex target) must reach
-# the harness's own parser, and an explicit backend target names an endpoint,
-# not a task, so it stays typed even when local metadata happens to match it
-# (the same boundary that keeps it unmarked and outside --resolve-key). These
-# type the literal
-# text through the target backend's verified submit core: typed ONCE, then
-# Enter retried (never retyped) until the backend confirms a submit or reports
-# an inconclusive send. Typed-plane exit contract: 0 = submit confirmed;
-# 3 = the text was typed into the live endpoint and
-# Enter was sent, but the submit read-back stayed unconfirmed (verify the pane
-# before any resend, and never re-type blindly; a marked request's
+# TYPED - the LOCAL text submitted directly instead of through the inbox. On a
+# pane backend, a harness-native invocation (a leading "/", or a leading "$" to
+# a codex target) must reach the harness's own parser. An explicit backend
+# target names an endpoint, not a task, so it stays on this plane even when
+# local metadata happens to match it (the same boundary that keeps it unmarked
+# and outside --resolve-key). Pane backends type the literal text ONCE, then
+# retry Enter without retyping; T3 Code starts one native turn. Typed-plane exit
+# contract: 0 = submit confirmed; 3 = the text reached the live endpoint and
+# submission was attempted, but the read-back stayed unconfirmed, or an API
+# backend's outcome is unproven: a lost reply or an error that can follow a
+# commit (verify the endpoint
+# before any resend, and never submit blindly; docs/t3code-backend.md owns
+# T3 Code's request-id retention and retry policy; a marked request's
 # pending-reply expectation stays armed because this outcome is not a proven
 # failure); any other nonzero = the send failed and nothing may be assumed
 # delivered. Submission dispatches through the target's recorded backend; the
@@ -82,8 +82,7 @@
 # every remote text steer rides the inbox (a marked secondmate request already
 # reaches the harness as marker-prefixed chat rather than a parser command, so
 # routing a remote "/..." or "$..." through the record changes nothing the
-# parser would have seen); only --key still crosses to the remote pane as a
-# keystroke.
+# parser would have seen); only --key still crosses to the remote endpoint.
 #
 # Stage-1 compatibility boundary: classification uses the original pre-marker
 # text, but secondmate marking still precedes every typed submission. Therefore
@@ -156,8 +155,9 @@
 # blocked: record in the target task's state/<id>.status. fm-send itself
 # appends the closing resolved line to that status file, so the captain-facing
 # OPEN DECISIONS record closes at answer time and never depends on the busy
-# worker writing a matching resolved line. Ordinary keys close with
-# "resolved [key=<key>]: answered: <capped excerpt>". A reserved key
+# worker writing a matching resolved line. For ordinary keys the payload is
+# "resolved [key=<key>]: answered: <capped excerpt>" before the emission-time
+# handling owned by bin/fm-classify-lib.sh. A reserved key
 # (pending-reply-* today; bin/fm-classify-lib.sh's reserved-key guard) is
 # closed with the owning library's vocabulary note
 # (fm_pending_reply_close_note_for_key / fm_pending_reply_resolved_note), so
@@ -175,6 +175,14 @@
 # open-decision ledger fm-wake-drain folds lives in this home's own state dir
 # (a remote mate's escalations reach it through the parent-replies ingest);
 # only the answer message crosses the backend or remote transport.
+#
+# Answering a decision is the gate-answer path and is main-owned while
+# attended: when any named key is an open needs-decision or a captain-held task
+# (a blocked: key is ordinary steering and stays lease-guarded only), the Pi
+# supervision branch is refused outright, exactly as its prompt promises. While
+# the away-posture record exists main is parked and that one refusal relocates
+# to the branch (contract: bin/fm-lease-lib.sh); which findings firstmate may
+# decide at all remains ask-user-authority's judgment for either actor.
 #
 # Chat is also a channel that carries keyed captain answers, so the same flag
 # feeds bin/fm-captain-hold.sh's one keyed-answer intake for any key that names
@@ -207,6 +215,15 @@
 # path do not pay it.
 set -eu
 
+# Print the header comment as usage before any FM_HOME check or target
+# resolution, so the contract this header owns is reachable through --help.
+case "${1:-}" in
+  --help)
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"
+    exit 0
+    ;;
+esac
+
 FM_SEND_ORIGINAL_ARGS=("$@")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -232,24 +249,18 @@ if [ ! -d "$STATE" ]; then
   exit 1
 fi
 
-# shellcheck source=bin/fm-backend.sh
-. "$SCRIPT_DIR/fm-backend.sh"
-# shellcheck source=bin/fm-control-lib.sh
-. "$SCRIPT_DIR/fm-control-lib.sh"
-# shellcheck source=bin/fm-marker-lib.sh
-. "$SCRIPT_DIR/fm-marker-lib.sh"
+# Pending replies load the backend, marker, classifier, and timeout helpers.
+# Reuse those imports before loading the control and inbox helpers.
 # shellcheck source=bin/fm-pending-reply-lib.sh
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
-# shellcheck source=bin/fm-classify-lib.sh
-. "$SCRIPT_DIR/fm-classify-lib.sh"
+# shellcheck source=bin/fm-control-lib.sh
+. "$SCRIPT_DIR/fm-control-lib.sh"
 # shellcheck source=bin/fm-line-cap-lib.sh
 . "$SCRIPT_DIR/fm-line-cap-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 # shellcheck source=bin/fm-task-inbox-lib.sh
 . "$SCRIPT_DIR/fm-task-inbox-lib.sh"
-# shellcheck source=bin/fm-timeout-lib.sh
-. "$SCRIPT_DIR/fm-timeout-lib.sh"
 
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the requested message WILL still be sent.' "$SCRIPT_DIR/fm-guard.sh" || true
 
@@ -551,6 +562,7 @@ RESOLVE_STATUS_FILE=
 # longer owns also keeps the common path free of any backlog read.
 RESOLVE_STATUS_KEYS=
 RESOLVE_HOLD_KEYS=
+RESOLVE_CLOSE_MAX=$FM_LINE_CAP_DEFAULT
 
 # Resolve a --resolve-key key that the status log no longer owns to the
 # captain-held task that carries it: the key as a task id itself (the collapsed
@@ -636,8 +648,29 @@ if [ -n "$RESOLVE_KEYS" ]; then
     echo "error: --resolve-key '$k': no open decision or blocker with that key in $RESOLVE_STATUS_FILE, and no captain-held task '$k' or '$RESOLVE_TASK_ID-decision-$k' still open (already closed or mistyped). Re-check the OPEN DECISIONS listing, then resend without that key or with the right one; nothing was sent." >&2
     exit 1
   done
+  # The decision-answer partition (the header's "Answering a decision"
+  # contract): a key that is an open needs-decision, or already a captain-held
+  # task, is a decision, and answering one is main-owned while attended. A
+  # blocked: key is ordinary steering and takes no partition guard. Under the
+  # away-posture record the guard passes the branch instead (relocation:
+  # bin/fm-lease-lib.sh); which findings firstmate may decide at all stays
+  # ask-user-authority's judgment, for either actor.
+  RESOLVE_IS_DECISION=0
+  [ -z "$RESOLVE_HOLD_KEYS" ] || RESOLVE_IS_DECISION=1
+  for k in $RESOLVE_STATUS_KEYS; do
+    [ "$(_fm_open_set_verb "$resolve_open_set" "$k")" = needs-decision ] && RESOLVE_IS_DECISION=1
+  done
+  if [ "$RESOLVE_IS_DECISION" -eq 1 ]; then
+    fm_lease_forbid_branch "decision answer (fm-send --resolve-key)" --away-relocated
+  fi
   # Refuse before send when a named status-log key cannot actually close: a
   # reserved key with an answered: note is a silent no-op in the fold.
+  # The cap bounds the line that is actually APPENDED, and the self-announced
+  # append stamps each line with its emission time. Reserve that stamp's width
+  # here so the probe below measures the same bytes the writer will produce and
+  # the close record stays inside the cap this refusal cites.
+  RESOLVE_CLOSE_MAX=$((FM_LINE_CAP_DEFAULT - $(status_stamp_width)))
+  [ "$RESOLVE_CLOSE_MAX" -ge 0 ] || RESOLVE_CLOSE_MAX=0
   resolve_excerpt=$(printf '%s' "$*" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_STATUS_KEYS; do
     probe=$(fm_send_resolve_close_note "$k" "$resolve_excerpt")
@@ -646,7 +679,7 @@ if [ -n "$RESOLVE_KEYS" ]; then
       exit 1
     fi
     probe_line="resolved [key=$k]: $probe"
-    fm_cap_line_var "$probe_line"
+    fm_cap_line_var "$probe_line" "$RESOLVE_CLOSE_MAX"
     probe_key=$(_fm_decision_key "$FM_LINE_CAP_LINE") || probe_key=
     if [ "$(status_line_verb "$FM_LINE_CAP_LINE")" != resolved ] || [ "$probe_key" != "$k" ]; then
       echo "error: --resolve-key cannot close a decision key of length ${#k}: its ${#probe_line}-character close record exceeds the $FM_LINE_CAP_DEFAULT-character status-line cap, and truncation would remove the structural key delimiter. Refusing rather than writing an ineffective close; nothing was sent." >&2
@@ -659,31 +692,41 @@ fi
 # durably sent: enqueued on the inbox plane, submit-confirmed on the typed
 # plane. An append failure exits nonzero with the manual close
 # command; the decision then stays open and re-surfaces, never silently lost.
-# The close is this home's own bookkeeping, written by the very turn that
-# answered the decision, so it goes through the guarded self-announced append
-# (bin/fm-wake-lib.sh) and does not wake this same session again; any
-# concurrent foreign status bytes leave the watcher's wake path untouched.
+# All of one answer's closes are this home's own bookkeeping, written by the
+# very turn that answered the decisions, so they go through ONE guarded
+# self-announced append (bin/fm-wake-lib.sh). That records the appended byte
+# range so separate --resolve-key answers do not each wake this same session,
+# including when this home already folded those bytes through OPEN DECISIONS
+# without a matching watcher seen marker; any concurrent foreign status bytes,
+# or a worker line the fold read but never listed, leave the watcher's wake
+# path untouched.
 fm_send_close_resolved_keys() { # <answer-text>
-  local note=$1 k line close_note append_rc still manual_close_cmd
+  local note=$1 k close_note append_rc still manual_close_cmd close_lines=() i=0
   note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_STATUS_KEYS; do
     close_note=$(fm_send_resolve_close_note "$k" "$note")
-    line="resolved [key=$k]: $close_note"
-    fm_cap_line_var "$line"
-    printf -v manual_close_cmd "printf '%%s\\n' %q >> %q" "$FM_LINE_CAP_LINE" "$RESOLVE_STATUS_FILE"
-    append_rc=0
-    fm_wake_status_append_self_announced "$STATE" "$RESOLVE_STATUS_FILE" "$FM_LINE_CAP_LINE" || append_rc=$?
-    if [ "$append_rc" -eq 2 ]; then
-      echo "error: the answer was delivered to $T, but decision key '$k' could not be closed in $RESOLVE_STATUS_FILE. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
-      return 1
-    fi
-    still=$(status_open_decisions "$RESOLVE_STATUS_FILE")
+    fm_cap_line_var "resolved [key=$k]: $close_note" "$RESOLVE_CLOSE_MAX"
+    close_lines+=("$FM_LINE_CAP_LINE")
+  done
+  [ "${#close_lines[@]}" -gt 0 ] || return 0
+  append_rc=0
+  fm_wake_status_append_self_announced "$STATE" "$RESOLVE_STATUS_FILE" "${close_lines[@]}" || append_rc=$?
+  if [ "$append_rc" -eq 2 ]; then
+    printf -v manual_close_cmd ' %q' "${close_lines[@]}"
+    printf -v manual_close_cmd "printf '%%s\\n'%s >> %q" "$manual_close_cmd" "$RESOLVE_STATUS_FILE"
+    echo "error: the answer was delivered to $T, but the close for decision key(s) '$RESOLVE_STATUS_KEYS' could not be appended to $RESOLVE_STATUS_FILE. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
+    return 1
+  fi
+  still=$(status_open_decisions "$RESOLVE_STATUS_FILE")
+  for k in $RESOLVE_STATUS_KEYS; do
     case "$still" in
     "$k"$'\t'* | *$'\n'"$k"$'\t'*)
+      printf -v manual_close_cmd "printf '%%s\\n' %q >> %q" "${close_lines[$i]}" "$RESOLVE_STATUS_FILE"
       echo "error: the answer was delivered to $T, but decision key '$k' is still open in $RESOLVE_STATUS_FILE; it may have been reopened concurrently or the fold did not accept the close. Close it manually with: $manual_close_cmd - do not resend the answer." >&2
       return 1
       ;;
     esac
+    i=$((i + 1))
   done
 }
 
@@ -1044,9 +1087,22 @@ else
     # bounded re-ring ladder or direct unavailable-endpoint recovery.
     ring_rc=0
     fm_task_inbox_ring "$TARGET_BACKEND" "$T" "$INBOX_RECORD" "$EXPECTED_LABEL" || ring_rc=$?
+    ring_retry="the watcher will re-ring"
+    if [ -n "$FIRE_AND_FORGET_ID" ] \
+      && [ -e "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}/wait-no-turns" ]; then
+      case "$ring_rc" in
+      1|2)
+        if fm_task_inbox_mark_retry "$STATE" "$INBOX_TASK_ID" "$INBOX_RECORD"; then
+          ring_retry="the watcher will ring it once more"
+        else
+          ring_retry="its one retry ring could not be recorded, so nothing will ring it again"
+        fi
+        ;;
+      esac
+    fi
     case "$ring_rc" in
-    1) echo "fm-send: doorbell skipped (composer visibly holds pending text); the steer is durably recorded at $INBOX_RECORD and the watcher will re-ring" >&2 ;;
-    2) echo "fm-send: doorbell did not reach $T; the steer is durably recorded at $INBOX_RECORD and the watcher will re-ring" >&2 ;;
+    1) echo "fm-send: doorbell skipped (composer visibly holds pending text); the steer is durably recorded at $INBOX_RECORD and $ring_retry" >&2 ;;
+    2) echo "fm-send: doorbell did not reach $T; the steer is durably recorded at $INBOX_RECORD and $ring_retry" >&2 ;;
     3) echo "fm-send: doorbell not typed because the agent in $T has exited; the steer is durably recorded at $INBOX_RECORD for recovery (stuck-crewmate-recovery), and the watcher will not re-ring a dead pane" >&2 ;;
     esac
     exit 0
@@ -1120,6 +1176,23 @@ else
     # surfaces through the library's own reconciliation
     # (bin/fm-pending-reply-lib.sh).
     echo "fm-send: text delivered to $T but submission is unconfirmed (verdict=pending; tried $RESOLUTION_TRIED); do not retype or blindly resend - verify with fm-peek.sh, then re-send '--key Enter' only if the composer still holds the text" >&2
+    exit 3
+    ;;
+  unconfirmed)
+    # An API backend's outcome is unproven: a lost reply or an error that can
+    # follow a commit (T3 Code commits a send before it answers). Like
+    # pending, delivery is unproven
+    # rather than refused, so the pending-reply expectation stays armed; the
+    # adapter retains the logical delivery's request id under the retry policy
+    # in docs/t3code-backend.md. A marked secondmate request is the exception:
+    # a plain rerun mints a new
+    # correlation, so its text and request id differ, and the armed attempt
+    # refuses a resend of this one.
+    if [ -n "$PENDING_REPLY_CORR" ]; then
+      echo "fm-send: delivery to $T is unconfirmed (verdict=unconfirmed: the $TARGET_BACKEND outcome is unproven, a lost reply or an error that can follow a commit; tried $RESOLUTION_TRIED); do not resend - a rerun mints a new pending-reply correlation and would deliver twice; correlation $PENDING_REPLY_CORR stays armed, so verify with fm-peek.sh and let its reply or the watcher's reconciliation settle it" >&2
+    else
+      echo "fm-send: delivery to $T is unconfirmed (verdict=unconfirmed: the $TARGET_BACKEND outcome is unproven, a lost reply or an error that can follow a commit; tried $RESOLUTION_TRIED); verify with fm-peek.sh, and resend only the identical text, which reuses its request id" >&2
+    fi
     exit 3
     ;;
   *)

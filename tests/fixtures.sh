@@ -97,8 +97,11 @@ fm_test_fake_gh_axi() {
 # set, each send-keys -l payload is appended one per line. When FM_FAKE_PANE_LOG
 # is set, each send-keys TEXT-LINE payload (the pre-launch pane exports, which
 # carry no -l) is appended there instead, one per line in send order. Optional
-# FM_FAKE_DUPLICATE_WINDOW is printed from list-windows, and capture-pane
-# prints FM_FAKE_PANE_CAPTURE (the pane's scrollback) when it is set.
+# FM_FAKE_DUPLICATE_WINDOW is printed from list-windows. A staged OpenCode 2
+# launch simulates its busy-state plugin per FM_FAKE_OPENCODE_TURN (see below),
+# FM_FAKE_ENTER_LOG records each bare Enter key, and capture-pane prints
+# FM_FAKE_PANE_CAPTURE (the pane's scrollback) when it is set and no composer
+# is drawn.
 #
 # The pane path defaults to empty when FM_FAKE_PANE_PATH is unset. Window
 # cleanup and option operations are no-ops. Launch logging is env-gated, so
@@ -109,29 +112,167 @@ fm_test_fake_tmux_spawn() {
   cat > "$fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
+# Simulate the OpenCode 2 worker's busy-state plugin reporting its turn start,
+# using the exact apply command fm-spawn generated into the worktree plugin.
+fake_opencode_plugin() {
+  printf '%s\n' "${FM_FAKE_PANE_PATH:-}/.opencode/plugins/fm-busy-state.js"
+}
+fake_opencode_turn_starts() {
+  local plugin bin state id gen
+  plugin=$(fake_opencode_plugin)
+  [ -f "$plugin" ] || return 0
+  bin=$(sed -n 's/.*execFile("\([^"]*fm-busy-event\.sh\)".*/\1/p' "$plugin" | head -1)
+  state=$(sed -n 's/.*"apply", "\([^"]*\)", "\([^"]*\)", state,.*/\1/p' "$plugin" | head -1)
+  id=$(sed -n 's/.*"apply", "\([^"]*\)", "\([^"]*\)", state,.*/\2/p' "$plugin" | head -1)
+  gen=$(sed -n 's/.*"--gen", "\([^"]*\)".*/\1/p' "$plugin" | head -1)
+  [ -n "$bin" ] && [ -n "$gen" ] || return 0
+  "$bin" apply "$state" "$id" busy --gen "$gen" --source opencode-plugin \
+    --event session-execution-started >/dev/null 2>&1 || true
+}
+# FM_FAKE_OPENCODE_TURN picks what a launched OpenCode 2 worker does with its
+# brief: auto (default) starts the turn on launch, enter waits for one Enter,
+# never leaves it unsent. The pending-Enter marker sits beside the plugin.
+# Each composer cursor read is counted beside the plugin; the composer reads
+# unknown (no numeric cursor row) unless FM_FAKE_OPENCODE_COMPOSER_UNKNOWN_READS
+# is set, in which case the reads past that count render a drawn composer that
+# holds the brief while the pending-Enter marker exists.
+fake_opencode_launched() {
+  case "${FM_FAKE_OPENCODE_TURN:-auto}" in
+    auto) fake_opencode_turn_starts ;;
+    enter)
+      : > "$(fake_opencode_plugin).fake-pending"
+      : > "$(fake_opencode_plugin).fake-launching"
+      ;;
+  esac
+}
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
 esac
+fake_opencode_composer_drawn() {
+  local reads
+  reads=$(cat "$(fake_opencode_plugin).fake-composer-reads" 2>/dev/null) || reads=0
+  [ -n "${FM_FAKE_OPENCODE_COMPOSER_UNKNOWN_READS:-}" ] \
+    && [ "$reads" -gt "$FM_FAKE_OPENCODE_COMPOSER_UNKNOWN_READS" ]
+}
+window_file="$(dirname "$0")/.spawn-window"
 case "${1:-}" in
-  display-message) printf 'firstmate\n'; exit 0 ;;
+  display-message)
+    case "$*" in
+      *"#{cursor_y}"*)
+        if [ -f "$(fake_opencode_plugin)" ]; then
+          reads=$(cat "$(fake_opencode_plugin).fake-composer-reads" 2>/dev/null) || reads=0
+          printf '%s\n' "$((reads + 1))" > "$(fake_opencode_plugin).fake-composer-reads"
+          if fake_opencode_composer_drawn; then printf '1\n'; exit 0; fi
+        fi
+        ;;
+    esac
+    printf 'firstmate\n'
+    exit 0
+    ;;
+  capture-pane)
+    if ! fake_opencode_composer_drawn; then
+      [ -z "${FM_FAKE_PANE_CAPTURE:-}" ] || printf '%s\n' "$FM_FAKE_PANE_CAPTURE"
+    elif [ -f "$(fake_opencode_plugin).fake-pending" ]; then
+      printf '╭──────────────╮\n│ prefilled    │\n╰──────────────╯\n'
+    else
+      printf '╭────╮\n│    │\n╰────╯\n'
+    fi
+    exit 0
+    ;;
   list-windows)
     if [ -n "${FM_FAKE_DUPLICATE_WINDOW:-}" ]; then
       printf '%s\n' "$FM_FAKE_DUPLICATE_WINDOW"
     fi
+    [ ! -s "$window_file" ] || cat "$window_file"
     exit 0
     ;;
-  has-session|new-session|new-window|kill-window|set-window-option) exit 0 ;;
-  capture-pane)
-    [ -z "${FM_FAKE_PANE_CAPTURE:-}" ] || printf '%s\n' "$FM_FAKE_PANE_CAPTURE"
+  new-window)
+    name=
+    previous=
+    for arg in "$@"; do
+      [ "$previous" = -n ] && name=$arg
+      previous=$arg
+    done
+    printf '%s\n' "$name" > "$window_file"
     exit 0
     ;;
+  kill-window)
+    : > "$window_file"
+    exit 0
+    ;;
+  has-session|new-session|set-window-option) exit 0 ;;
   send-keys)
     prev=
     for a in "$@"; do
       if [ "$prev" = "-l" ]; then
-        if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
+        case "$a" in
+          ". '"*"'")
+            staged=${a#". '"}
+            staged=${staged%"'"}
+            if [ -f "$staged" ] && grep -q -- 'opencode.* --standalone --prompt' "$staged"; then
+              fake_opencode_launched
+            fi
+            ;;
+        esac
+      fi
+      prev=$a
+    done
+    if [ "$#" -eq 4 ] && [ "$4" = Enter ]; then
+      [ -z "${FM_FAKE_ENTER_LOG:-}" ] || printf 'enter\n' >> "$FM_FAKE_ENTER_LOG"
+      # The first Enter runs the staged launch line; only a later one reaches
+      # the OpenCode composer.
+      if [ -f "$(fake_opencode_plugin).fake-launching" ]; then
+        rm -f "$(fake_opencode_plugin).fake-launching"
+      elif [ -f "$(fake_opencode_plugin).fake-pending" ]; then
+        rm -f "$(fake_opencode_plugin).fake-pending"
+        fake_opencode_turn_starts
+      fi
+    fi
+    if [ -n "${FM_FAKE_LAUNCH_LOG:-}" ]; then
+      prev=
+      for a in "$@"; do
+        if [ "$prev" = "-l" ]; then
+          # A spawn types a short line sourcing its staged launch file; log
+          # the staged command itself so suites assert what the pane runs.
+          # Direct literals past the terminal line buffer are truncated, so a
+          # long launch only survives when it arrived through that short source.
+          case "$a" in
+            ". '"*"'")
+              staged=${a#". '"}
+              staged=${staged%"'"}
+              if [ -f "$staged" ]; then
+                a=$(cat "$staged")
+              elif [ "${#a}" -gt 1024 ]; then
+                a=${a:0:1024}
+              fi
+              ;;
+            *)
+              if [ "${#a}" -gt 1024 ]; then
+                a=${a:0:1024}
+              fi
+              ;;
+          esac
           printf '%s\n' "$a" >> "$FM_FAKE_LAUNCH_LOG"
         fi
+        prev=$a
+      done
+    fi
+    # The Pi start gate: every -l payload also reaches the fake Pi start
+    # helper, the stand-in for the launched worker's first busy event. A
+    # staged launch arrives as a short line sourcing its private launch
+    # file, so resolve that file to its full content first - untruncated,
+    # because the helper's -e extraction needs the whole command - while a
+    # plain literal passes through exactly as typed.
+    prev=
+    for a in "$@"; do
+      if [ "$prev" = "-l" ]; then
+        case "$a" in
+          ". '"*"'")
+            staged=${a#". '"}
+            staged=${staged%"'"}
+            [ -f "$staged" ] && a=$(cat "$staged")
+            ;;
+        esac
         "$(dirname "$0")/fm-fake-pi-start" "$a"
       fi
       prev=$a
@@ -183,6 +324,10 @@ fm_test_fake_pi_start() {
     printf '#!/usr/bin/env bash\nset -u\nFM_BUSY_EVENT=%q\n' "$ROOT/bin/fm-busy-event.sh"
     cat <<'SH'
 [ "${FM_FAKE_PI_START:-now}" != never ] || exit 0
+# Only a crewmate/scout Pi launch fires its start event here: those carry the
+# seeded PI_CODING_AGENT_DIR of spawn isolation, while a secondmate launch
+# keeps its pre-launch seed until its suite drives the extension by hand.
+case "${1:-}" in *PI_CODING_AGENT_DIR=*) ;; *) exit 0 ;; esac
 ext=$(printf '%s\n' "${1:-}" | sed -n "s/.*-e '\([^']*\.pi-ext\.ts\)'.*/\1/p" | head -1)
 [ -n "$ext" ] && [ -f "$ext" ] || exit 0
 gen=$(sed -n 's/.*"--gen", "\([^"]*\)".*/\1/p' "$ext" | head -1)
@@ -334,16 +479,21 @@ make_spawn_fakebin() {
   fm_test_make_spawn_fakebin "$@"
 }
 
-# fm_test_pi_auth_home <user-home>
+# fm_test_pi_auth_home <user-home> [extra-provider...]
 # Write the minimal fake Pi auth store a crewmate/scout spawn seeds its
 # isolated agent dir from, at the path bin/fm-spawn.sh resolves when
 # PI_CODING_AGENT_DIR is blank (${HOME}/.pi/agent/auth.json). Every machine
 # that launches Pi workers has one; a spawn refuses the launch when it holds
 # no entry for the pinned model's provider, so suites pin test-provider/....
+# Extra providers append entries for suites that also pin models under a
+# real provider name (e.g. openai-codex) without changing that contract.
 fm_test_pi_auth_home() {
+  local entries='{"test-provider":{"type":"api","key":"fm-test-key"}}' p
   mkdir -p "$1/.pi/agent"
-  printf '%s\n' '{"test-provider":{"type":"api","key":"fm-test-key"}}' \
-    >"$1/.pi/agent/auth.json"
+  for p in "${@:2}"; do
+    entries=$(printf '%s' "$entries" | jq --arg p "$p" '.[$p] = {"type":"api","key":"fm-test-key"}')
+  done
+  printf '%s\n' "$entries" >"$1/.pi/agent/auth.json"
 }
 
 # fm_test_run_spawn <home> <pane-path> <fakebin> [fm-spawn args...]
@@ -368,7 +518,8 @@ fm_test_run_spawn() {
   # and any inherited PI_CODING_AGENT_DIR is blanked so the store path is
   # deterministic.
   local spawn_home=$home/user-home
-  fm_test_pi_auth_home "$spawn_home"
+  # shellcheck disable=SC2086 # space-separated extra provider list for the fake store
+  fm_test_pi_auth_home "$spawn_home" ${FM_TEST_PI_AUTH_PROVIDERS:-}
   FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$spawn_home" \
     CLAUDE_CONFIG_DIR="${FM_TEST_CLAUDE_CONFIG_DIR:-}" \
     PI_CODING_AGENT_DIR='' \
