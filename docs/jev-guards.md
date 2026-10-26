@@ -3,6 +3,7 @@
 A Jev guard is a bounded, read-only host diagnostic that turns one class of resource or state pressure into a machine-readable audit record and a one-line verdict.
 Guards exist so a supervision loop can distinguish a genuinely wedged worker from a host condition that merely looks like one, without granting any guard the power to change the system it measures.
 This document owns the framework contract every guard family follows; each family's own script header owns its measured signals and thresholds.
+This guard framework is unrelated to the captain-controlled damage-control gate in [`docs/jev-gate.md`](jev-gate.md).
 
 ## Shape
 
