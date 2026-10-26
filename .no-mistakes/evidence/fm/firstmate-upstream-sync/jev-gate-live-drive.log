@@ -1,0 +1,38 @@
+# Jev gate live drive (2026-10-26T17:05:58Z, merge e9ab6efd, /tmp/fm-live-drive)
+## 1. inert (no config/jev-gate): printf 'rm -rf /usr' | FM_HOME=$h bin/fm-jev-pretool-check.sh
+[JG-R1] rm -rf against a protected path (/usr) — blocked by the Jev damage-control gate (stage: regex, confidence: 1.00).
+rc=2
+
+## 2. enforce + rm -rf /usr:
+[JG-R1] rm -rf against a protected path (/usr) — blocked by the Jev damage-control gate (stage: regex, confidence: 1.00).
+rc=2
+
+## 3. enforce + ls -la:
+rc=0
+
+## 4. fm-jev-gate-override.sh status:
+window: closed
+counters:
+  allow_free=2
+  consult_benign=0
+  consult_grey=0
+  consult_uncertain=0
+  low_confidence_pass=0
+  block_regex=3
+  block_jev=0
+  block_repeat=2
+  near_miss=0
+  jev_off=0
+  jev_timeout=0
+  jev_error=0
+  jev_degraded=0
+  override_opened=0
+  override_pass=0
+  overridden_block=0
+  override_expired=0
+breaker: closed
+chain: verified
+false-block proxy: overridden/(regex+jev blocks) = 0/3
+jev availability: timeouts=0 errors=0 degraded=0 off=0 consults=0
+near-misses: 0
+rc=0

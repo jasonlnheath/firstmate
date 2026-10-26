@@ -1,0 +1,23 @@
+# helm-reset live drive (2026-10-26T17:06:18Z, merge e9ab6efd, /tmp/fm-live-drive)
+
+## 1. absent config:
+helm-reset: refused: pane-lock - no live helm session lock holder (/tmp/fm-helm-live.YWFHmA/state/.lock names no live process); nothing to reset
+rc=3 (state dir now )
+
+## 2. enabled=true, no away record (gate 1):
+helm-reset: refused: pane-lock - no live helm session lock holder (/tmp/fm-helm-live.YWFHmA/state/.lock names no live process); nothing to reset
+rc=3
+--- state/.helm-reset.refusal:
+refused: 2026-10-26T17:06:19Z
+gate: pane-lock
+reason: no live helm session lock holder (/tmp/fm-helm-live.YWFHmA/state/.lock names no live process); nothing to reset
+window: 00:00-23:59 local, dry-run=true
+
+## 3. away present + window 00:00-23:59 + dry-run=true:
+helm-reset: refused: pane-lock - no live helm session lock holder (/tmp/fm-helm-live.YWFHmA/state/.lock names no live process); nothing to reset
+rc=3
+--- state/.helm-reset.refusal:
+refused: 2026-10-26T17:06:19Z
+gate: pane-lock
+reason: no live helm session lock holder (/tmp/fm-helm-live.YWFHmA/state/.lock names no live process); nothing to reset
+window: 00:00-23:59 local, dry-run=true

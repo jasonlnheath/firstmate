@@ -1,0 +1,82 @@
+# fm-jev-mem-guard + backend selection live drive (2026-10-26T17:07:09Z, merge e9ab6efd)
+
+## bin/fm-jev-mem-guard.sh --check --json (host at 90.9% mem):
+{
+  "name": "fm-jev-mem-guard",
+  "checked_at": "2026-10-26T17:07:09Z",
+  "status": "WARNING",
+  "recommendation": "Memory or swap utilization is above a warning threshold but below a critical one; degraded but explained, see the top RSS processes.",
+  "reason": null,
+  "summary": {
+    "mem_total_gb": 62.55,
+    "mem_available_gb": 5.76,
+    "mem_used_pct": 90.8,
+    "swap_total_gb": 125.1,
+    "swap_used_gb": 9.31,
+    "swap_used_pct": 7.4
+  },
+  "top_processes": [
+    {
+      "pid": 3596748,
+      "comm": "strata",
+      "rss_mb": 42126.6
+    },
+    {
+      "pid": 2824197,
+      "comm": "quickshell",
+      "rss_mb": 491.3
+    },
+    {
+      "pid": 2178,
+      "comm": "Hyprland",
+      "rss_mb": 469.6
+    },
+    {
+      "pid": 2514,
+      "comm": "voxtype",
+      "rss_mb": 360.1
+    },
+    {
+      "pid": 1337,
+      "comm": "hermes",
+      "rss_mb": 290.0
+    },
+    {
+      "pid": 1592368,
+      "comm": "claude",
+      "rss_mb": 289.7
+    },
+    {
+      "pid": 1069154,
+      "comm": "pi",
+      "rss_mb": 236.9
+    },
+    {
+      "pid": 2698883,
+      "comm": "pi",
+      "rss_mb": 220.0
+    },
+    {
+      "pid": 2524753,
+      "comm": "pi",
+      "rss_mb": 194.5
+    },
+    {
+      "pid": 6385,
+      "comm": "pi",
+      "rss_mb": 167.4
+    }
+  ]
+}
+rc=1
+
+## fm_backend_validate over the selector:
+known: tmux herdr zellij orca cmux paseo rex t3code tern
+validate tern: ok
+validate t3code: ok
+validate rex: ok
+validate paseo: ok
+validate herdr: ok
+validate tmux: ok
+error: unknown backend 'bogus' (known: tmux herdr zellij orca cmux paseo rex t3code tern)
+validate bogus: REFUSED

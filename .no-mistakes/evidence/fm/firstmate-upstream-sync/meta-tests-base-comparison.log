@@ -1,0 +1,29 @@
+# Meta-test base-vs-merged comparison (2026-10-26T17:51:16Z)
+
+## tests/fm-lint.test.sh at BASE c5eb745b (fork tip):
+FM_TEST_END 2026-10-26T17:53:19Z tests/fm-lint.test.sh exit=0 duration_ms=123103 gate_skip=false
+
+## tests/fm-lint.test.sh at MERGED e9ab6efd:
+not ok - the fallback attempts lost per-root RSS reporting: unavailable
+FM_TEST_END 2026-10-26T17:53:40Z tests/fm-lint.test.sh exit=1 duration_ms=20034 gate_skip=false
+
+## GNU time on host:
+ls: cannot access '/usr/bin/time': No such file or directory
+
+## bin/fm-lint.sh's dependency (merged tree):
+433:  if [ -x /usr/bin/time ]; then
+1326:  if [ -x /usr/bin/time ]; then
+165:# Peak RSS of a finished root process: GNU time writes max_rss_kib=<KiB> while
+
+## tests/fm-test-run.test.sh at BASE c5eb745b:
+comm: file 2 is not in sorted order
+comm: input is not in sorted order
+FM_TEST_END 2026-10-26T17:54:03Z tests/fm-test-run.test.sh exit=1 duration_ms=23296 gate_skip=false
+
+## tests/fm-test-run.test.sh at MERGED e9ab6efd:
+comm: file 2 is not in sorted order
+comm: input is not in sorted order
+FM_TEST_END 2026-10-26T17:54:30Z tests/fm-test-run.test.sh exit=1 duration_ms=27203 gate_skip=false
+
+## host locale:
+LANG=en_US.UTF-8 LC_ALL=unset
