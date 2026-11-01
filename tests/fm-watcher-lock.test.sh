@@ -1466,14 +1466,30 @@ SH
 # it - must land in the lifecycle ledger, or a hung-predecessor restart is the
 # one lifecycle event with no row.
 test_restart_records_predecessor_term_outcomes() {
-  local stage dir state out peer identity armpid i
+  local stage dir state out peer peer_ready identity armpid i
   for stage in survived exited; do
     dir=$(make_case "restart-term-$stage")
     state="$dir/state"
     out="$dir/restart.out"
+    peer_ready="$dir/peer.ready"
     if [ "$stage" = survived ]; then
-      node -e 'process.on("SIGTERM", () => {}); setInterval(() => {}, 300000)' >/dev/null 2>&1 &
+      # The ready-file gate from test_watch_restart_attaches_to_healthy_peer:
+      # a node peer is only TERM-resistant once its script has started, and a
+      # loaded host can leave the interpreter still initializing when the arm
+      # would already be TERMinating - a pre-handler death the ledger would
+      # correctly record as an exit, racing the survived stage's own setup.
+      node -e 'const fs = require("node:fs"); process.on("SIGTERM", () => {}); fs.writeFileSync(process.argv[1], "ready\n"); setTimeout(() => {}, 300000)' "$peer_ready" >/dev/null 2>&1 &
       peer=$!
+      i=0
+      while [ "$i" -lt 50 ] && [ ! -s "$peer_ready" ]; do
+        sleep 0.1
+        i=$((i + 1))
+      done
+      if [ ! -s "$peer_ready" ]; then
+        kill -KILL "$peer" 2>/dev/null || true
+        wait "$peer" 2>/dev/null || true
+        fail "TERM-resistant peer did not become ready"
+      fi
     else
       bash -c 'trap "sleep 0.3; exit 0" TERM; while :; do sleep 0.5; done' &
       peer=$!

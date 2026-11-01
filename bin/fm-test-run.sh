@@ -732,6 +732,13 @@ tests/fm-afk-return.test.sh 47380
 tests/fm-agy-harness.test.sh 50959
 tests/fm-agy-signals-live-e2e.test.sh 53
 tests/fm-approval-failover.test.sh 5410
+tests/fm-jev-command-screen.test.sh 822
+tests/fm-jev-gate-override.test.sh 653
+tests/fm-jev-pretool-check.test.sh 21813
+tests/fm-jev-screen.test.sh 373
+tests/fm-primary-turnend-guard-jev-wiring.test.sh 6772
+tests/fm-spawn-slot-live-holder.test.sh 2170
+tests/fm-watch-jev-defer.test.sh 74298
 tests/fm-ask-user-authority.test.sh 171
 tests/fm-backend-cmux-smoke.test.sh 34
 tests/fm-backend-cmux.test.sh 3754
