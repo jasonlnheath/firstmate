@@ -2592,9 +2592,10 @@ EOF
 }
 
 # A verified successor that closes while its wake is still being delivered
-# defers its retry to the end of that delivery. If a manual repair meanwhile
-# left a dead-but-unclosed arm in the slot, the deferred retry must still
-# start a fresh arm.
+# schedules the ordinary bounded retry right away: the restoration pass is
+# already over, so continuity never waits for the delivery. That retry's own
+# cycle exits with its pipes still held, and a manual repair must still
+# start a fresh arm over the dead-but-unclosed handle it left in the slot.
 test_pi_deferred_close_starts_fresh_arm_over_dead_child() {
   local repo home plugin log stop release out status
   repo="$TMP_ROOT/pi-deferred-dead-root"
@@ -2681,16 +2682,20 @@ for (let i = 0; i < 250 && !deliveryStarted; i += 1) await sleep(20);
 if (!deliveryStarted) throw new Error("the restored wake was never delivered");
 writeFileSync(process.env.FM_RELEASE_FILE, "release\n");
 await waitForExit(successorPid);
-await sleep(100);
+// The close of the verified successor behind the held delivery schedules the
+// ordinary bounded retry at once - continuity never waits for the delivery -
+// and that retry's cycle exits with its pipes still held. Wait for its
+// dead-but-unclosed handle before repairing, so the repair cannot race a
+// retry child that is still starting up.
+await waitForExit(await waitForArms(3));
 const repair = await tool.execute("tool-call-deferred-dead-repair", {}, undefined, undefined, {});
 if (!repair.content[0].text.includes("started Pi extension arm child")) {
-  throw new Error(`repair did not start an arm after the successor closed: ${repair.content[0].text}`);
+  throw new Error(`repair did not start an arm over the dead retry handle: ${repair.content[0].text}`);
 }
-await waitForExit(await waitForArms(3));
 finishDelivery();
 for (let i = 0; i < 250 && armRows().length < 4; i += 1) await sleep(20);
 if (armRows().length !== 4) {
-  throw new Error(`the deferred close started no retry over the dead repair arm: ${armRows().join(" | ")}`);
+  throw new Error(`the settled delivery started a duplicate over the fresh repair arm: ${armRows().join(" | ")}`);
 }
 writeFileSync(process.env.FM_STOP_FILE, "stop\n");
 process.exit(0);
