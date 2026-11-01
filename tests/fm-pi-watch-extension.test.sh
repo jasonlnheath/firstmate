@@ -2684,7 +2684,7 @@ writeFileSync(process.env.FM_RELEASE_FILE, "release\n");
 await waitForExit(successorPid);
 // The close of the verified successor behind the held delivery schedules the
 // ordinary bounded retry at once - continuity never waits for the delivery -
-// and that retry's cycle exits with its pipes still held. Wait for its
+// and the retry cycle exits with its pipes still held. Wait for its
 // dead-but-unclosed handle before repairing, so the repair cannot race a
 // retry child that is still starting up.
 await waitForExit(await waitForArms(3));
