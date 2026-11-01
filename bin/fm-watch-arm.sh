@@ -835,6 +835,7 @@ fi
 child=$!
 cycle_begin "$child" started "$(fm_pid_identity "$child" 2>/dev/null || true)"
 child_done=0
+double_start_winner=
 
 owned_child_finished() {
   local rc=$1 signal reason_type status
@@ -851,7 +852,15 @@ owned_child_finished() {
 
   if [ "$rc" -eq 0 ]; then
     if wait_for_healthy_successor; then
-      cycle_log_append "$rc" "$signal" unexpected-clean-exit "attached:$HEALTHY_PID"
+      if [ -z "$double_start_winner" ] \
+        && grep -q '^watcher: already running' "$child_out" 2>/dev/null; then
+        double_start_winner=$HEALTHY_PID
+      fi
+      if [ -n "$double_start_winner" ]; then
+        cycle_log_append "$rc" "$signal" double-start-lost "lost-to:$HEALTHY_PID"
+      else
+        cycle_log_append "$rc" "$signal" unexpected-clean-exit "attached:$HEALTHY_PID"
+      fi
       print_watch_output "$child_out"
       rm -f "$child_out" 2>/dev/null || true
       child=
@@ -930,6 +939,7 @@ while :; do
     # Another watcher won the singleton; our child stood down. Mark the loss
     # and the winner so a double-start is one-look diagnosable in the ledger;
     # cycle_log_write keeps the cycle active for the child-close row below.
+    double_start_winner=$HEALTHY_PID
     cycle_log_write "$child" started "$cycle_started_at" 0 none double-start-lost "lost-to:$HEALTHY_PID" "$cycle_lock_before"
     wait "$child"
     rc=$?
