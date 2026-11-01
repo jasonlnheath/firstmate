@@ -1,0 +1,17 @@
+# Pre-fix CI baseline at PR 14 head fa807f73 (run 41326480595)
+# These are the three lanes the fix-up commits address; all fetched read-only via gh.
+
+## Serial 7 (job 124907381637) — double-start ledger classification
+not ok - double-start loser did not mark the winning watcher in the ledger
+  (tests/fm-watcher-lock.test.sh, CI log 2026-11-01T16:38:45Z; job exit 1)
+
+## Serial 1 (job 124907381651) — park_after_stop host-exit bound
+not ok - the watcher's downtime resurface did not reach main: watcher: started pid=1171045 (beacon fresh)
+  (tests/fm-supervision-host.test.sh:2085 at fa807f73, CI log 2026-11-01T16:42:45Z; job exit 1)
+  Note: the same CI run PASSED the downtime-write fixture: "ok - host+hook: failed at-turn downtime
+  write notifies main despite a healthy successor" (16:34:15Z) — the fixture my first local run
+  tripped under self-inflicted concurrent-suite load.
+
+## Lint 2 (job 124907381424) — SC2034
+SC2034 (warning): PI_MODE appears unused. Verify use (or export if used externally).
+  (bin/fm-jev-pretool-check.sh:61 at fa807f73; job exit 1)

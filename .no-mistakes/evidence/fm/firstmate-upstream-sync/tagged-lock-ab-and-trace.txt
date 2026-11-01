@@ -1,0 +1,24 @@
+# tests/fm-supervision-host.test.sh test_tagged_lock_holder_reaches_the_engine_whole — A/B and trace
+Upstream-owned fixture (from 5d718d5d, "fix: identify Windows/Git Bash harness sessions for the
+session lock" #6300), carried byte-identical by merge e9ab6efd. Unchanged by all three fix commits.
+
+## A/B results (identical truncated driver: sibling ownership fixture + tagged fixture)
+head f6d60509, under agent session:    3/3 FAIL — "supervision-host stood down: this session does not own supervision"
+base fa807f73, under agent session:    2/2 FAIL — identical message
+head f6d60509, detached (setsid):      2/2 FAIL at the NEXT stage — "tagged: the wake was not handled: watcher: started pid=... (beacon fresh)" (ownership PASSED)
+base fa807f73, detached (setsid):      1/1 FAIL — identical next-stage message
+
+## Stage-1 mechanism trace (inside the fixture fake env, head tree)
+boundary_applies: yes          (fake MINGW uname accepted)
+ancestry rc=0: [2587336]       <-- REAL pid, the running Claude Code agent two bash hops up
+listed win:7204: no            (Windows bridge never consulted: POSIX walk already printed)
+same_session: no
+owned_by_self: no              -> stand_down "this session does not own supervision"
+ps_comm chain: bash -> bash -> bash -> claude -> no-mistakes -> systemd
+
+## Reading
+Stage 1: the POSIX ancestry walk finds a real harness (the agent driving the tests), so the
+Windows-tagged identity is never consulted. The fixture can only pass with a harness-free
+ancestry — a normal developer shell or CI runner. Stage 2 (detached): not root-caused here,
+but base-identical. Both stages: pre-existing at fa807f73, unrelated to the fix commits.
+CI on Ubuntu runners is the arbiter for this lane at the pushed head.

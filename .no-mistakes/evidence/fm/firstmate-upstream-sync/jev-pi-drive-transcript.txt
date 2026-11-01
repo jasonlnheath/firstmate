@@ -1,0 +1,43 @@
+== deny default (rm -rf /)
+exit=2
+stdout=[]
+stderr=[[JG-R1] rm -rf against a protected path (/) — blocked by the Jev damage-control gate (stage: regex, confidence: 1.00).]
+== deny --pi    (rm -rf /)
+exit=2
+stdout=[]
+stderr=[[JG-R1] rm -rf against a protected path (/) — blocked by the Jev damage-control gate (stage: regex, confidence: 1.00).]
+== allow default (ls -la)
+exit=0
+stdout=[]
+stderr=[]
+== allow --pi    (ls -la)
+exit=0
+stdout=[]
+stderr=[]
+== empty stdin --pi
+exit=0
+stdout=[]
+stderr=[]
+== help via -h
+exit=0
+stdout=[Usage: printf '%s' "$CMD" | fm-jev-pretool-check.sh [--pi]
+       fm-jev-pretool-check.sh record-override <open|close|expire> [reason...]
+
+Reads the command on stdin, classifies it through the Jev gate policy owner,
+and exits 0 to allow or 2 to deny (plain-text reason on stderr). The
+record-override action only appends audit events; it confers no authority.]
+stderr=[]
+== unknown arg rejected
+exit=2
+stdout=[]
+stderr=[error: unknown argument: --bogus
+Usage: printf '%s' "$CMD" | fm-jev-pretool-check.sh [--pi]
+       fm-jev-pretool-check.sh record-override <open|close|expire> [reason...]
+
+Reads the command on stdin, classifies it through the Jev gate policy owner,
+and exits 0 to allow or 2 to deny (plain-text reason on stderr). The
+record-override action only appends audit events; it confers no authority.]
+== double --pi accepted
+exit=0
+stdout=[]
+stderr=[]
