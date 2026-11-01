@@ -1199,7 +1199,7 @@ test_portable_serial_hint_coverage_is_reported_and_bounded() {
   budget=$(printf '%s\n' "$out" | sed -n 's/.*serial_budget_ms=\([0-9][0-9]*\).*/\1/p')
   [ -n "$max" ] && [ -n "$budget" ] \
     || fail "coverage summary must carry serial packing and budget: $out"
-  [ "$budget" -eq 1200000 ] || fail "packing must leave ten minutes of the normal CI tier"
+  [ "$budget" -eq 1200000 ] || fail "packing must leave ten minutes of the serial CI tier"
   [ "$max" -gt 0 ] && [ "$max" -le "$budget" ] \
     || fail "largest serial shard packs ${max}ms above the ${budget}ms target"
   pass "coverage guard bounds the unmeasured share and serial packing within twenty minutes"
