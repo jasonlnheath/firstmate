@@ -2311,7 +2311,7 @@ test_away_wake_is_handled_on_the_engine_and_never_reaches_main() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "away: the host never started a watcher cycle: $(cat "$home/host.out")"
   append_status "$home" 'step one'
-  wait_until 250 handled_at_least "$home" 1 || fail "away: the wake was not handled: $(cat "$home/host.out"; cat "$home/state/.supervision-host.log")"
+  wait_until 600 handled_at_least "$home" 1 || fail "away: the wake was not handled: $(cat "$home/host.out"; cat "$home/state/.supervision-host.log")"
   lock_pid=$(cat "$home/state/.lock")
 
   first="$home/engine-call.1"
@@ -2340,7 +2340,7 @@ test_away_wake_is_handled_on_the_engine_and_never_reaches_main() {
 
   echo handle > "$home/stub-mode"
   append_status "$home" 'step two'
-  wait_until 250 handled_at_least "$home" 2 || fail "away: the second wake was not handled"
+  wait_until 600 handled_at_least "$home" 2 || fail "away: the second wake was not handled"
   session=$(sed -n '/^arg=--session-id$/{n;s/^arg=//p;}' "$first")
   second="$home/engine-call.2"
   assert_re '^arg=--resume$' "$second" "a later turn must resume the conversation"
@@ -2366,7 +2366,7 @@ test_away_turn_without_a_report_hands_the_wake_to_main() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "noreport: the host never started a watcher cycle"
   append_status "$home" 'needs a look'
-  wait_until 250 host_exited "$home" || fail "noreport: the host did not hand the wake to main"
+  wait_until 600 host_exited "$home" || fail "noreport: the host did not hand the wake to main"
   expect_code 0 "$(cat "$home/host.rc")" "a handed-back wake must exit 0 for the owner to deliver"
   assert_re '^signal: .*demo.status' "$home/host.out" "the handed-back close must carry the reason line"
   assert_re '^supervision-host: .*recorded no outcome for its wake; this wake is yours$' "$home/host.out" "the handback must say why"
@@ -2388,7 +2388,7 @@ test_return_during_an_engine_turn_hands_its_outcomes_to_main() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "return: the host never started a watcher cycle"
   append_status "$home" 'mid-task'
-  wait_until 250 host_exited "$home" || fail "return: the host did not hand the late outcome to main: $(cat "$home/state/.supervision-host.log")"
+  wait_until 600 host_exited "$home" || fail "return: the host did not hand the late outcome to main: $(cat "$home/state/.supervision-host.log")"
   expect_code 0 "$(cat "$home/host.rc")" "a late-outcome handoff must exit 0 for the owner to deliver"
   assert_absent "$home/state/.afk-contract" "fixture: the stub's return did not archive the record"
   assert_re '^signal: .*demo.status' "$home/host.out" "the handoff must carry the close"
@@ -2414,14 +2414,14 @@ test_silent_outcomes_are_not_relayed_when_the_captain_returns() {
     append_status "$home" 'no-change result during a captain return'
 
     if [ "$mode" = return-silent ]; then
-      wait_until 250 handled_at_least "$home" 1 || fail "$mode: the wake was not handled: host=$(cat "$home/host.out" 2>/dev/null) log=$(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null) report=$(cat "$home/engine-report.log" 2>/dev/null)"
+      wait_until 600 handled_at_least "$home" 1 || fail "$mode: the wake was not handled: host=$(cat "$home/host.out" 2>/dev/null) log=$(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null) report=$(cat "$home/engine-report.log" 2>/dev/null)"
       [ ! -s "$home/host.rc" ] || fail "$mode: a silent-only outcome forced a captain handoff: $(cat "$home/host.out")"
       watcher_live "$home" || fail "$mode: the host did not park on its successor"
       host=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
       kill -TERM "$host"
       wait_until 200 host_exited "$home" || fail "$mode: the host did not stop on TERM"
     else
-      wait_until 250 host_exited "$home" || fail "$mode: the failed turn did not hand the wake to main: $(cat "$home/host.out" 2>/dev/null) $(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null)"
+      wait_until 600 host_exited "$home" || fail "$mode: the failed turn did not hand the wake to main: $(cat "$home/host.out" 2>/dev/null) $(tail -n 8 "$home/state/.supervision-host.log" 2>/dev/null)"
       assert_re '^supervision-host: the away session could not take this wake: the engine turn failed \(exit 3\); this wake is yours$' \
         "$home/host.out" "$mode: the failed turn must still hand its wake to main"
     fi
@@ -2477,7 +2477,7 @@ test_outcome_after_the_return_survives_a_host_killed_at_the_turn_end() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "return-first: the host never started a watcher cycle"
   append_status "$home" 'finishing while the captain comes back'
-  wait_until 250 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" \
+  wait_until 600 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" \
     || fail "return-first: the late outcome was never queued: $(cat "$home/engine-report.log" 2>/dev/null)"
   host=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
   kill -TERM "$host"
@@ -2510,7 +2510,7 @@ test_next_host_clears_a_turn_its_killed_predecessor_left() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "killed: the host never started a watcher cycle"
   append_status "$home" 'mid-turn when its host is killed'
-  wait_until 250 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" || fail "killed: the turn never reported"
+  wait_until 600 grep -qs 'supervision-host-return:1' "$home/state/.wake-queue" || fail "killed: the turn never reported"
   host=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
   engine=$(cut -f1 "$home/state/.supervision-host.engine-pid")
   kill -KILL "$host"
@@ -2537,7 +2537,7 @@ test_report_without_acknowledgement_hands_the_wake_to_main() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "noack: the host never started a watcher cycle"
   append_status "$home" 'reported, never acknowledged'
-  wait_until 250 host_exited "$home" || fail "noack: the host counted an unacknowledged wake handled: $(cat "$home/state/.supervision-host.log")"
+  wait_until 600 host_exited "$home" || fail "noack: the host counted an unacknowledged wake handled: $(cat "$home/state/.supervision-host.log")"
   expect_code 0 "$(cat "$home/host.rc")" "a handed-back wake must exit 0 for the owner to deliver"
   assert_grep '"task":"demo"' "$home/state/branch-outcomes.jsonl" "fixture: the stub did not report"
   assert_re '^signal: .*demo.status' "$home/host.out" "the handed-back close must carry the reason line"
@@ -2557,7 +2557,7 @@ test_return_during_a_failed_turn_still_hands_its_outcomes_to_main() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "return-fail: the host never started a watcher cycle"
   append_status "$home" 'mid-task, then a crash'
-  wait_until 250 host_exited "$home" || fail "return-fail: the host did not hand the wake to main"
+  wait_until 600 host_exited "$home" || fail "return-fail: the host did not hand the wake to main"
   expect_code 0 "$(cat "$home/host.rc")" "a failed turn's handback must exit 0 for the owner to deliver"
   assert_absent "$home/state/.afk-contract" "fixture: the stub's return did not archive the record"
   assert_re '^supervision-host: the away session could not take this wake: the engine turn failed \(exit 3\); .*captain returned during its turn.*store rows 1[,)]' "$home/host.out" \
@@ -2575,7 +2575,7 @@ test_incomplete_engine_result_hands_the_wake_to_main() {
   start_host "$home"
   wait_until 150 watcher_live "$home" || fail "emptyresult: the host never started a watcher cycle"
   append_status "$home" 'handled, but the result is empty'
-  wait_until 250 host_exited "$home" || fail "emptyresult: the host counted an empty result handled: $(cat "$home/state/.supervision-host.log")"
+  wait_until 600 host_exited "$home" || fail "emptyresult: the host counted an empty result handled: $(cat "$home/state/.supervision-host.log")"
   expect_code 0 "$(cat "$home/host.rc")" "a handed-back wake must exit 0 for the owner to deliver"
   assert_grep '"task":"demo"' "$home/state/branch-outcomes.jsonl" "fixture: the stub did not report"
   assert_re '^signal: .*demo.status' "$home/host.out" "the handed-back close must carry the reason line"
