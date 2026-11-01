@@ -2,6 +2,7 @@
 
 The Jev gate is a local-only damage-control screen for commands typed into the Pi helm session.
 It is captain-controlled, ships inactive, and changes nothing until this home opts in.
+This damage-control gate is unrelated to the read-only Jev guard framework documented in [`docs/jev-guards.md`](jev-guards.md).
 
 ## Posture
 

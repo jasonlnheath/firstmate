@@ -10,15 +10,15 @@ Worker launch facts re-verified on 2026-09-17 against installed Pi 0.85.1 (help,
 |---|---|
 | Busy state | The Firstmate-owned extension's `agent_start` marks busy and `agent_settled`, confirmed by `ctx.isIdle()`, marks idle; `session_shutdown` also marks idle, so every orderly end closes (quit, process exit, same-process replacement); this covers retries, compaction, tool loops, and queued continuations. |
 | Exit command | `/quit`. |
+| Resume | `--session <path-or-id>` resumes that exact session, and creates it at that path when the file is gone. `../../../bin/fm-spawn.sh` passes it on a relaunch so a Herdr pane's already-bound status authority keeps applying (`../../../bin/fm-control-lib.sh`'s `fm_control_relaunch_resume_flag`; `../../../docs/herdr-backend.md` "Agent status authority and relaunch"). There is still no `resume` control verb. |
 | Interrupt | Single Escape; a manual interrupt fires `turn_end` and `agent_settled` (live-verified 2026-09-17 on 0.85.1), so unlike Claude the busy record closes natively on interrupt. |
 | Skill invocation | `/skill:<name>`, for example `/skill:no-mistakes`; live-verified 2026-09-17 on 0.85.1 that the command loads and the model begins executing the named skill (this is what `enableSkillCommands` registers by default). |
-| Model flag | `--model <provider>/<id>` on a crewmate or scout launch: omitting it is refused rather than left to Pi's own default, and a bare id or `id:level` pattern (which Pi 0.85.1 itself would resolve against its catalog) is refused too, because the credential check is scoped to the provider the pin names (see Task-worker launch hardening below); a secondmate may omit it or pass any `--model <pattern>` Pi accepts. |
+| Model flag | `--model <provider>/<id>` on a crewmate or scout launch: omitting it is refused rather than left to Pi's own default, and a bare id or `id:level` pattern (which Pi 0.85.1 itself would resolve against its catalog) is refused too, because the credential check is scoped to the provider the pin names (see Task-worker launch hardening below); a secondmate may omit it or pass any `--model <pattern>` Pi accepts. under a home's worker account pin Firstmate also passes `--provider <provider>` (`../../../docs/configuration.md` "Worker account pin"). |
 | Effort flag | `--thinking <low\|medium\|high\|xhigh\|max>`; 0.85.1 also accepts `off` and `minimal`, which sit below the shared vocabulary's floor and are deliberately unreachable rather than remapped onto low, and both identities expose the same levels and completed the same model-qualified max-thinking smoke. |
 | Model discovery | Run the selected executable as `<executable> --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
 
 Native Codex sessions may request `ultra` through the native extension flag described by `../../../bin/fm-spawn.sh`; it is separate from Pi's thinking levels.
 Pi has no permission system, so workers are always autonomous.
-Pi's installed `packages/coding-agent/docs/settings.md` UI and display section documents `regular` as the `tuiMode` default and `fullscreen` as experimental.
 Fullscreen can bury steering messages by rewriting scrollback, so Firstmate avoids it when the installed CLI supports the override.
 `../../../bin/fm-spawn.sh --help` owns the executable-pinning and version-safe launch mechanics.
 
@@ -31,9 +31,10 @@ The router's Detection section owns how launch markers and ancestry select betwe
 Keep the instructions as one positional argument.
 Multiple positional arguments become separate queued messages; the spawn template already preserves the one-argument shape.
 
-A project trust dialog can appear on the first Pi run in any not-yet-trusted directory, including a clean worktree.
+A project trust dialog can appear on the first Pi run in any not-yet-trusted directory that holds a trust-requiring resource such as `.pi/extensions/`, including a clean worktree and a freshly seeded secondmate home.
+The decision persists per path in `~/.pi/agent/trust.json`, or in the pinned root's `trust.json` under a worker account pin, so later spawns in the same pooled slot under that root skip it.
 Firstmate crewmate and scout launches grant project trust per run with `--approve`, which sets Pi's trust override so the dialog is never constructed, and the post-launch gate then requires the worker extension's own busy record (`pi-ext`-sourced busy or idle under the launch's gen) before the spawn reports success; the spawn's own pre-launch `fm-spawn` seed never counts as start proof, so a Pi that dies on boot or never fires `agent_start` fails the spawn, and because that failure closes the window, the `failed:` status event and the spawn's error carry the pane's last non-blank lines (an unresolvable `--model` pin is what 0.85.1 prints there before exiting 1) instead of pointing at a window that no longer exists.
-The per-run grant writes no standing consent; human sessions and secondmate launches still meet the dialog: accept it with Enter and verify the instructions begin processing, and a decision persists per path in the agent dir's `trust.json`, so later human spawns in the same pooled slot skip it.
+The per-run grant writes no standing consent; human sessions still meet the dialog (accept it with Enter and verify the instructions begin processing), and unattended seeded-secondmate launches get the capability-gated project-trust approval mechanics owned by `../../../bin/fm-spawn.sh --help`, with regression evidence in [runtime verification](../../../../../docs/verification/runtime-backends.md#pi-seeded-secondmate-project-trust).
 Before trust resolves, Pi loads context files, user/global extensions, and CLI `-e` extensions, so brief delivery is never gated, but project `.agents/skills` only become reachable once trust resolves.
 
 ## Task-worker launch hardening
@@ -69,6 +70,7 @@ Native-harness adapters can discover the same guarded FirstMate tools and operat
 The tool result and clean-exit fallback are owned by `../../../docs/supervision-protocols/pi.md`.
 `../../../bin/fm-session-start.sh` reports when the live Pi-family session has not loaded both extensions and points at the selected executable after project trust as the fix, with `-e` as a trust-free fallback.
 
-When a secondmate is launched on Pi or Pi-signed, `../../../bin/fm-spawn.sh --secondmate` launches the selected executable with both `-e .pi/extensions/fm-primary-turnend-guard.ts` and `-e .pi/extensions/fm-primary-pi-watch.ts`.
-Both files already exist in the secondmate home's git worktree.
+When a secondmate is launched on Pi or Pi-signed, `../../../bin/fm-spawn.sh --secondmate` launches the selected executable with `-e .pi/extensions/fm-primary-turnend-guard.ts`, `-e .pi/extensions/fm-primary-pi-watch.ts`, and `-e` of the parent home's `state/<id>.pi-ext.ts` busy extension.
+Both primary files already exist in the secondmate home's git worktree.
+The busy extension lives outside that home, so Pi's project-trust gate does not see it, and its turn-end handler does not touch the parent's turn-ended marker.
 The PreToolUse-equivalent watcher-arm seatbelt returns `{block: true}` from the `tool_call` event.

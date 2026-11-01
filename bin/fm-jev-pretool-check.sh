@@ -52,13 +52,12 @@ record-override action only appends audit events; it confers no authority.
 EOF
 }
 
-PI_MODE=0
 ACTION=""
 REASON_TEXT=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --pi) PI_MODE=1; shift ;;
+    --pi) shift ;;
     -h|--help) usage; exit 0 ;;
     record-override)
       [ "$#" -ge 2 ] || { echo "error: record-override needs open|close|expire" >&2; exit 2; }
