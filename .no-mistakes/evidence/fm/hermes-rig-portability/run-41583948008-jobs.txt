@@ -1,0 +1,40 @@
+Check contributors / check-attribution -> success
+OSV scan / Scan lockfiles / osv-scan -> success
+Rust tests / cargo test (bootstrap installer) -> success
+Python tests / Run tests (6/12) -> success
+Installer tests / PowerShell installer tests -> success
+Python lints / Windows footguns (blocking) -> success
+Check uv.lock / uv lock --check -> success
+Python tests / Run tests (4/12) -> success
+Python tests / e2e -> success
+Python tests / Run tests (5/12) -> success
+Lint Docker scripts / Disabled (runner diet) -> skipped
+Python tests / Run tests (7/12) -> success
+OS-specific tests / Windows-only tests -> success
+Python lints / ruff + ty diff -> success
+OSV scan / Emit review status -> success
+package-lock.json diff / package-lock.json semantic diff -> success
+OS-specific tests / macOS-only tests -> success
+Python lints / ruff enforcement (blocking) -> success
+Python tests / Run tests (2/12) -> success
+Review label gate / Review label gate -> success
+Python tests / Run tests (12/12) -> success
+Python tests / Run tests (9/12) -> success
+Python tests / Run tests (8/12) -> success
+Python tests / Run tests (10/12) -> success
+Supply-chain scan / Aggregate review statuses -> success
+Python tests / Run tests (11/12) -> success
+Deny unrelated histories / check-common-ancestor -> success
+Supply-chain scan / Scan PR for critical supply chain risks -> success
+Check no committed infographics / check-no-committed-infographics -> success
+Python tests / Run tests (3/12) -> success
+Docs Site / Disabled (runner diet) -> skipped
+Profile artifact check / Reject profile archives -> success
+Supply-chain scan / Check PyPI dependency upper bounds -> success
+Detect affected areas -> success
+Check no case-colliding filenames / check-case-collisions -> success
+JS & TS checks / JS & TS checks -> success
+Python tests / Run tests (1/12) -> success
+Desktop E2E -> skipped
+All required checks pass -> success
+CI timing report -> success

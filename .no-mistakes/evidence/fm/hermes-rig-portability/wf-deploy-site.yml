@@ -1,0 +1,21 @@
+name: Deploy Site
+
+# DISABLED (2026-11-02, hosted-Actions runner diet): site deploys no longer
+# run on release publish or main pushes to website/skills paths. Manual
+# dispatches skip instantly on the disabled placeholder below. The original
+# deploy workflow lives in git history; restore it by reverting the commit
+# that emptied this file.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Disabled (runner diet)
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: 'echo "deploy-site.yml disabled to save hosted Actions minutes; restore from git history"'

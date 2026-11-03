@@ -1,0 +1,19 @@
+name: Publish E2E evidence
+
+# DISABLED (2026-11-02, hosted-Actions runner diet): E2E evidence is no longer
+# published from completed CI runs. The original publisher lives in git
+# history; restore it by reverting the commit that emptied this file.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Disabled (runner diet)
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: 'echo "publish-e2e-evidence.yml disabled to save hosted Actions minutes; restore from git history"'

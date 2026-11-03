@@ -1,0 +1,20 @@
+name: CI review comment
+
+# DISABLED (2026-11-02, hosted-Actions runner diet): the live-updating PR
+# review comment poller (up to 40 minutes per run) no longer starts from the
+# CI workflow_run event. The original poller lives in git history; restore it
+# by reverting the commit that emptied this file.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Disabled (runner diet)
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: 'echo "ci-review-comment.yml disabled to save hosted Actions minutes; restore from git history"'

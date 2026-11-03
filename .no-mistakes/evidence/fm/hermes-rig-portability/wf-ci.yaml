@@ -1,0 +1,28 @@
+name: CI
+
+# Orchestrator workflow. Runs ``detect-changes`` once, then conditionally
+# calls the sub-workflows that a PR can actually affect. A final
+# ``all-checks-pass`` gate job aggregates results so branch protection only
+# needs to require a single check.
+#
+# Sub-workflows are triggered via ``workflow_call`` and keep their own job
+# definitions, matrices, and concurrency settings. They no longer have
+# ``push:`` / ``pull_request:`` triggers of their own — everything flows
+# through this file.
+#
+# SECURITY: this workflow runs PR-controlled actions, workflows, and code.
+# Do not add ``secrets: inherit`` or GitHub App credentials here. Trusted
+# main-only automation uses protected environments in its own workflows.
+
+on:
+  pull_request:
+  # Runner diet (2026-11-02): the `push: branches: [main]` trigger was
+  # removed — post-merge validation now happens only on the next PR that
+  # touches the affected files, or on the rig's self-hosted runner for the
+  # orchestrator's own jobs below.
+
+permissions:
+  contents: read
+  pull-requests: write # needed by lint (PR comment) + supply-chain review_status
+  actions: read # needed by osv-scanner (SARIF upload)
+  securi

@@ -1,0 +1,34 @@
+name: Tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# Cancel in-progress runs for the same ref
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run tests
+    # The suite is sliced across standard 4-core runners. The single
+    # 96-core job this replaced needed the `ubuntu-latest-96-core` larger
+    # runner, which personal repos cannot access — the job queued forever and
+    # blocked every merge. Slicing also bounds the blast radius: one slow or
+    # flaky file fails one slice, not the whole lane.
+    #
+    # Each slice uses the LPT splitter in scripts/run_tests_parallel.py
+    # (HERMES_TEST_SLICE below). The first run has no duration cache and
+    # splits by file count; every run then rewrites the cache it observed,
+    # so slices rebalance themselves as file timings change.
+    #
+    # Workers are NOT pinned here: run_tests_parallel.py defaults to
+    # cpu_count*2, which is 8 on this runner. The old HERMES_TEST_WORKERS=96
+    # belonged to the 96-core runner and OOMs a standard one.
+    strategy:
+      fail-fast: false
+      matrix:
+        slice: ["1/12", "2/12", "3/12", "4/12", "5/12", "6/

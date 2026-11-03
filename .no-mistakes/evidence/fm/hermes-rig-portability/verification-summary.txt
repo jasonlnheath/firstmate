@@ -1,0 +1,31 @@
+Live verification of fm/hermes-rig-portability (cd0cf728) against real state, 2026-11-03
+
+CHANGE: exactly one added file vs base c36cecd8: docs/tasks/hermes-rig-portability-report.md (+128 lines).
+No root-level report-hermes-rig-portability.md remains in the target tree.
+
+FAST-FORWARD: origin/main (live GitHub) = c36cecd8 = base = ancestor of HEAD.
+git log --merges origin/main..HEAD -> empty (linear). No force needed; diff main..HEAD = 1 file.
+
+PLACEMENT: firstmate main on GitHub has docs/tasks/bootcamp-3finger-middleclick-report.md (precedent)
+and no root report (contents API 404). Branch adds docs/tasks/hermes-rig-portability-report.md only.
+
+TRIGGER SUMMARY vs LIVE FILES at hermes-agent a650797 (fetched raw):
+- workflow_dispatch-only: ci-review-comment, deploy-site, docker, nix, label-rerun, publish-e2e-evidence  OK
+- docs-site-checks.yml: workflow_call + workflow_dispatch; invoked by ci.yaml line 169  OK
+- docker-lint.yml:      workflow_call + workflow_dispatch; invoked by ci.yaml line 219  OK
+- osv-scanner.yml:      workflow_call + schedule cron '0 9 1 * *' (monthly) + workflow_dispatch;
+                        invoked by ci.yaml line 244  OK
+- ci.yaml: on: pull_request only, push trigger removed (comment documents the diet)  OK
+- tests.yml: runs-on [self-hosted, rig] (lines 36, 133)  OK
+
+JOB FACTS:
+- PR 11 merged=true, squash merge_commit_sha a6507979, merged_at 2026-11-03T06:00:04Z  OK
+- Commit 195964f = exactly 9 files: 8 test files + tests.yml  OK
+- Run 41583948008 conclusion=success, 40 jobs = 37 success + 3 skipped (Disabled x2, Desktop E2E)
+  -> matches report "37 passed, 0 failed, 3 skipped, 40 total"  OK
+- PR 7 open, merged=false, mergeable_state=dirty (conflicts with diet)  OK
+
+POST-MERGE QUIESCENCE:
+- newest runs of any kind: 05:59:35Z and 05:59:18Z workflow_run listeners (pre-merge)  OK
+- push-event runs created after 06:00:04Z: total_count = 0  OK
+- newest event=push runs on main: 2026-11-01  OK

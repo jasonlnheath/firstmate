@@ -1,0 +1,23 @@
+name: Nix flake check
+
+# DISABLED (2026-11-02, hosted-Actions runner diet): this workflow no longer
+# runs on any automatic trigger. The original flake-check jobs (package,
+# devShell, and the nix/checks.nix set) live in git history; restore them by
+# reverting the commit that emptied this file.
+#
+# Kept as a valid, never-running workflow instead of deleted so tooling that
+# lists workflows still resolves the name.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Disabled (runner diet)
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: 'echo "nix.yml disabled to save hosted Actions minutes; restore from git history"'

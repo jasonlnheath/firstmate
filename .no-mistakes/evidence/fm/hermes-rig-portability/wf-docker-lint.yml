@@ -1,0 +1,23 @@
+name: Docker / shell lint
+
+# DISABLED (2026-11-02, hosted-Actions runner diet): the hadolint and
+# docker-shellcheck jobs no longer run. The workflow_call trigger is kept so
+# the ci.yaml orchestrator still resolves its `docker-lint` call — the call
+# lands on the disabled placeholder below, which skips instantly and reports
+# success. The original lint jobs live in git history; restore them by
+# reverting the commit that emptied this file.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Disabled (runner diet)
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: 'echo "docker-lint.yml disabled to save hosted Actions minutes; restore from git history"'

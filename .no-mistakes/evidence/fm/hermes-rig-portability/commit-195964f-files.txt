@@ -1,0 +1,9 @@
+.github/workflows/tests.yml
+tests/ci/test_live_comment.py
+tests/hermes_cli/test_kanban_default_assignee.py
+tests/hermes_cli/test_kanban_per_profile_cap.py
+tests/hermes_cli/test_session_recovery_lost_and_found.py
+tests/hermes_cli/test_update_head_moved_gate.py
+tests/plugins/image_gen/test_openrouter_compat_provider.py
+tests/test_hermes_state.py
+tests/tools/test_browser_real_profile.py

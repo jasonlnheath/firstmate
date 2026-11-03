@@ -1,0 +1,31 @@
+
+  review-labels:
+    name: Review label gate
+    needs: [detect, supply-chain]
+    if: always() && needs.detect.outputs.event_name == 'pull_request' && (needs.detect.outputs.ci_review == 'true' || needs.detect.outputs.mcp_catalog == 'true' || needs.supply-chain.outputs.critical_findings == 'true')
+    uses: ./.github/workflows/review-labels.yml
+    with:
+      ci_review: ${{ needs.detect.outputs.ci_review == 'true' }}
+      ci_review_files: ${{ needs.detect.outputs.ci_review_files }}
+      mcp_catalog: ${{ needs.detect.outputs.mcp_catalog == 'true' }}
+      supply_chain: ${{ needs.supply-chain.outputs.critical_findings == 'true' }}
+
+  osv-scanner:
+    name: OSV scan
+    uses: ./.github/workflows/osv-scanner.yml
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Gate: runs after everything. ``if: always()`` ensures it reports a
+  # status even when some deps were skipped. Only actual ``failure``
+  # results cause it to fail; ``skipped`` is treated as success.
+  #
+  # Branch protection should require ONLY this check.
+  #
+  # Outputs ``needs-json`` — a compact ``{job_name: result}`` dict — so
+  # the live comment poller can list failed jobs in the PR comment.
+  # ─────────────────────────────────────────────────────────────────────
+  all-checks-pass:
+    name: All required checks pass
+    needs:
+      - detect
+      - tests

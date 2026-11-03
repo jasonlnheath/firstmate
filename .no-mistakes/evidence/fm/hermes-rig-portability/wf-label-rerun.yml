@@ -1,0 +1,19 @@
+name: Label rerun
+
+# DISABLED (2026-11-02, hosted-Actions runner diet): adding the ci-reviewed
+# label no longer reruns failed CI jobs. The original rerun flow lives in git
+# history; restore it by reverting the commit that emptied this file.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    name: Disabled (runner diet)
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: 'echo "label-rerun.yml disabled to save hosted Actions minutes; restore from git history"'
