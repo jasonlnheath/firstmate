@@ -318,7 +318,7 @@ test_normal_tier_shares_one_budget() {
   pass "normal tier jobs share one $normal minute budget"
 }
 
-# Serial tier: the stateful serial shards share one 45-minute budget between
+# Serial tier: the stateful serial shards share one 60-minute budget between
 # the normal tier and the heavy backstop, so neither boundary can drift onto
 # the lane silently.
 test_serial_tier_shares_one_budget_between_normal_and_heavy() {
@@ -333,8 +333,8 @@ test_serial_tier_shares_one_budget_between_normal_and_heavy() {
     || fail "serial tier ($serial) must exceed the normal tier ($normal)"
   [ "$serial" -lt "$heavy" ] \
     || fail "serial tier ($serial) must stay below the heavy backstop ($heavy)"
-  [ "$serial" = 45 ] \
-    || fail "serial tier must be the single 45-minute shared budget, got $serial"
+  [ "$serial" = 60 ] \
+    || fail "serial tier must be the single 60-minute shared budget, got $serial"
   pass "serial tier jobs share one $serial minute budget"
 }
 

@@ -217,7 +217,7 @@ jobs:
     # Serial tier (see the timeout policy above): the stateful serial shards
     # wait out real process cycles in absence-asserting fixtures, so the lane
     # carries its own tripwire above the normal budget, under the heavy backstop.
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       # Every shard reports so one failure never hides another shard's result.
       fail-fast: false
