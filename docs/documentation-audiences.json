@@ -541,6 +541,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/tasks/bootcamp-hibernate-auto-report.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/usage-warner.md",
       "audience": "operator-current"
     },
