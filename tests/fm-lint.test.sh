@@ -1534,7 +1534,11 @@ test_root_memory_limit_reports_a_named_death() {
 test_memory_failure_retries_without_external_sources() {
   local tmp fakebin fixture out rc log rss_kib require_bounds=0 mode
   local -a modes=(0)
-  if fm_lint_bounds_supported; then
+  # Mode 1 asserts the per-root peak-RSS record, which fm-lint.sh writes only
+  # through /usr/bin/time (the same probe the product itself uses); hosts that
+  # can bound roots but cannot record RSS, like the rig's Arch runner, run the
+  # unbounded mode alone instead of failing the bounded assertions.
+  if fm_lint_bounds_supported && [ -x /usr/bin/time ]; then
     require_bounds=1
     modes=(1 0)
   fi

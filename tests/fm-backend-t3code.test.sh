@@ -236,6 +236,21 @@ PYTHON
 # shell environment. The subshell confines fm_live_gate's capability skip.
 t3_verify_live_codex_env() (  # <worktree> <task-id> <isolated-codex-home>
   fm_live_gate default-on FM_T3_CODEX_CONFIG_LIVE codex "$T3_PYTHON"
+  # A PATH hit is not a usable codex: the rig's mise shim answers `command -v`
+  # but exits nonzero because no version is pinned behind it, which is the same
+  # unusable-tool situation the gate above skips for an absent binary. Mirror
+  # that skip; an explicitly requested guard still fails loudly like the gate's
+  # requested-but-absent path does.
+  if ! codex --version >/dev/null 2>&1; then
+    case "${FM_T3_CODEX_CONFIG_LIVE:-}${FM_LIVE:-}" in
+      *1*)
+        printf 'not ok - FM_T3_CODEX_CONFIG_LIVE was requested but codex is not runnable\n' >&2
+        exit 1
+        ;;
+    esac
+    printf 'skip: live: codex not runnable (a PATH entry answered but --version failed)\n'
+    exit 0
+  fi
   "$T3_PYTHON" - "$1" "$2" "$3" <<'PYTHON'
 import json, os, pathlib, selectors, subprocess, sys
 worktree, task, home = sys.argv[1:]
