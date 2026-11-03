@@ -107,9 +107,11 @@ Commit `195964f` pushed to `fm/gh-runner-diet` (updates https://github.com/jason
 ## Post-merge verification of main (requested by firstmate)
 
 - Workflow set on main matches the diet: ci-review-comment / deploy-site / docker / nix /
-  label-rerun / publish-e2e-evidence / docs-site-checks / docker-lint are `workflow_dispatch`-only
-  stubs; osv-scanner is monthly schedule + dispatch; ci.yaml is `pull_request`-only (push trigger
-  removed); core CI runs on `[self-hosted, rig]` via tests.yml.
+  label-rerun / publish-e2e-evidence are `workflow_dispatch`-only stubs; docs-site-checks and
+  docker-lint declare `workflow_call` in addition to `workflow_dispatch` (their disabled stub
+  jobs are invoked per-PR by ci.yaml); osv-scanner is `workflow_call` + monthly schedule +
+  `workflow_dispatch` and is likewise invoked per-PR from ci.yaml; ci.yaml is
+  `pull_request`-only (push trigger removed); core CI runs on `[self-hosted, rig]` via tests.yml.
 - NOTHING was triggered by the merge push itself: zero runs of any kind were created after the
   merge commit (06:00:04Z) — the newest `event=push` runs on main date to 2026-11-01 (pre-diet).
   The `CI review comment` / `Publish E2E evidence` runs visible on main are `workflow_run`
