@@ -553,6 +553,10 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/tasks/hermes-rig-portability-report.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/usage-warner.md",
       "audience": "operator-current"
     },
