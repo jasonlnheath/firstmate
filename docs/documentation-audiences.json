@@ -671,6 +671,10 @@
     {
       "path": ".agents/skills/validation-supervision/SKILL.md",
       "audience": "agent-runtime"
+    },
+    {
+      "path": "reports/touchbar-hibernate-repair.md",
+      "audience": "maintainer-verification"
     }
   ]
 }
