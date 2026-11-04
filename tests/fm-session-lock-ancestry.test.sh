@@ -1127,12 +1127,26 @@ test_e2e_background_session_keeps_its_lock_across_a_recycled_chain() {
   # Recycle the bridge: the daemon ends, the pty-host is reparented to init, and
   # the front-end that holds the lock stays alive.
   kill -TERM "$daemon"
+  # Orphans go to init on classic hosts, but to the nearest ancestor subreaper
+  # where one exists: this repo's own rig runner is a systemd --user service,
+  # and its user manager is a subreaper, so a rig orphan's parent is the user
+  # manager pid, never 1. Accept either root so the assertion keeps testing the
+  # daemon's death and the pty-host's survival, not the host's subreaper menu.
   i=0
-  while [ "$i" -lt 200 ] && { kill -0 "$daemon" 2>/dev/null || [ "$(ps -o ppid= -p "$ptyhost" 2>/dev/null | tr -d ' ')" != 1 ]; }; do
+  while [ "$i" -lt 200 ] && { kill -0 "$daemon" 2>/dev/null || [ "$(ps -o ppid= -p "$ptyhost" 2>/dev/null | tr -d ' ')" = "$daemon" ]; }; do
     sleep 0.05
     i=$((i + 1))
   done
-  [ "$(ps -o ppid= -p "$ptyhost" 2>/dev/null | tr -d ' ')" = 1 ] || fail "the pty-host was not reparented to init after the daemon ended"
+  orphan_ppid=$(ps -o ppid= -p "$ptyhost" 2>/dev/null | tr -d ' ')
+  case "$orphan_ppid" in
+    '') fail "the pty-host died with its daemon, so the recycled case cannot be exercised" ;;
+    "$daemon") fail "the pty-host is still parented by the daemon after its death" ;;
+    1) : ;;
+    *)
+      kill -0 "$orphan_ppid" 2>/dev/null \
+        || fail "the pty-host's new parent $orphan_ppid is neither init nor a live subreaper"
+      ;;
+  esac
   kill -0 "$frontend" 2>/dev/null || fail "the front-end died with the daemon, so the recycled case cannot be exercised"
 
   # Phases 2-4: before the spare proves anything, a different id, the right id

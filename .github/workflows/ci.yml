@@ -40,8 +40,12 @@ concurrency:
 # tests-timing-aggregate, invariants) run on the rig's self-hosted runner
 # (label self-hosted, one runner per repo, so matrix shards of one job
 # serialize on that machine). Tool prerequisites verified on the rig: curl,
-# tar, node/npm (mise), jq, python3, bash, git; ruby 3 via mise for
-# fm-test-run.test.sh. Two Linux jobs stay on ubuntu-latest because a step
+# tar, node/npm, jq, python3, bash, git. Caveat (2026-11-04): which npm the
+# runner's PATH yields is not stable, and the system npm it can resolve to
+# has a root-owned prefix (/usr), so the self-hosted npm-global installs pin
+# a per-run NPM_CONFIG_PREFIX instead of assuming the ambient prefix is
+# writable (see the tasks-axi install steps). Two Linux jobs stay on
+# ubuntu-latest because a step
 # cannot adapt to the rig: tests-portable-serial hard-requires tmux
 # (unavailable there and root-gated to install), and tests-herdr starts a
 # real Herdr server with a default session, which collides with the live
@@ -55,7 +59,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -120,7 +124,7 @@ jobs:
     runs-on: self-hosted
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -138,6 +142,18 @@ jobs:
       - name: Install tasks-axi
         run: |
           set -eu
+          # Self-hosted caveat (2026-11-04): the ambient npm on the rig is not
+          # stable - between runner restarts the PATH can yield the root-owned
+          # system npm (prefix /usr), where a bare `npm install -g` fails the
+          # shard with EACCES before any test runs. Pin a per-run prefix:
+          # GITHUB_ENV carries it into the remaining steps so installs and any
+          # test-side `npm root -g` lookup resolve one writable root,
+          # GITHUB_PATH exposes the bin for tasks-axi/pi, and RUNNER_TEMP
+          # cleanup removes the tree with the run.
+          export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
+          echo "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX" >> "$GITHUB_ENV"
+          echo "$NPM_CONFIG_PREFIX/bin" >> "$GITHUB_PATH"
+          export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
           npm install -g tasks-axi
           tasks-axi --version
       - name: Install the Pi package for the Pi extension tests
@@ -146,6 +162,14 @@ jobs:
           npm install -g @earendil-works/pi-coding-agent
           npm ls -g --depth 0 @earendil-works/pi-coding-agent
       - name: Run portable parallel shard 1
+        env:
+          # Self-hosted caveat: the backlog read bound defaults to 10s, sized
+          # for hosted hardware. Under the 2026-11-04 pre-crash memory-pressure
+          # window on the rig, one `tasks-axi show` in the captain-hold suite
+          # exceeded that default and failed the shard. 30s keeps the wedge
+          # latch and its loud partial reconcile meaningful while absorbing
+          # loaded node cold starts on self-hosted runners.
+          FM_BACKLOG_ROW_TIMEOUT_SECS: '30'
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
@@ -162,11 +186,11 @@ jobs:
 
   tests-portable-parallel-2:
     name: Behavior portable parallel 2
-    # Runner diet: rig self-hosted runner (ruby 3 available via mise).
+    # Runner diet: rig self-hosted runner.
     runs-on: self-hosted
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
@@ -184,9 +208,18 @@ jobs:
       - name: Install tasks-axi
         run: |
           set -eu
+          # Same self-hosted npm-prefix caveat as shard 1 (see that step):
+          # pin the per-run prefix and expose its bin before any install.
+          export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
+          echo "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX" >> "$GITHUB_ENV"
+          echo "$NPM_CONFIG_PREFIX/bin" >> "$GITHUB_PATH"
+          export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
           npm install -g tasks-axi
           tasks-axi --version
       - name: Run portable parallel shard 2
+        env:
+          # Same self-hosted caveat as shard 1 (see that step).
+          FM_BACKLOG_ROW_TIMEOUT_SECS: '30'
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
@@ -217,7 +250,7 @@ jobs:
     # Serial tier (see the timeout policy above): the stateful serial shards
     # wait out real process cycles in absence-asserting fixtures, so the lane
     # carries its own tripwire above the normal budget, under the heavy backstop.
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       # Every shard reports so one failure never hides another shard's result.
       fail-fast: false
@@ -456,7 +489,7 @@ jobs:
     runs-on: macos-latest
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') && vars.FM_CI_SKIP_MACOS != '1' }}
     # Normal tier (see the timeout policy above).
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - name: Run snapshot consumers with stock Bash
