@@ -40,11 +40,10 @@ concurrency:
 # tests-timing-aggregate, invariants) run on the rig's self-hosted runner
 # (label self-hosted, one runner per repo, so matrix shards of one job
 # serialize on that machine). Tool prerequisites verified on the rig: curl,
-# tar, node/npm, jq, python3, bash, git; ruby 3 via mise for
-# fm-test-run.test.sh. Caveat (2026-11-04): which npm the runner's PATH
-# yields is not stable, and the system npm it can resolve to has a
-# root-owned prefix (/usr), so the self-hosted npm-global installs pin a
-# per-run NPM_CONFIG_PREFIX instead of assuming the ambient prefix is
+# tar, node/npm, jq, python3, bash, git. Caveat (2026-11-04): which npm the
+# runner's PATH yields is not stable, and the system npm it can resolve to
+# has a root-owned prefix (/usr), so the self-hosted npm-global installs pin
+# a per-run NPM_CONFIG_PREFIX instead of assuming the ambient prefix is
 # writable (see the tasks-axi install steps). Two Linux jobs stay on
 # ubuntu-latest because a step
 # cannot adapt to the rig: tests-portable-serial hard-requires tmux
@@ -187,7 +186,7 @@ jobs:
 
   tests-portable-parallel-2:
     name: Behavior portable parallel 2
-    # Runner diet: rig self-hosted runner (ruby 3 available via mise).
+    # Runner diet: rig self-hosted runner.
     runs-on: self-hosted
     if: ${{ !(github.event_name == 'push' && vars.FM_CI_SKIP_PUSH == '1') }}
     # Normal tier (see the timeout policy above).
