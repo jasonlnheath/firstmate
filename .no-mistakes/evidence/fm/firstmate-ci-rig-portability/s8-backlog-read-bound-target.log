@@ -1,0 +1,29 @@
+FM_TEST_BEGIN 2026-11-04T14:23:56Z tests/fm-backlog-read-bound.test.sh family=unclassified expected_gate_skip=none
+ok - a hanging tasks-axi show returns within the per-item bound instead of running unbounded
+ok - a timed-out row read reports one error naming the item that timed out
+ok - after the first bound hit the sweep continues and names every remaining item without paying the bound again
+ok - a padded-zero bound falls back to the default instead of disabling the deadline
+ok - a bound hit stops a captain hold loudly instead of being read as a missing task
+ok - the teardown verify gate reports a bound hit by name instead of as an absent inventory entry
+ok - the reconcile-requests intake stops loudly on a bound hit instead of refusing the row as absent
+ok - a bound hit in the migrated-prefix scan stops verify by name instead of resolving to nothing
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: unable to auto-detect email address (got 'jason@omarchy.(none)')
+ok - a wedged backlog backend still leaves a complete digest: wake queue, supervision instructions, fleet state, and context all print
+ok - an unreachable backlog backend degrades to a loud partial reconcile naming the item it could not read
+# fm-backlog-read-bound.test.sh: all assertions passed
+FM_TEST_END 2026-11-04T14:24:20Z tests/fm-backlog-read-bound.test.sh exit=0 duration_ms=23939 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=23968
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=23939 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-backlog-read-bound.test.sh duration_ms=23939

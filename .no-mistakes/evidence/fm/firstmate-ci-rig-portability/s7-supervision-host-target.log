@@ -1,0 +1,17 @@
+FM_TEST_BEGIN 2026-11-04T14:31:34Z tests/fm-supervision-host.test.sh family=afk expected_gate_skip=none
+ok - host+hook: a main-only close after a handled turn restores inherited handling and rewakes main
+ok - host+hook: a refused inherited handling restore delivers a failure instead of silent success
+ok - host+hook: a driver returning to an idle worker is stale-handled while attended
+ok - host+hook: a driver returning to an idle worker is stale-handled while away
+grep: /tmp/fm-supervision-host.krsWgP/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.krsWgP/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+ok - host+hook: boundary survives a lost continuation, retries, and transfers one watcher after acknowledgement
+grep: /tmp/fm-supervision-host.krsWgP/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.krsWgP/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.krsWgP/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+not ok - pass-through: the next park did not take over exactly one watcher
+FM_TEST_END 2026-11-04T14:33:31Z tests/fm-supervision-host.test.sh exit=1 duration_ms=117425 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=117467
+FM_TEST_SUMMARY_FAMILY family=afk count=1 duration_ms=117425 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-supervision-host.test.sh duration_ms=117425
+EXIT=1
