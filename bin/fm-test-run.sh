@@ -198,8 +198,8 @@ PER_SCRIPT_TIMEOUT_SECS=0
 # script is tests/fm-watch-triage.test.sh at about 1075s under CI load (the hint
 # table below records that loaded figure). 1500s keeps every measured script
 # under the bound with roughly 1.4x headroom over the slowest loaded measurement,
-# and it stays under the 30-minute normal CI tier so a wedged script fails here,
-# with its output, before the job cap
+# and it stays under the normal CI tier's hang tripwire so a wedged script fails
+# here, with its output, before the job cap
 # cancels the lane. It is a guard, not a speed control: a HUNG script becomes a
 # bounded failure instead of an unbounded suite, which is the shape that
 # silently outruns a caller's invocation budget.
