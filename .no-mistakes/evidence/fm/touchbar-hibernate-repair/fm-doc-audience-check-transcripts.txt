@@ -1,0 +1,15 @@
+=== 1. fm-doc-audience-check.sh at target head b66a0a97 (happy path) ===
+fm-doc-audience-check: ok surfaces=139 local_links=1056
+exit=0
+
+=== 2. Adversarial: same tree, inventory copy with ONLY the new classification entry removed ===
+(fixture: /tmp/fm-aud-adv/inventory-minus-new-report.json, 139 -> 138 surfaces)
+fm-doc-audience-check: unclassified: reports/touchbar-hibernate-repair.md
+exit=1
+
+=== 3. tests/fm-documentation-audiences.test.sh ===
+ok - documentation inventory classifies every maintained prose surface exactly once
+ok - classification, setup routing, and maintained-prose scope fail safely
+ok - required documentation owner pointers cannot silently disappear
+ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed
+exit=0
