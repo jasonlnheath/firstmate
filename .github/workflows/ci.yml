@@ -40,8 +40,13 @@ concurrency:
 # tests-timing-aggregate, invariants) run on the rig's self-hosted runner
 # (label self-hosted, one runner per repo, so matrix shards of one job
 # serialize on that machine). Tool prerequisites verified on the rig: curl,
-# tar, node/npm (mise), jq, python3, bash, git; ruby 3 via mise for
-# fm-test-run.test.sh. Two Linux jobs stay on ubuntu-latest because a step
+# tar, node/npm, jq, python3, bash, git; ruby 3 via mise for
+# fm-test-run.test.sh. Caveat (2026-11-04): which npm the runner's PATH
+# yields is not stable, and the system npm it can resolve to has a
+# root-owned prefix (/usr), so the self-hosted npm-global installs pin a
+# per-run NPM_CONFIG_PREFIX instead of assuming the ambient prefix is
+# writable (see the tasks-axi install steps). Two Linux jobs stay on
+# ubuntu-latest because a step
 # cannot adapt to the rig: tests-portable-serial hard-requires tmux
 # (unavailable there and root-gated to install), and tests-herdr starts a
 # real Herdr server with a default session, which collides with the live
@@ -138,6 +143,18 @@ jobs:
       - name: Install tasks-axi
         run: |
           set -eu
+          # Self-hosted caveat (2026-11-04): the ambient npm on the rig is not
+          # stable - between runner restarts the PATH can yield the root-owned
+          # system npm (prefix /usr), where a bare `npm install -g` fails the
+          # shard with EACCES before any test runs. Pin a per-run prefix:
+          # GITHUB_ENV carries it into the remaining steps so installs and any
+          # test-side `npm root -g` lookup resolve one writable root,
+          # GITHUB_PATH exposes the bin for tasks-axi/pi, and RUNNER_TEMP
+          # cleanup removes the tree with the run.
+          export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
+          echo "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX" >> "$GITHUB_ENV"
+          echo "$NPM_CONFIG_PREFIX/bin" >> "$GITHUB_PATH"
+          export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
           npm install -g tasks-axi
           tasks-axi --version
       - name: Install the Pi package for the Pi extension tests
@@ -192,6 +209,12 @@ jobs:
       - name: Install tasks-axi
         run: |
           set -eu
+          # Same self-hosted npm-prefix caveat as shard 1 (see that step):
+          # pin the per-run prefix and expose its bin before any install.
+          export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
+          echo "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX" >> "$GITHUB_ENV"
+          echo "$NPM_CONFIG_PREFIX/bin" >> "$GITHUB_PATH"
+          export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
           npm install -g tasks-axi
           tasks-axi --version
       - name: Run portable parallel shard 2
