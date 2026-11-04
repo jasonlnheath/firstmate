@@ -1,0 +1,54 @@
+t3_verify_live_codex_env() (  # <worktree> <task-id> <isolated-codex-home>
+  fm_live_gate default-on FM_T3_CODEX_CONFIG_LIVE codex "$T3_PYTHON"
+  # A PATH hit is not a usable codex: the rig's mise shim answers `command -v`
+  # but exits nonzero because no version is pinned behind it, which is the same
+  # unusable-tool situation the gate above skips for an absent binary. Mirror
+  # that skip; an explicitly requested guard still fails loudly like the gate's
+  # requested-but-absent path does.
+  if ! codex --version >/dev/null 2>&1; then
+    case "${FM_T3_CODEX_CONFIG_LIVE:-}${FM_LIVE:-}" in
+      *1*)
+        printf 'not ok - FM_T3_CODEX_CONFIG_LIVE was requested but codex is not runnable\n' >&2
+        exit 1
+        ;;
+    esac
+    printf 'skip: live: codex not runnable (a PATH entry answered but --version failed)\n'
+    exit 0
+  fi
+  "$T3_PYTHON" - "$1" "$2" "$3" <<'PYTHON'
+import json, os, pathlib, selectors, subprocess, sys
+worktree, task, home = sys.argv[1:]
+home = pathlib.Path(home)
+home.mkdir()
+(home / "config.toml").write_text(f"[projects.{json.dumps(worktree)}]\ntrust_level = \"trusted\"\n")
+version = subprocess.check_output(["codex", "--version"], text=True).strip()
+with (home / "stderr.log").open("w") as errors:
+    server = subprocess.Popen(["codex", "app-server", "--stdio"], cwd=worktree,
+        env=dict(os.environ, CODEX_HOME=str(home)), stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=errors, text=True)
+    try:
+        def request(number, method, params):
+            server.stdin.write(json.dumps(dict(id=number, method=method, params=params)) + "\n")
+            server.stdin.flush()
+            with selectors.DefaultSelector() as selector:
+                selector.register(server.stdout, selectors.EVENT_READ)
+                while selector.select(20):
+                    response = json.loads(server.stdout.readline())
+                    if response.get("id") == number:
+                        assert "error" not in response, (version, response)
+                        return response["result"]
+            raise TimeoutError(f"{version}: {method}")
+        request(1, "initialize", {"clientInfo": {"name": "fm-config-test", "version": "1"}})
+        result = request(2, "config/read", {"cwd": worktree, "includeLayers": True})
+        assert result["config"]["model"] == "gpt-5.6-sol", (version, result)
+        assert result["config"]["shell_environment_policy"]["set"]["FM_TASK_ID"] == task, version
+        result = request(3, "command/exec", {"cwd": worktree,
+            "command": ["/usr/bin/printenv", "FM_TASK_ID"], "timeoutMs": 10000,
+            "sandboxPolicy": {"type": "dangerFullAccess"}})
+        assert result == {"exitCode": 0, "stdout": task + "\n", "stderr": ""}, (version, result)
+        print(f"ok - {version}: project config retained; shell FM_TASK_ID={task}")
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+PYTHON
+)

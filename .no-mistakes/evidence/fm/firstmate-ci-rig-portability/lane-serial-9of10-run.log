@@ -1,0 +1,857 @@
+FM_TEST_BEGIN 2026-11-04T04:42:15Z tests/fm-backlog-atomicity.test.sh family=session-bootstrap expected_gate_skip=none
+ok - backend resolution preserves unreadable configuration errors for every caller
+ok - backend resolution preserves environment, project, user, and default precedence
+ok - backlog readers and mutations refuse unresolved backends without touching either backlog
+ok - captain hold refuses backend errors and preserves relocated addressing for valid configuration
+ok - dispatch publishes the record and moves the backlog item In flight in one run
+ok - dispatch omits the markdown file when probing a Beads backlog
+ok - a leftover markdown symlink does not brick a Beads home's dispatch
+ok - completion applies and closes a Beads backlog without any markdown file
+ok - dispatch refuses to supersede a pending authoritative close
+ok - dispatch refuses held rows before creating resources
+ok - dispatch refuses dependency-blocked rows before creating resources
+ok - dispatch refuses held In-flight rows before relaunch
+ok - dispatch reads backlog rows from the backlog addressing root
+ok - recovery uses the parent of a trailing-slash data record
+ok - completion targets nested relative data from the caller directory
+ok - an immediate-child absolute data path keeps one paired backlog
+ok - bare relative data addresses one backlog through dispatch and completion
+ok - dispatch refuses symlinked backlogs without crossing homes
+ok - automatic homes refuse lifecycle mutation without compatible tasks-axi
+ok - dispatch refuses an unresolvable backlog data directory
+ok - completion refuses before mutation when backlog data is unresolvable
+ok - dispatch refuses, before creating anything, when the home has no item for the id
+ok - dispatch distinguishes backlog read failures from missing items
+ok - dispatch refuses a closed item instead of silently reopening it
+ok - dispatch cannot commit without a verified task-record publication
+ok - a failed backlog transition fails the dispatch loudly and leaves no record
+ok - dispatch reports when failed-transition rollback cannot remove its record
+ok - dispatch verifies both task and busy records during rollback
+ok - dispatch commits neither record nor backlog state before launch delivery succeeds
+ok - dispatch retries interrupted transitions before honoring termination
+ok - a signal-deferred spawn verifies its preserved state and repairs a row that did not move
+ok - a signal-deferred spawn reports attempted preservation as attempted when it cannot be verified
+ok - a signal-deferred spawn bounds its verification so an unresponsive tasks-axi cannot hold the meta lock forever
+ok - fm_tasks_axi bounds the call through its perl watchdog when no timeout binary exists
+ok - fm_tasks_axi's perl watchdog passes the child status and output through unchanged
+ok - fm_tasks_axi fails closed rather than running unbounded when no bounding mechanism exists
+ok - fm_tasks_axi's GNU timeout kills a child that ignores SIGTERM after one further bound
+ok - Kimi readiness interruptions fail before backlog commit
+ok - dispatch does not resurrect a row closed after preflight
+ok - dispatch fails when its backlog row vanishes after preflight
+ok - completion closes a local-only ship, with its landing note, before reporting success
+ok - completion closes a scout item against its report
+ok - completion leaves legacy records open when no incarnation can be recorded
+ok - completion refuses ambiguous task incarnations
+ok - completion records relocated scout reports relative to the backlog root
+ok - space-containing scout report paths round-trip through recovery
+ok - control-byte data paths fail closed before paired transitions
+ok - unreplayable data paths are refused before destructive cleanup
+ok - completion preserves recovery state when task-record removal fails
+ok - completion refuses to report success while its item is still open, and records what it owes
+ok - restart recovers closes recorded before destructive cleanup
+ok - completion refuses directory-symlink close targets
+ok - completion reports failure until its durable close marker is removed
+ok - session start retries a close whose marker could not be removed
+ok - session start reports owned backlog rows it cannot read
+ok - Orca cleanup recovery is excluded from backlog lifecycle transitions
+ok - session start marks an item In flight when this home already owns a worker for it
+ok - session start rejects internal worker-record symlinks
+ok - session start rejects symlinked worker records
+ok - session start finishes a close an interrupted cleanup recorded but never landed
+ok - session start replays a recorded Gerrit close with its change URL as a note
+ok - recovery backfills recorded links onto already Done items
+ok - session start preserves a pending close across a transient backlog read failure
+ok - recovery preserves incomplete-cleanup evidence across a failed replay
+ok - session start finishes a close for the matching meta incarnation
+ok - recovery preserves closes for ambiguous task incarnations
+ok - recovery preserves both records when meta removal fails
+ok - recovery preserves closes beside symlinked metadata
+ok - recovery binds close-marker identity to its locked filename
+ok - recovery rejects close markers targeting another home's data
+ok - recovery validates an unterminated final marker field
+ok - recovery rejects lexical traversal before resolving marker data
+ok - recovery rejects marker control bytes before parsing
+ok - recovery rejects malformed PR URL values
+ok - a retained pending close is never started by reconciliation
+ok - recovery rejects close-marker arguments outside its protocol
+ok - recovery reports and rejects dangling symlink close markers
+ok - session start drops a close recorded for an older meta incarnation
+ok - session start rejects an unversioned close marker
+ok - bootstrap rechecks worker-record containment after locking
+ok - lifecycle files reject ancestor symlinks outside home roots
+ok - same-home state overrides remain supported
+ok - bootstrap refuses symlinked state before reconciliation
+ok - bootstrap stops when backlog data disappears before reconciliation
+ok - bootstrap preserves secondmate, manual, and absent-backlog exemptions
+ok - session start leaves a captain-held item where the captain put it
+ok - no-backlog teardown refuses symlinked records before resource actions
+ok - teardown rechecks record parents after locking
+ok - teardown refuses symlinked state before resource actions
+ok - a home with no backlog remains exempt from lifecycle transitions
+ok - spawn refuses a special-file tasks-axi config instead of blocking on it
+ok - spawn refuses an unsafe tasks-axi config before any exemption is derived from it
+ok - spawn refuses a data directory symlinked outside the home
+ok - a configured adapter refuses a data directory outside the home
+ok - dispatch and completion transition structurally with evidence
+ok - refused teardown leaves the backlog item in flight
+ok - environment-selected adapters bypass the legacy markdown file override
+ok - a manual-backlog home dispatches and completes without a hard failure
+ok - a secondmate home keeps its own books paired through dispatch and completion
+ok - dispatching a persistent secondmate needs no backlog item
+FM_TEST_END 2026-11-04T04:48:22Z tests/fm-backlog-atomicity.test.sh exit=0 duration_ms=366992 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T04:48:22Z tests/fm-secondmate-harness.test.sh family=secondmate expected_gate_skip=none
+ok - A1 fm-harness.sh secondmate resolves the fallback chain; crew mode unchanged
+ok - fm-harness detects only Cursor Agent CLI's exact invocation marker
+ok - C1 fm-harness.sh secondmate-model/secondmate-effort resolve the optional tokens; bare harness stays empty (backward-compat)
+ok - D1 fm-harness.sh honors a mate override line for its id and changes nothing else
+ok - D2 malformed config/secondmate-harness refuses with its line number on every read verb
+ok - D3 a config/secondmate-harness that declares no mate line is never refused
+ok - pi-signed identity: authoritative launch selection distinguishes shared wrapper ancestry
+ok - harness identity: dash-leading ps command names are basename operands, not options
+ok - B1 propagate_inheritable_config: copy, idempotence, convergence, absence-mirror, exclusion, no-op, skip diagnostics
+ok - B2 spawn: secondmate runs the secondmate harness; its home inherits declared config
+ok - B3 spawn: an absent secondmate-harness falls back to the crew harness (backward-compat)
+ok - B4 spawn: no config at all -> own harness and no propagation side effects
+ok - B5 spawn: an explicit per-spawn harness arg overrides config/secondmate-harness
+ok - B6 spawn: an unverified resolved secondmate harness is refused (guard intact)
+skip: cursor executable not resolvable in this environment, so the launch could not be built
+ok - B5b spawn: FM_BACKEND wins over inherited config/backend
+ok - B5c spawn: explicit --backend wins over FM_BACKEND and inherited config/backend
+ok - C2 spawn: a bare harness-only secondmate-harness file launches with no model/effort flag (backward-compat)
+ok - C3 spawn: config/secondmate-harness's model token threads --model into the launch and meta
+ok - C4 spawn: config/secondmate-harness's model+effort tokens thread into the launch and meta
+ok - C10 spawn: a legacy secondmate-harness file still launches on its first line (opt-in scope)
+ok - C11 spawn: a declared pin file that is malformed refuses the spawn with its line number
+ok - C5 spawn: an explicit --model overrides config/secondmate-harness's model token; the file's effort token still applies
+ok - C6 spawn: an explicit --effort overrides config/secondmate-harness's effort token; the file's model token still applies
+ok - C7 spawn: an explicit --harness starts with clean model/effort defaults
+ok - C8 spawn: an explicit --harness still honors explicit model/effort flags
+ok - C9 spawn: secondmate launch pins supervision to its own harness
+ok - C9 spawn: the harness fallback chain still resolves with no tokens; crew/scout launches are unaffected by this feature
+ok - B7 bootstrap sweep pushes, re-converges, and mirrors absence; never inherits secondmate-harness
+ok - B8 bootstrap sweep propagates config even when the home's tracked files are already current
+ok - B9 bootstrap sweep defers new inherited config until the home ignores it
+ok - B10 bootstrap sweep materializes and inherits the startup-memory default while fast-forwarding
+ok - B12b backend inheritance: present values and primary absence converge exactly
+ok - C2b spawn: config/claude-permission-mode=auto reaches a Claude secondmate launch
+ok - claude secondmate launches cover the parent-home steering inbox in auto and bypass modes
+ok - B12c approval modes follow primary values and primary absence
+ok - B12c presentation inheritance: the primary default converges on, and only an explicit opt-out propagates off
+ok - B11 bootstrap sweep surfaces config propagation failures
+ok - B11 bootstrap rereads completed config writes after partial propagation
+ok - B12 config-push propagates via shared live discovery, reports items, rereads on change only, and does not fast-forward
+ok - B13 config-push reports dirty, non-allowing, and invalid homes without failing warnings-only runs
+ok - B14 config-push exits nonzero on real propagation errors
+ok - B14 config-push rereads completed config writes after partial propagation
+ok - B15 config reread is per-home, exact-byte, ordered, and pointer-only
+ok - B16 config reread isolation, ABSENT, generation safety, send failure, and retry
+ok - B20 config reread publication failures retain exact generations for retry
+ok - B21 config reread instruction-write failures retain exact retry generations
+ok - B21 config reread preserves exact bytes when temporary adoption also fails
+ok - B21 config reread serializes concurrent propagation and delivery
+ok - B22 full config reread retry queues drain before new publication
+ok - B23 mixed config reread delivery failures still bound sent history
+ok - B26 config reread delivery stops after the oldest failed generation
+ok - B17 config reread skips unchanged homes and reads destination post-write bytes
+ok - B18 bootstrap config reread path works; spawn flexibility remains defaults-only
+ok - pi secondmate launch carries suppression only; no task-worker isolation, trust grant, or statement
+ok - B19 bootstrap respawns before inherited-config reread
+ok - B25 spawn quarantines stale rereads without blocking relaunch
+ok - B24 bootstrap detect-only mode remains filesystem read-only
+# all fm-secondmate-harness tests passed
+FM_TEST_END 2026-11-04T04:54:42Z tests/fm-secondmate-harness.test.sh exit=0 duration_ms=379863 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T04:54:42Z tests/fm-secondmate-busy-contract-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+skip: live: tmux absent
+fm-test-run: gate skip: tests/fm-secondmate-busy-contract-live-e2e.test.sh: live: tmux absent
+FM_TEST_END 2026-11-04T04:54:46Z tests/fm-secondmate-busy-contract-live-e2e.test.sh exit=0 duration_ms=3945 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T04:54:46Z tests/fm-watch-jev-defer.test.sh family=unclassified expected_gate_skip=none
+ok - the jev pre-screen absorbs one threshold window, then escalates with today's unchanged reason
+ok - positive deterministic evidence defers with zero pre-screen consults
+ok - a key-absent home escalates exactly as today with the screener's off verdict
+ok - below-floor, non-working, error, and malformed screens all escalate unchanged with no markers
+ok - a pane hash change clears the one-defer budget for the next quiet stretch
+ok - a delivered re-surface wake clears the one-defer budget
+ok - the deferral floor comes from config/jev-wedge-floor and compares inclusive, defaulting to 0.8 on an absent or malformed file
+ok - the busy-over-age path reaches the same pre-screen consult with its pane tail
+ok - a no-verb signal whose pane screens actively-working at the floor is absorbed
+ok - a no-verb signal absorb lands through the empty first batch-dedup expansion
+ok - a no-verb signal whose pane screens waiting-at-prompt forwards exactly as today
+ok - a captain-relevant done: signal surfaces with zero pre-screen consults
+ok - an afk routine signal is queued for the daemon with zero pre-screen consults
+ok - an unreachable Jev forwards the routine signal exactly as today
+ok - the routine consults read the same config/jev-wedge-floor, compared inclusively
+ok - a secondmate .status signal surfaces with zero pre-screen consults
+ok - a mixed no-verb batch forwards without logging the passing pane's benign line
+ok - a first-sight stale the pre-screen clears absorbs into the existing bounded wedge chain
+ok - a waiting first-sight stale forwards immediately with today's reason
+FM_TEST_END 2026-11-04T04:58:06Z tests/fm-watch-jev-defer.test.sh exit=0 duration_ms=200042 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T04:58:06Z tests/fm-remote-transport-lanes.test.sh family=secondmate expected_gate_skip=none
+ok - atomic sequence claims remain unique and reap only after expiry
+ok - lanes run homes concurrently while each home stays FIFO
+ok - same-home jobs staged in the same second execute in staging-sequence order
+ok - same-home sequence order follows completed staging publication
+ok - a caller killed mid-wait cancels its queued job before execution
+ok - a caller killed mid-wait stops its running job's process group
+ok - a signal-less caller disconnect cancels the abandoned job through the parent probe
+ok - bounded reads after a cancellation meet their own budget with no convoy
+ok - an open caller stdin no longer wedges a non-payload remote command
+ok - a live explicit-stdin stage survives the staging-litter age bound
+ok - --stdin still delivers a payload caller's bytes
+ok - abandoned stage litter is reaped by age while live staging survives
+ALL TESTS PASSED
+FM_TEST_END 2026-11-04T04:59:37Z tests/fm-remote-transport-lanes.test.sh exit=0 duration_ms=90791 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T04:59:37Z tests/fm-calm-pi-extension.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Pi calm resolves its persistent home independently of Pi's launch directory
+ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
+ok - a missing collapsed-thinking presentation API degrades only that Calm adapter with a clear skip reason, while the rest of Calm still registers
+ok - missing Pi presentation class exports reach the independent adapter degradation path
+ok - Calm hides queued Firstmate rows only on a session that can keep them, keeps hidden ones out of the editor on Escape, delivers them once in order, and leaves unsupported sessions and Calm off stock
+ok - Calm registers none of its 7 built-in tool wrappers at load while config/calm is off, and all 7 synchronously at load while config/calm is on
+ok - Calm's first same-session /calm activation claims every uncontested built-in, leaves a foreign bash tool fully intact and callable, warns prominently and logs the contested name, and only rows constructed before that activation - the documented bound - fail to retroactively collapse
+ok - Pi calm centralizes transcript visibility, preserves execution/export data, keeps Pi's stock working row visible while no run is active, and persists its choice across session starts
+ok - Pi calm on collapses mid-turn assistant working notes to zero height while Calm off keeps them, leaves streaming, truncated-final, and genuine final replies untouched, never mutates the messages, ignores every /calm argument, and restores a legacy persisted max as ordinary Calm on
+skip: pi or tmux not found for Pi operational follow-up E2E
+skip: pi or tmux not found for Pi Calm queued-row Escape E2E
+skip: pi or tmux not found for Pi Calm hidden-block geometry E2E
+ok - Pi Calm working ship keeps its centered two-row asymmetric Unicode boat inside a deterministic long-wave trough, paints all water standard blue and the whole boat standard yellow with balanced resets, keeps ANSI-stripped width exact, reverses cleanly at both edges and every width, clamps visible and hidden resizes, falls back deterministically when narrow, freezes and resumes across settle/start without hidden-time jumps or duplicate timers, resets only on a fresh session, and leaves Calm-off visibility untouched
+ok - SKIP: no standalone Pi Calm extension is installed, so dual-install coverage used the pinned shared-slot contract; set FM_STANDALONE_CALM_SHIP to check one
+ok - stale session contexts on agent_start, agent_settled, and session_shutdown are skipped without crashing Calm or touching the live UI, and the replacement session's working presentation still installs
+ok - the rendered-export-DOM guard renders in one pass, retries a bounded number of Chrome start-up failures, and reports the Chrome binary, Chrome version, Pi version, exit status, and Chrome diagnostic when every attempt fails
+skip: pi or tmux not found for Pi calm interactive E2E
+FM_TEST_END 2026-11-04T05:00:45Z tests/fm-calm-pi-extension.test.sh exit=0 duration_ms=68341 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:00:45Z tests/fm-muse-harness.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Muse preflight respects the allowlist while retaining stored authentication
+ok - muse is detected through any versioned muse-bin ancestor
+ok - muse detection does not claim unrelated muse-containing commands
+ok - muse launch clears foreign harness markers before ancestry detection
+ok - muse spawn launches with autonomy, privacy control, and a positional brief
+ok - muse maps the shared effort vocabulary and reaches ultra only via explicit max
+ok - muse spawn refuses when no credential can reach the provider
+ok - muse spawn refuses a META_API_KEY that cannot reach the worker
+ok - muse spawn accepts a stored credential without META_API_KEY
+ok - muse resolves relative XDG roots before preflight and launch
+ok - muse is refused as a secondmate harness
+ok - muse spawn writes a session binding that teardown removes
+ok - every accepted muse Escape alias clears the restored composer
+ok - the composer clear is scoped to muse and does not touch other adapters
+ok - a failed muse composer clear fails loudly instead of leaving stale input
+ok - the run fold tracks open, settled, interrupted, reopened, and run-free logs
+ok - a nested terminal record never settles an in-flight run
+ok - the session binding folds only the log matching this task's worktree
+ok - workspace bindings compare decoded paths literally
+ok - spawn-time exclusions select the current session across equal mtimes
+ok - the Muse session cache avoids rescans and refreshes safely across incarnations
+ok - a changed Muse namespace revalidates cached session uniqueness
+ok - sub-agent session logs are excluded from the parent's busy fold
+ok - every unproven muse binding classifies unknown rather than idle
+ok - a settled session log reads idle for both completed and interrupted turns
+ok - muse trusts no busy record source
+FM_TEST_END 2026-11-04T05:02:59Z tests/fm-muse-harness.test.sh exit=0 duration_ms=133997 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:03:00Z tests/fm-backend-rex-smoke.test.sh family=rex expected_gate_skip=optional-binary
+skip: rex CLI not found at $REX_BIN_DIR, on PATH, or at the server bundle path
+fm-test-run: gate skip: tests/fm-backend-rex-smoke.test.sh: rex CLI not found at $REX_BIN_DIR, on PATH, or at the server bundle path
+FM_TEST_END 2026-11-04T05:03:00Z tests/fm-backend-rex-smoke.test.sh exit=0 duration_ms=433 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T05:03:00Z tests/fm-pi-harness.test.sh family=unclassified expected_gate_skip=none
+ok - fm-spawn: pi crewmate launch carries suppression, isolation, trust grant, task-channel statement, and a seeded agent dir
+ok - fm-spawn: pi crewmate launch refuses when the operator auth store is missing
+ok - fm-spawn: pi seed refuses when the auth store keys only another provider
+ok - fm-spawn: pi seed leaves codex-native to the Codex login
+ok - fm-spawn: pi seed lets a models.json provider's own apiKey stand in for an empty auth store
+ok - fm-spawn: pi seed drops the auth.json link when the operator store is absent
+ok - fm-spawn: pi seed still refuses a models.json provider that carries no apiKey
+ok - fm-spawn: pi seed lets the pinned provider's credential variable stand in for an empty auth store
+ok - fm-spawn: pi seed refuses when the pinned provider's credential variable is unset
+ok - fm-spawn: pi seed links the operator's models.json and herdr integration and re-establishes both per launch
+ok - fm-spawn: pi gate waits past the pre-launch seed for the worker extension's agent_start
+ok - fm-spawn: pi gate fails the spawn with a status event carrying the pane's last output
+ok - fm-spawn: pi crewmate launch refuses when no concrete <provider>/<id> model resolves
+ok - fm-spawn: pi isolation never strips project context files or project skills
+all fm-pi-harness tests passed
+FM_TEST_END 2026-11-04T05:04:21Z tests/fm-pi-harness.test.sh exit=0 duration_ms=80746 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:04:21Z tests/fm-remote-job-launchagent.test.sh family=unclassified expected_gate_skip=none
+ok - a stale-code crash heartbeat cannot count as replacement readiness
+ok - the live worker recreates missing readiness independently of a blocked sweep
+ok - a slow sequence-claim sweep keeps readiness fresh and cannot trigger a LaunchAgent bootout
+ok - concurrent Darwin ensures serialize one reload and adopt its fresh worker
+ok - stale readiness logs the named condition without reloading a verified launchd-tracked live owner
+ok - Darwin stops an untracked stale-code owner and starts the current worker through launchd
+ok - Darwin replaces a current-code owner that the loaded agent does not track
+ok - a fresh spawn survives when the caller that started it dies before publication
+ok - a dead repair-lock holder is reclaimed by one caller at a time
+ok - Darwin reload waits for asynchronous bootout cleanup before bootstrap (2s)
+ALL TESTS PASSED
+FM_TEST_END 2026-11-04T05:05:51Z tests/fm-remote-job-launchagent.test.sh exit=0 duration_ms=89585 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:05:51Z tests/fm-afk-inject-e2e.test.sh family=afk expected_gate_skip=none
+skip: tmux not found
+fm-test-run: gate skip: tests/fm-afk-inject-e2e.test.sh: tmux not found
+FM_TEST_END 2026-11-04T05:05:51Z tests/fm-afk-inject-e2e.test.sh exit=0 duration_ms=27 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T05:05:51Z tests/fm-daemon.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - fm-afk-start.sh fails before daemon startup when the afk flag cannot be written
+ok - fm-afk-start.sh ignores stale pidfile-only live pids
+ok - fm-afk-start.sh refuses tern as an away-mode supervisor backend (unsupported; documented in docs/tern-backend.md)
+ok - fm-afk-start.sh reclaims stale daemon locks whose live pid identity no longer matches
+ok - supervise daemon state root is scoped by FM_HOME
+ok - routine signal self-handles
+ok - captain-relevant status verbs escalate
+ok - check + unknown escalate; heartbeat self-handles
+ok - a delivered unknown wake is acknowledged once per away session; a new one and ordinary escalations still fire
+ok - a failed unknown-wake acknowledgement write does not re-inject a delivered digest
+ok - transient stale self-handles and records a persistence marker
+ok - enriched stale wedges bypass status absorption except under a declared wait, without disturbing busy workers
+ok - an enriched wedge under a declared wait uses the pause cadence and restores wedge detection on resume
+ok - an enriched wedge under a worker blocker is not escalated only where config/wedge-defer-worker-wait arms it
+ok - stale + terminal status escalates immediately
+ok - stale escalation and current wait cadence remain independent
+ok - paused reasons with captain phrases remain pause-classified
+ok - a foreign resolved line keeps a pause, while the worker's own resolved line retracts it
+ok - a captain-held transfer classifies as pause, not as a wedge candidate
+ok - handle_wake on a paused stale records a pause marker, drops the wedge marker, and does not escalate
+ok - handle_wake records a declared pause from a routine signal for long-cadence rechecks
+ok - a terminal signal clears pause and stale tracking across both supervisors
+ok - housekeeping migrates a normal-watcher's declared pause into daemon tracking
+ok - housekeeping clears an already-resumed watcher pause across both supervisors
+ok - housekeeping seeds pause tracking from status without a watcher marker
+ok - persistent stale escalates after threshold and clears its marker
+ok - resumed (busy) stale clears its marker without escalating
+ok - housekeeping re-surfaces a stale declared pause on the long cadence and resets its window
+ok - housekeeping re-surfaces a forgotten captain hold on the long cadence and resets its window
+ok - housekeeping silences a captain hold only under an away record, never under quiet mode's
+ok - a busy pane cannot gate the pause clear once its crew's status no longer declares the wait
+ok - housekeeping matures a busy pane's declared-wait window into exactly one recheck per window
+ok - housekeeping bounds a distant declared time, defers to a near one, and rechecks a passed one at once
+ok - housekeeping clears a paused marker once the crew is no longer declaring the pause
+ok - housekeeping clears the pause marker once a captain hold is answered
+ok - housekeeping moves an existing stale marker to pause before wedge escalation
+ok - housekeeping moves a captain hold's existing stale marker to pause before wedge escalation
+ok - housekeeping clears tracking when a crew leaves pause
+ok - persistent herdr stale resolves the target from metadata and escalates
+ok - herdr idle busy-footer stale clears through capture corroboration
+ok - resumed herdr stale clears through backend-aware busy state
+ok - persistent Orca stale resolves the terminal from metadata
+ok - multiple escalations flush as a single batched digest
+ok - batch flush measures max-delay from the first append, not the last
+ok - catch-all scan escalates a missed terminal once, not twice
+ok - handle_wake routes routine->self and captain->escalate
+ok - a decision-owned queued row escalates once as the decision, then suppresses until the status changes
+ok - a captain-held decision-owned row is self-handled without escalation, now and on repeat
+ok - INJECT_SKIP forces self-handle, bypassing captain-relevant classification
+ok - is_wake_reason distinguishes watcher wake reasons from singleton-status stdout
+ok - terminal-stale escalate removes its marker so housekeeping does not re-escalate
+ok - captain signal escalate marks seen so the catch-all scan does not re-fire
+ok - _collapse_newlines replaces newlines with literal separator
+ok - afk flag absent: daemon does not inject, buffer preserved
+ok - busy-guard defers injection when supervisor pane is busy
+ok - marker detection: marker -> stay afk, no marker -> exit afk
+ok - /afk invocation is exempt from afk exit (no self-cancel)
+ok - should_exit_afk returns false when afk is not active
+ok - strip_injection_marker removes the sentinel marker cleanly
+ok - a marker-preserving primary still receives the typed U+2063 away-supervisor envelope and no record
+ok - record-backed doorbell: only a doorbell naming this home's own record stays afk; a bare ASCII label, a missing record, and another home's record exit
+ok - pane_input_pending detects partial input on the cursor line
+ok - pane_input_pending: a blank unidentified cursor row defers (strict container-proof rule)
+ok - pane_input_pending: only proven empty agent prompts pass
+ok - fm_tmux_composer_state: a bare shell prompt ($/%/#/>) reads unknown, never empty (dead-shell injection safety)
+ok - fm_tmux_composer_state: a bordered composer box and bare agent glyphs (❯/›) still read empty
+ok - fm_tmux_composer_state: only matching edge borders form a composer box
+ok - pane_input_pending preserves bright placeholder-like drafts in styled captures
+ok - classify_signal dedupes against the catch-all scan seen marker
+ok - turn-end markers stay routine while mixed actionable status batches escalate
+ok - an actionable event is escalated to an away captain despite later routine appends
+ok - the daemon commits exactly the endpoint captured by classification
+ok - a stale wake escalates a blocker hidden by later progress
+ok - a stale span read failure surfaces without advancing its marker
+ok - a recreated status rejects the old captured identity
+ok - an unverifiable status identity surfaces without advancing markers
+ok - a status read failure surfaces without advancing the daemon suppressor
+ok - catch-all routine scans advance before later actionable appends
+ok - failed escalation writes retain durable wakes and classification positions
+ok - stuck inbox escalation reaches supervision in away mode and survives buffering failure
+ok - stuck inbox escalation reaches supervision in quiet mode and survives buffering failure
+ok - write inbox escalation reaches supervision in away mode and survives buffering failure
+ok - write inbox escalation reaches supervision in quiet mode and survives buffering failure
+ok - reset inbox escalation reaches supervision in away mode and survives buffering failure
+ok - reset inbox escalation reaches supervision in quiet mode and survives buffering failure
+ok - inbox dispatch preserves ordinary stale, busy-turn, and other doorbell routing
+ok - catch-all markers advance only after escalation buffering succeeds
+ok - classification failure retains the complete durable wake batch
+ok - missing-status stale wakes remain ordinary and acknowledgeable
+ok - transient unreadable signals recover without advancing their position
+ok - daemon catch-all reclassifies permission-recovered status content
+ok - a permanent classification failure is reported, acknowledged, and never advances its position
+ok - the away-mode catch-all scan surfaces a masked event once
+ok - classify_stale dedupes against the signal path seen marker
+ok - AFK nonterminal working:+merged keeps wedge aging and re-escalates at bound
+ok - genuine done: and merge-check events still escalate
+ok - pane_input_pending: an idle bordered composer is NOT pending (afk-invx-i5)
+ok - pane_input_pending: text inside a bordered composer is still pending
+ok - submit-ACK confirms a submit when the composer returns to a bordered-empty box
+ok - submit-ACK reports pending on a persistently swallowed Enter (type-once)
+ok - max-defer on an empty stuck pane types once, alarms, and preserves the buffer
+ok - max-defer flushes and clears the buffer on an empty bordered pane
+ok - max-defer on a pending composer alarms without typing
+ok - a composer deferral names pending text apart from an unproven composer
+ok - normal flush clears a stale wedge marker
+ok - an oversized buffered digest is delivered bounded, with the full text kept durable
+ok - a digest past its byte budget counts the omitted events and keeps them in the full text
+ok - an initial-send failure logs its stage, bytes, and stderr, and the wedge alarm names it
+ok - an Enter-confirmation failure logs its own stage and byte count
+ok - a bounded digest's full-text file survives a failure after typing, and a deferral writes none
+ok - below MAX_DEFER: no inject, no alarm, buffer preserved
+ok - max-defer does not flush or alarm while afk is inactive
+ok - library mode: sourcing the daemon defaults FM_WEDGE_ALARM_EXEC to discard (no test can fire a real notification)
+ok - wake helpers replace inherited notifier overrides with the safe recorder
+ok - the discard seam suppresses every notifier, including command: (fires nothing)
+ok - direct notifier helpers honor the discard seam, including command:
+ok - osascript channel routes through the notifier seam with the summary (never a real notification)
+ok - herdr channel routes through the notifier seam with the summary (never a real notification)
+ok - rex channel routes through the notifier seam with the summary (never a real pane write)
+ok - auto never adds the opt-in rex channel, even on a Rex supervisor pane
+ok - command channel runs the captain command with the summary on $1 and on stdin
+ok - command channel failures redact configured commands while logging their exit status
+ok - unknown channel directives are redacted while the alarm keeps running
+ok - off disables every active alert regardless of directive position (marker and tmux flash are unaffected)
+ok - auto resolves to the macOS osascript notifier on Darwin (default-on)
+ok - auto on a non-macOS platform selects no built-in OS channel (the marker or a configured command carries it)
+ok - config/wedge-alarm selects every configured channel and skips comment and blank lines
+ok - a failing channel logs and falls back to the next channel, never crashing the alarm
+ok - a hung notifier is bounded, logged, and falls through to the next channel
+ok - a backgrounded command notifier remains bounded until its process group is reaped
+ok - a hung notifier override is bounded, logged, and proceeds to the next channel
+ok - daemon shutdown stops and reaps the active notifier process group
+ok - inject_wedge_alarm writes the marker AND emits the active alert even with no tmux status-line (herdr backend)
+ok - in-process wedge throttle prevents alert spam when the marker cannot persist
+ok - fm-send returns 3 with a non-error no-resend warning when confirmation stays pending
+ok - fm-send exits non-zero when initial text send fails
+ok - fm-send exits non-zero unless delivery is proven empty
+ok - discover_supervisor_backend: override > TMUX_PANE > HERDR_ENV+HERDR_PANE_ID > tmux fallback
+ok - discover_supervisor_target: override > TMUX_PANE > herdr '<session>:<pane-id>' composition > firstmate:0 fallback
+ok - discover_supervisor_*: t3code resolves from the home's live thread after env, TMUX_PANE, and herdr; zero, ambiguous, and no-bearer fall through
+ok - pane_is_busy: t3code accepts only a settled thread with no pending request and never reads a rendered tail
+ok - pane_is_busy: herdr native busy_state='busy' short-circuits without a capture fallback
+ok - primary busy guard isolates rendered signatures by detected harness
+ok - pane_is_busy: omitted backend defaults to tmux for Grok's isolated fallback
+ok - pane_input_pending: dispatches through fm_backend_composer_state for backend=herdr
+ok - inject_msg: herdr busy-guard defers before ever attempting a submit
+ok - inject_msg: herdr composer-guard defers before ever attempting a submit
+ok - inject_msg: herdr pane-gone check defers before any busy/composer/submit call
+ok - inject_msg: dispatches busy-guard/composer-guard/submit through the herdr backend and succeeds on a confirmed empty composer
+ok - inject_msg: defers on a dead-shell/unreadable composer (unknown), never typing the escalation into a shell
+ok - inject_msg: unrecognized composer states defer by default
+ok - a dialog name on a first-sight stale reaches the away persistence line
+ok - a seen terminal status on the picker clears like a plain stale
+ok - a dialog name joins the escalation of an unseen status
+ok - a dialog name after demand-deep-inspection still escalates, and a declared wait still pauses
+FM_TEST_END 2026-11-04T05:07:12Z tests/fm-daemon.test.sh exit=0 duration_ms=81131 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:07:12Z tests/fm-voice-relay.test.sh family=standalone expected_gate_skip=none
+ok - wire format round trips and rejects a desynchronised stream
+ok - the relay refuses a desynchronised uplink header instead of waiting for its payload
+ok - the relay reads whose account to use from this home and refuses to guess
+ok - an unconfigured home can still read how to configure the relay
+ok - the model-backed subcommands refuse by name while note keeps working
+ok - fm-inbox.sh --help prints its whole header, privacy paragraph included
+ok - the relay and the reader agree on the tool names and the handover argument
+ok - credentials are resolved once per relay, refreshed before expiry, off the event loop
+ok - a turn the model refuses is announced and costs one turn, not the relay
+ok - audio that arrives with no turn open is dropped, not turned into a turn
+ok - a failure inside the model reader costs one turn, not every later one
+ok - a reader failure is named to the captain, a clean end and a close are not
+usage: fm-voice-client.py [-h] [--host HOST] [--local] [--relay RELAY]
+                          [--relay-python RELAY_PYTHON]
+                          [--relay-arg RELAY_ARG]
+                          [--listen {push-to-talk,open-mic}] [--runs RUNS]
+                          [--talk-seconds TALK_SECONDS] [--in-file IN_FILE]
+                          [--out-file OUT_FILE] [--input-device INPUT_DEVICE]
+                          [--output-device OUTPUT_DEVICE] [--timeout TIMEOUT]
+                          [--wait-for-reply | --no-wait-for-reply]
+                          [--gap-seconds GAP_SECONDS]
+                          [--audio-idle AUDIO_IDLE] [--verbose]
+fm-voice-client.py: error: say where the relay is: --relay <path to fm-voice-relay.py on the desktop>, or set FM_VOICE_RELAY
+usage: fm-voice-client.py [-h] [--host HOST] [--local] [--relay RELAY]
+                          [--relay-python RELAY_PYTHON]
+                          [--relay-arg RELAY_ARG]
+                          [--listen {push-to-talk,open-mic}] [--runs RUNS]
+                          [--talk-seconds TALK_SECONDS] [--in-file IN_FILE]
+                          [--out-file OUT_FILE] [--input-device INPUT_DEVICE]
+                          [--output-device OUTPUT_DEVICE] [--timeout TIMEOUT]
+                          [--wait-for-reply | --no-wait-for-reply]
+                          [--gap-seconds GAP_SECONDS]
+                          [--audio-idle AUDIO_IDLE] [--verbose]
+fm-voice-client.py: error: --listen open-mic is not built yet: it needs end-of-speech detection to know when a turn ended, which lands with session continuity across turns, so it would stream forever and never end a turn. Use the default --listen push-to-talk.
+client: connection lost: stream ended after 2 of the 5 bytes of a frame header
+client: connection lost: [Errno 104] Connection reset by peer
+client: discarded 15 bytes your login shell printed before the relay started: b'You have mail.\n'
+ok - the laptop client builds the right remote command and survives a chatty login shell
+ok - the client runs from a laptop holding only the two files the guide names
+ok - --listen open-mic refuses at startup, before it opens anything
+ok - the narrow scope answers how much is waiting without saying what it is
+ok - the wide scope names open work and reports state without quoting event lines
+ok - an absent read-scope setting means the narrowest answer, not the widest
+ok - a home widens its own read scope by writing the setting
+ok - finished work and note bodies never reach a spoken answer at any scope
+ok - excluding a note body does not distort the counts
+ok - a denied item becomes a withheld count without hiding that work exists
+ok - the deny list matches regardless of case
+ok - an item denied in more than one list is counted as withheld once
+ok - one deny decision per item covers every list that item could appear in
+ok - the state verb is a closed vocabulary, so free text cannot ride out on it
+ok - the reader scans back through the tail for the newest status event
+ok - an unrecognised declaration cannot hide behind trailing prose either
+ok - the backlog and the state directory always come from the same home
+ok - a finished task's pull request is neither counted nor named
+ok - a deny substring on an open title removes its pull request and says so
+ok - an unknown read scope refuses instead of widening
+ok - the configured read scope is honoured
+ok - handover queues the request for firstmate and wakes it exactly once
+ok - the reader and the queue resolve the state directory the same way
+ok - an empty request is refused rather than queued as a blank note
+ok - a home with no records answers nothing rather than failing
+ok - a spoken turn goes out and comes back: the records answer, firstmate gets the work
+ok - a model session that ends mid-conversation costs one turn, not the relay
+ok - a desynchronised uplink is named to the client before the goodbye, not only to stderr
+ok - the desktop's own check answers from the records and times it from the talk end
+ok - a reply that arrives before the end of the clip is named as an unusable clock
+all voice relay cases passed
+FM_TEST_END 2026-11-04T05:07:40Z tests/fm-voice-relay.test.sh exit=0 duration_ms=28343 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:07:40Z tests/fm-classify-corr-token.test.sh family=standalone expected_gate_skip=none
+ok - captain regex overrides preserve timed and legacy relevance and event bytes
+ok - malformed event times stay ordinary line bytes without hiding the event
+ok - malformed event times never open or close a decision
+ok - optional event time preserves parsing and legacy unknown time
+ok - a correlation token between the verb and the key breaks neither opening nor closing
+ok - the token is read through before the key, after it, doubled, bracketed, and unkeyed
+ok - the untokened opener/closer pair behaves exactly as before
+ok - prose, malformed, wrong-length and unknown name=value tokens stay non-transitions
+ok - a token-first line cannot impersonate any opening or closing verb
+ok - untokened captain-relevance, pause, terminal-verb and captain-held verdicts are unchanged
+ok - captain-relevance, terminal-verb, pause and captain-held all read through the token
+ok - the daemon and crew-state verb case arms read through the token
+ok - reading through the token does not weaken the reserved-key namespace rule
+ok - the cursor-backed fold and the whole-file fold agree on every correlated transition
+ok - a cursor persisted under the previous reading is discarded and refolded
+ok - both real correlation-token writers produce lines this classifier reads through
+FM_TEST_END 2026-11-04T05:07:54Z tests/fm-classify-corr-token.test.sh exit=0 duration_ms=13457 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:07:54Z tests/fm-session-lock-ancestry.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - session-lock: a version-named Claude Code session is identified from its install path and argv[0]
+ok - session-lock: a harness that is pid 1 of its own namespace is examined, not skipped
+ok - session-lock: ordinary script paths under a harness directory are not harness processes
+ok - session-lock: ownership stops at the first non-harness gap above the contiguous run
+ok - session-lock: a live version-named session holding the lock is not mistaken for a stale owner
+ok - session-lock: a trusted same-session id keeps owning a recycled background chain, and nothing weaker does
+ok - session-lock: a trusted id anchors the lock on the model-loop process, anything else on the outermost pid
+ok - session-lock: a Windows session is identified from its published pid across the severed parent link
+ok - session-lock: a published Windows pid is confirmed against the process table before it is trusted
+ok - session-lock: a tagged Windows pid is never resolved against the Cygwin process table
+ok - session-lock: a published identity is accepted by every gate that reads the lock
+ok - session-lock: a live tagged lock holder is a live foreign owner to a second Windows session
+ok - session-lock: a published Windows Claude pid is accepted only with its session id
+ok - session-lock: a Windows /clear keeps the lock and re-keys its session id
+ok - session-lock: a Windows-tagged lock stays inert off Windows
+ok - session-lock: a task lease follows a live tagged lock holder and goes stale when it exits
+ok - session-lock: a harness in the local process table resolves untagged when ps has no -o option
+ok - session-lock e2e: a version-named session claims the home and arms supervision
+ok - session-lock e2e: a session parented by a harness-named daemon claims the home and arms supervision
+ok - session-lock e2e: a version-named session under a harness-named daemon keeps its own lock
+ok - session-lock e2e: a background session keeps its lock and its supervision across a recycled helper chain and a same-process session-id change
+ok - session-lock: a same-session confirmation waits for the claim lock and refreshes a re-keyed id
+ok - session-lock: a waiting confirmation does not steal another session's lock
+ok - session-lock: a failed lock write restores the previous sidecar
+ok - session-lock: a failed lock write removes a newly created sidecar
+ok - session-lock: a verified reclaim keeps the new sidecar beside the new pid
+ok - session-lock: a re-anchor keeps both supervision actors' task leases live
+ok - session-lock: a re-anchor during a rewake turn keeps the mid-turn auto-arm proof healthy
+FM_TEST_END 2026-11-04T05:10:03Z tests/fm-session-lock-ancestry.test.sh exit=0 duration_ms=128826 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:10:03Z tests/fm-host-mirror.test.sh family=afk expected_gate_skip=none
+ok - mirror: the Claude and Cursor registrations each write the captain's prompt and main's reply
+ok - mirror: writers stay silent and write nothing on a home that opted out or has no state
+ok - only Claude and Cursor, the primaries with proven writers, have a verified dialog mirror
+ok - mirror: a home opted out by config/supervision-host-off is untouched by every tracked mirror registration
+ok - mirror: without config/supervision-host the Claude registrations write the mirror and Cursor's stay inert
+ok - mirror: operational input, a harness-started turn, a foreign host's payload, other events, and a session without the lock are never mirrored
+ok - mirror: a captain prompt and a main reply keep their internal whitespace and newlines verbatim
+ok - mirror: a repeated entry is recorded once, and a long entry keeps its head and tail within the cap
+ok - mirror: a later different reply under the same id is recorded, while an identical repeat is recorded once
+ok - mirror: an entry id already recorded by an earlier main session does not drop a later session's dialog
+ok - mirror: a failed append leaves the mirror valid, prints nothing, and later dialog still lands
+ok - mirror: the captain's dialog lands only in an owner-only mirror, even when the file already existed readable by others
+ok - mirror: captain prompts and main replies reach the mirror without ever entering a process argument list
+ok - mirror: the feed resumes from its committed cursor, re-anchors on a new conversation or session, and is bounded
+ok - mirror: the feed's bound includes the note naming how many earlier entries it left out
+ok - mirror: a later lock holder with a recycled pid is a new main session
+ok - mirror: the feed refuses a mirror with a zero, fractional, or non-rising sequence, or an unterminated final record
+ok - mirror: a recreated mirror continues past the committed and staged cursors, so a resumed conversation still gets new dialog
+FM_TEST_END 2026-11-04T05:10:07Z tests/fm-host-mirror.test.sh exit=0 duration_ms=4766 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:10:07Z tests/fm-dispatch-resolve.test.sh family=standalone expected_gate_skip=none
+ok - absent key is off: one stderr line, exit 0, no network call
+ok - TYPESAFE_API_KEY= in .env activates the tool; environment and config overrides work
+ok - clear: one rule Choice request, key on the fd header only, spendPriority argmax over every candidate
+ok - OpenRouter clear uses the same output contract and keeps its key out of argv and child environments
+ok - OpenRouter ambiguous, malformed, HTTP, and missing-model paths are handled
+ok - never-send list withholds the request on a match or a bad list, and never prints the value
+ok - rules snapshots and shell quoting preserve the profile protocol
+ok - no-rule fallback, Agy, Gemini, and documented configurations resolve
+ok - ambiguous: confidence below the fixed floor hands the decision back
+ok - per-rule confidence floors fall to the most probable runner-up that clears its own floor
+ok - only the brief's task sections and scout tag reach the model, with a whole-brief fallback
+ok - escalate: a rule declared approval: captain never yields a profile
+ok - rule floor: known shortfall falls through while unavailable evidence escalates
+ok - declared provider and profile floor evidence are applied in code
+ok - nonnumeric spendPriority evidence is never ranked
+ok - partial and missing quota evidence remain eligible but unranked
+ok - provider-wide and exact quota rows combine into one limiting candidate
+ok - default: no rule matched resolves among the default profiles
+ok - tie: equal spendPriority never breaks by array order
+ok - no rankable candidate: the tool escalates instead of guessing
+ok - native Codex binds to codex-home before default, independently of Pi accounts and row order
+ok - Pi native adapters bind to codex-home with existing fallbacks and schema 5 compatibility
+ok - schema 6: each candidate binds to its account row; schema 5 is unchanged
+ok - quota evidence comes from one quota-axi --json read, and its failure is an error outcome
+ok - API, transport, and response failures are error outcomes with exit 0
+ok - configuration errors exit 2 before any network call
+# all fm-dispatch-resolve tests passed
+FM_TEST_END 2026-11-04T05:10:13Z tests/fm-dispatch-resolve.test.sh exit=0 duration_ms=5939 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:10:13Z tests/fm-backend-paseo.test.sh family=paseo expected_gate_skip=optional-binary
+ok - fm_backend_paseo_version_check: accepts the verified minimum (0.8.0)
+ok - fm_backend_paseo_version_check: accepts a newer version (0.9.2)
+ok - fm_backend_paseo_version_check: refuses an old version loudly
+ok - fm_backend_paseo_version_check: refuses loudly when paseo is not found on PATH or at the bundle path
+ok - fm_backend_paseo_parse_target: splits '<terminal_id>:<workspace_id>' on the first colon
+ok - fm_backend_paseo_scoped_name: scopes a primary task name with firstmate plus root hash
+ok - fm_backend_paseo_scoped_name: scopes a secondmate task name with the home marker plus root hash
+ok - fm_backend_validate: paseo is a known backend
+ok - fm_backend_busy_state: paseo (no native primitive) always reports unknown, same as tmux/zellij/orca/cmux
+ok - fm_backend_composer_state: routes paseo to the paseo composer classifier
+ok - fm_backend_paseo_daemon_state: reports 'ok' when localDaemon=running and connectedDaemon=reachable
+ok - fm_backend_paseo_daemon_state: reports 'down' when 'paseo status' fails
+ok - fm_backend_paseo_ensure_running: returns immediately when paseo is already reachable
+ok - fm_backend_paseo_create_task: refuses a duplicate terminal name (paseo's own terminal create has no uniqueness check)
+ok - fm_backend_paseo_create_task: creates the shared workspace once plus a terminal tab and parses terminal_id/workspace_id
+ok - fm_backend_paseo_create_task: refuses, creating nothing, when the terminal or workspace inventory cannot be read
+ok - fm_backend_paseo_create_task: adopts the project's live firstmate workspace by cwd+label and adds a tab (never a second workspace)
+ok - fm_backend_paseo_create_task: adopts the workspace firstmate itself runs in (PASEO_WORKSPACE_ID) when its cwd is the project, ahead of the title lookup
+ok - fm_backend_paseo_create_task: a task for any project becomes a tab in firstmate's own workspace (PASEO_WORKSPACE_ID)
+ok - fm_backend_paseo_create_task: a Paseo agent uses the one workspace whose folder is its home, and falls back when that is ambiguous
+ok - fm_backend_paseo_workspace_ensure: adopts the shared workspace by its physical or slash-normalized logical cwd
+ok - fm_backend_paseo_cli_json: keeps stderr out of parsed JSON and relays it only on failure
+ok - fm_backend_paseo_workspace_label: 'firstmate' for the primary home, '2ndmate-<id>' for a secondmate home (no path hash)
+ok - fm_backend_paseo_target_ready: fails when the terminal is not found and no expected label is given
+ok - fm_backend_paseo_target_ready: verifies the live terminal name against the expected label
+ok - fm_backend_paseo_target_ready: rejects a terminal id reused under a different name
+ok - fm_backend_paseo_target_ready: recovers a stale terminal id by home-scoped NAME, never by title
+ok - fm_backend_paseo_capture: fetches the whole scrollback and trims to N lines locally
+ok - fm_backend_paseo_capture: fails when the target terminal is absent
+ok - fm_backend_paseo_send_key: passes the key through unchanged to the recorded terminal id
+ok - fm_backend_paseo_send_key: C-u goes as the raw 0x15 byte via -l; keys outside paseo's token set are refused, never typed
+ok - fm_backend_paseo_send_literal: calls send-keys -l with a -- separator before the literal payload
+ok - fm_backend_paseo_send_text_line: sends literal text then submits with Enter
+ok - fm_backend_paseo_current_path: actively probes with marked begin/end lines (creation-time-frozen cwd)
+ok - fm_backend_paseo_composer_state: a bare '❯' composer row reads empty
+ok - fm_backend_paseo_composer_state: real composer text reads pending
+ok - fm_backend_paseo_composer_state: reports unknown when the terminal cannot be captured
+ok - fm_backend_paseo_send_text_submit: reports 'empty' once the composer row reads empty after one Enter
+ok - fm_backend_paseo_send_text_submit: reports 'send-failed' when the target terminal is absent
+ok - fm_backend_paseo_kill: closes the task's terminal tab and leaves the workspace alive when its inventory is unreadable
+ok - fm_backend_paseo_kill: the last task tab retires firstmate's shared workspace and its own clone's project
+ok - fm_backend_paseo_kill: retires the recorded workspace and project when the task tab was already closed
+ok - fm_backend_paseo_kill: keeps the workspace while a tab, agent, other title, or firstmate itself uses it, and never retires anything outside this home's clones
+ok - fm_backend_paseo: spawn and workspace retirement share one lock; neither acts while another process holds it
+ok - fm_backend_paseo_kill: never fails even when terminal kill fails
+ok - fm_backend_paseo_list_live: lists only this home's scoped task terminals using plain fm-<id> labels
+ok - fm-spawn.sh: an explicit paseo refuses --secondmate (mirrors cmux/Orca); ambient Paseo markers never select paseo
+ok - Pi supervision branch claims a paseo stale wake keyed by the task's window= endpoint
+FM_TEST_END 2026-11-04T05:10:18Z tests/fm-backend-paseo.test.sh exit=0 duration_ms=4445 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:10:18Z tests/fm-inbox.test.sh family=unclassified expected_gate_skip=none
+ok - plain note, list, and wake stay on the historical human path
+ok - plain note keeps exit 1 for a saved-but-unannounced failure
+ok - the same request id returns the original note as a distinguishable replay
+ok - a crash between recording the request id and publishing the note reuses the original id
+ok - saved-but-unannounced notes are repairable without creating a second note
+ok - repair and replay do not wake firstmate for an already-acknowledged note
+ok - receipts JSON is bounded by fixed bounds and discloses what it omitted
+ok - notes that predate the announcement marker are unknown, not re-announced
+ok - the reply channel is durable and its cursor is a strict order
+ok - the reply cursor never goes backwards when the sequence counter is lost
+ok - a reply without a valid sequence is reported as malformed
+ok - a non-UTF-8 note does not break the receipts view
+ok - readiness says unknown (or not-receivable) instead of inferring liveness from a lock
+ok - empty bodies and unsafe request ids are refused
+ok - a note body that opens with a double dash is queued as text
+ok - drain --ack still moves the note to handled
+FM_TEST_END 2026-11-04T05:10:22Z tests/fm-inbox.test.sh exit=0 duration_ms=3804 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:10:22Z tests/fm-turnend-foreign-owner-arm-fix.test.sh family=watcher-wake-lock expected_gate_skip=none
+SETUP live synthetic owner= 1520062 lock= 1520062
+second-session acquisition rc=0 stdout='lock_rc=1\n' stderr='error: another live firstmate session holds the lock (pid 1520062); operate read-only until resolved\n'
+nonowner autoarm rc=0 stdout='autoarm_rc=0\n' stderr=''
+nonowner stop 1 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 1520062). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 2 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 1520062). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 3 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 1520062). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 4 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 1520062). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+nonowner stop 5 rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 1520062). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+FIXED repeated non-owner Stops: all five ended safely
+fresh-beat-only counterfactual rc=0 stdout='{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid 1520062). Allowing this turn to end safely; the owning session must restore supervision."}\n' stderr=''
+Traceback (most recent call last):
+  File "/home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M6JBX4WQ60SKF96AJFR80PPX/tests/fm-turnend-foreign-owner-repro.py", line 202, in <module>
+    until(
+    ~~~~~^
+        lambda: (root / "state/.watch.lock/pid").is_file(),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        message="replacement owner did not publish state/.watch.lock/pid",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M6JBX4WQ60SKF96AJFR80PPX/tests/fm-turnend-foreign-owner-repro.py", line 97, in until
+    raise RuntimeError(message() if callable(message) else message)
+RuntimeError: replacement owner did not publish state/.watch.lock/pid
+FM_TEST_END 2026-11-04T05:10:43Z tests/fm-turnend-foreign-owner-arm-fix.test.sh exit=1 duration_ms=20993 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:10:43Z tests/fm-busy-state.test.sh family=standalone expected_gate_skip=none
+ok - native progress is generation-bound, separately recorded, and cleared on arm and retire
+ok - the turn-ended notification rides the apply generation check
+ok - arm mints a gen sidecar and seeds busy fm-spawn at seq=1
+ok - apply advances seq under the armed gen and attributes the writing source
+ok - firstmate-owned interrupt and recovery events bind to the current gen
+ok - apply is refused for a task whose busy contract was never armed
+ok - retire waits for the writer lock and cannot remove a new incarnation
+ok - retire treats only an absent sidecar as already retired
+ok - the writer breaks a stale lock instead of dying on GNU stat output
+ok - a late event from a previous incarnation is rejected, record unchanged
+ok - a record from a stale incarnation classifies unknown, never idle
+ok - a converted adapter with no record classifies unknown, never idle
+ok - malformed records classify unknown malformed, never busy or idle
+ok - a record with no armed gen sidecar classifies unknown
+ok - a record is trusted only by the adapter whose source wrote it
+ok - converted adapters never classify busy from rendered footer text
+ok - a Claude launch parked on its trust or external-imports dialog classifies unknown launch-prompt
+ok - a Pi-family launch (pi, pi-signed, omp) parked on the project-trust dialog classifies unknown launch-prompt
+ok - the Pi signature requires both the dialog heading and its decline option, not the bare word trust
+ok - a Gemini launch parked on its trust, auth-picker, or API-key dialog classifies unknown launch-prompt
+ok - the launch-prompt backstop never reclassifies a genuinely working launch
+ok - the launch-prompt backstop is scoped to harnesses with a verified signature
+ok - the launch-prompt backstop only ever touches the untouched fm-spawn seed
+ok - the launch-prompt backstop never runs without a captured tail
+ok - the grok fallback is regex-scoped to grok and classifies only grok tasks
+ok - codex classifies unknown until a semantic source passes its verification gate
+ok - standalone kimi classifies unknown until the live verification gate opens
+ok - cursor classifies only from its transcript fold, never rendered text or native state
+ok - endpoint death is the only process-level override and yields dead, never busy
+ok - herdr's native verdict is trusted for busy only, and records outrank it
+ok - tern's native verdict is trusted for busy only (source tern-native), and records outrank it
+ok - record parsing never clobbers the caller's positional parameters, glob setting, or fields
+ok - the boolean view reports busy only on an exact busy verdict
+all fm-busy-state tests passed
+FM_TEST_END 2026-11-04T05:11:18Z tests/fm-busy-state.test.sh exit=0 duration_ms=35229 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:11:18Z tests/fm-test-isolation-proof.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - unknown candidate pools are refused
+ok - family pool JSON scopes jobs admission to proven concurrency
+ok - candidate --list is non-empty, sorted, unique, and real
+ok - serial classes remain excluded from the parallel candidate set
+ok - audited fake-backend and stub-network extras are candidates
+ok - exclusion list documents serial reasons
+ok - isolation-proof contract test is family-mapped
+ok - parallel shards consume the proven-isolated set only
+ok - fixture repositories pin their initial branch to main
+FM_TEST_END 2026-11-04T05:11:20Z tests/fm-test-isolation-proof.test.sh exit=0 duration_ms=1726 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:11:20Z tests/fm-documentation-audiences.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - documentation inventory classifies every maintained prose surface exactly once
+ok - classification, setup routing, and maintained-prose scope fail safely
+ok - required documentation owner pointers cannot silently disappear
+ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed
+FM_TEST_END 2026-11-04T05:11:22Z tests/fm-documentation-audiences.test.sh exit=0 duration_ms=1632 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:11:22Z tests/fm-subagent-pretool-check.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - the guard independently denies every work-creating delegation tool by shape
+ok - the guard denies delegation-shaped tools that no deny list knows about yet
+ok - the guard leaves ordinary tools and observe-or-stop operations alone
+ok - the guard leaves the session-local todo list alone
+ok - the plan-only exclusion releases exactly two names and nothing that merely contains them
+ok - MCP tool names are never classified as harness delegation
+ok - deny defers to intake classification and degrades gracefully without fm-scout.sh
+ok - the single documented escape hatch releases the guard only on the exact opt-in value
+ok - the guard is inert in a crewmate task worktree and in a non-firstmate repo
+ok - a marked secondmate home is guarded even though it is a linked worktree
+ok - both stdin transports classify correctly and Claude's deny keeps stdout empty
+ok - malformed, empty, and tool-name-less payloads fail open rather than blocking every tool call
+ok - missing jq for stdin transport fails open rather than denying every tool call
+FM_TEST_END 2026-11-04T05:11:22Z tests/fm-subagent-pretool-check.test.sh exit=0 duration_ms=565 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:11:22Z tests/fm-check-unregister.test.sh family=pr-forge expected_gate_skip=none
+ok - empty id or missing state dir refuses loudly and never rms a stray path
+ok - happy path removes only the named check.sh and check-trust
+ok - hard-linked or symlinked artifacts are refused and left in place
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-check-unregister.test.sh exit=0 duration_ms=318 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:11:23Z tests/fm-trace-context-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm_trace_context_valid accepts a conformant W3C traceparent
+ok - fm_trace_context_valid rejects all-zero ids, ff version, uppercase, wrong length, missing field, shell metacharacters, and empty
+ok - a command-substitution-shaped value is rejected as inert data, never executed
+ok - fm_trace_context_hex yields exact-length lowercase hex, distinct per call
+ok - fm_trace_context_mint starts a valid sampled root trace
+ok - every mint is an unrelated fresh root - one trace per task, no parent adoption
+ok - a minted root is the fixed 55-char W3C form (hex and hyphens only), so firstmate originates no free-form content in the carrier
+ok - enablement is default-off; FM_TRACE_CONTEXT overrides with truthy/other precedence, and unset or empty defers to config/trace-context
+ok - session start normalizes config and environment precedence into frozen on/off state
+ok - session state is atomically published through a same-directory replacement
+ok - a stale on record is inactive when publication fails in a new locked session
+ok - missing or invalid frozen session state defaults off
+ok - resolve omits the carrier and returns success when the capability is off (byte-identical default)
+ok - resolve mints a valid traceparent when enabled
+ok - Secondmate home-session state stays off or on despite later file state; ambient TRACEPARENT is never adopted, so each routed task roots its own trace
+ok - resolve reuses a valid recorded traceparent verbatim on relaunch (stable identity across restarts)
+ok - disabling the capability omits the carrier even for a task with a recorded identity
+ok - a corrupt recorded traceparent is re-minted rather than propagated
+ok - resolve yields exactly one carrier per logical task, so the recorded and injected values are identical by construction
+ok - entropy failure omits telemetry safely: mint reports failure, resolve returns success with no carrier
+ok - the resolver has no sleep/timeout/command hang source and always returns success
+ok - the carrier is minted identically for every harness, backend, and spawn kind (no such branching in the lib code)
+ok - the lib code never reads a brief, prompt, report, or status - it cannot leak content
+ok - config/trace-context is inherited into secondmate homes, keeping the nested chain enabled end to end
+# fm-trace-context-lib.test.sh: all assertions passed
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-trace-context-lib.test.sh exit=0 duration_ms=150 gate_skip=false
+FM_TEST_BEGIN 2026-11-04T05:11:23Z tests/fm-codex-continuity-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+skip: live: opt-in; set FM_CODEX_LIVE_E2E=1 to run
+fm-test-run: gate skip: tests/fm-codex-continuity-live-e2e.test.sh: live: opt-in; set FM_CODEX_LIVE_E2E=1 to run
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-codex-continuity-live-e2e.test.sh exit=0 duration_ms=44 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T05:11:23Z tests/fm-composer-codex-idle-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+skip: live: tmux absent
+fm-test-run: gate skip: tests/fm-composer-codex-idle-live-e2e.test.sh: live: tmux absent
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-composer-codex-idle-live-e2e.test.sh exit=0 duration_ms=47 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T05:11:23Z tests/fm-harness-adapter-instructions-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+skip: live: opt-in; set FM_HARNESS_ADAPTER_INSTRUCTION_EVAL=1 to run
+fm-test-run: gate skip: tests/fm-harness-adapter-instructions-live-e2e.test.sh: live: opt-in; set FM_HARNESS_ADAPTER_INSTRUCTION_EVAL=1 to run
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-harness-adapter-instructions-live-e2e.test.sh exit=0 duration_ms=42 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T05:11:23Z tests/fm-muse-signals-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+skip: live: opt-in; set FM_MUSE_SIGNALS_LIVE=1 to run
+fm-test-run: gate skip: tests/fm-muse-signals-live-e2e.test.sh: live: opt-in; set FM_MUSE_SIGNALS_LIVE=1 to run
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-muse-signals-live-e2e.test.sh exit=0 duration_ms=65 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T05:11:23Z tests/fm-quota-array-dispatch-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+skip: live: opt-in; set FM_QUOTA_ARRAY_DISPATCH_LIVE_E2E=1 to run
+fm-test-run: gate skip: tests/fm-quota-array-dispatch-live-e2e.test.sh: live: opt-in; set FM_QUOTA_ARRAY_DISPATCH_LIVE_E2E=1 to run
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-quota-array-dispatch-live-e2e.test.sh exit=0 duration_ms=49 gate_skip=true
+FM_TEST_BEGIN 2026-11-04T05:11:23Z tests/fm-pi-branch-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+skip: live: opt-in; set FM_PI_BRANCH_LIVE_E2E=1 to run
+fm-test-run: gate skip: tests/fm-pi-branch-live-e2e.test.sh: live: opt-in; set FM_PI_BRANCH_LIVE_E2E=1 to run
+FM_TEST_END 2026-11-04T05:11:23Z tests/fm-pi-branch-live-e2e.test.sh exit=0 duration_ms=47 gate_skip=true
+FM_TEST_SUMMARY total=32 failed=1 skipped_gate=9 duration_ms=1749031
+FM_TEST_SUMMARY_FAMILY family=afk count=2 duration_ms=4793 failed=0
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=7 duration_ms=4239 failed=0
+FM_TEST_SUMMARY_FAMILY family=paseo count=1 duration_ms=4445 failed=0
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=1 duration_ms=318 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=6 duration_ms=206411 failed=0
+FM_TEST_SUMMARY_FAMILY family=rex count=1 duration_ms=433 failed=0
+FM_TEST_SUMMARY_FAMILY family=secondmate count=2 duration_ms=470654 failed=0
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=366992 failed=0
+FM_TEST_SUMMARY_FAMILY family=standalone count=4 duration_ms=82968 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=4 duration_ms=374177 failed=0
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=3 duration_ms=230950 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-secondmate-harness.test.sh duration_ms=379863
+FM_TEST_SLOWEST rank=2 script=tests/fm-backlog-atomicity.test.sh duration_ms=366992
+FM_TEST_SLOWEST rank=3 script=tests/fm-watch-jev-defer.test.sh duration_ms=200042
+FM_TEST_SLOWEST rank=4 script=tests/fm-muse-harness.test.sh duration_ms=133997
+FM_TEST_SLOWEST rank=5 script=tests/fm-session-lock-ancestry.test.sh duration_ms=128826
+FM_TEST_SLOWEST rank=6 script=tests/fm-remote-transport-lanes.test.sh duration_ms=90791
+FM_TEST_SLOWEST rank=7 script=tests/fm-remote-job-launchagent.test.sh duration_ms=89585
+FM_TEST_SLOWEST rank=8 script=tests/fm-daemon.test.sh duration_ms=81131
+FM_TEST_SLOWEST rank=9 script=tests/fm-pi-harness.test.sh duration_ms=80746
+FM_TEST_SLOWEST rank=10 script=tests/fm-calm-pi-extension.test.sh duration_ms=68341
+FM_TEST_SLOWEST rank=11 script=tests/fm-busy-state.test.sh duration_ms=35229
+FM_TEST_SLOWEST rank=12 script=tests/fm-voice-relay.test.sh duration_ms=28343
+FM_TEST_SLOWEST rank=13 script=tests/fm-turnend-foreign-owner-arm-fix.test.sh duration_ms=20993
+FM_TEST_SLOWEST rank=14 script=tests/fm-classify-corr-token.test.sh duration_ms=13457
+FM_TEST_SLOWEST rank=15 script=tests/fm-dispatch-resolve.test.sh duration_ms=5939
+fm-test-run: wrote timing artifact: /home/jason/.no-mistakes/evidence/01M6JBX4WQ60SKF96AJFR80PPX/lane-serial-9of10-timing.json

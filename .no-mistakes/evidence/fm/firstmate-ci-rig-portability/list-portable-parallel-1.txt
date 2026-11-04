@@ -1,0 +1,13 @@
+tests/fm-arm-pretool-check.test.sh
+tests/fm-backend-t3code.test.sh
+tests/fm-captain-hold-lifecycle.test.sh
+tests/fm-cd-pretool-check.test.sh
+tests/fm-composer-ghost.test.sh
+tests/fm-crew-state.test.sh
+tests/fm-grok-harness.test.sh
+tests/fm-herdr-lab.test.sh
+tests/fm-pi-primary-types.test.sh
+tests/fm-review-diff.test.sh
+tests/fm-t3-mcp.test.sh
+tests/fm-tmux-submit-busy.test.sh
+tests/fm-transition-lib.test.sh

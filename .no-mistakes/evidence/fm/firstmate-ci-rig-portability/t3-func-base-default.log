@@ -1,0 +1,16 @@
+mise ERROR No version is set for shim: codex
+Set a global default version with one of the following:
+mise use -g codex@0.154.0
+mise ERROR Version: 2026.10.25 linux-x64 (2026-10-31)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+  File "/usr/lib/python3.14/subprocess.py", line 473, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+               **kwargs).stdout
+               ^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 578, in run
+    raise CalledProcessError(retcode, process.args,
+                             output=stdout, stderr=stderr)
+subprocess.CalledProcessError: Command '['codex', '--version']' returned non-zero exit status 1.
