@@ -146,6 +146,14 @@ jobs:
           npm install -g @earendil-works/pi-coding-agent
           npm ls -g --depth 0 @earendil-works/pi-coding-agent
       - name: Run portable parallel shard 1
+        env:
+          # Self-hosted caveat: the backlog read bound defaults to 10s, sized
+          # for hosted hardware. Under the 2026-11-04 pre-crash memory-pressure
+          # window on the rig, one `tasks-axi show` in the captain-hold suite
+          # exceeded that default and failed the shard. 30s keeps the wedge
+          # latch and its loud partial reconcile meaningful while absorbing
+          # loaded node cold starts on self-hosted runners.
+          FM_BACKLOG_ROW_TIMEOUT_SECS: '30'
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
@@ -187,6 +195,9 @@ jobs:
           npm install -g tasks-axi
           tasks-axi --version
       - name: Run portable parallel shard 2
+        env:
+          # Same self-hosted caveat as shard 1 (see that step).
+          FM_BACKLOG_ROW_TIMEOUT_SECS: '30'
         run: |
           set -eu
           mkdir -p "$RUNNER_TEMP/fm-test"
