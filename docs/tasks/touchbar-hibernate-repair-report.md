@@ -11,10 +11,17 @@ This file is the campaign's delivery evidence.
 ## Outcome
 
 Hibernate works again.
-The captain's end state is live: clean hibernate entry and resume, 5%
-critical battery = Hibernate (AC+DC), lid-close = sleep then auto-hibernate
-after 120 s (this Boot Camp firmware exposes no LIDACTION ACPI device, so
-HIBERNATEIDLE is the working mechanism).
+The A1 victory stands and is the foundation the later lid-close recipe
+relies on: clean S4 hibernate entry and resume, and critical battery =
+Hibernate at 5% (AC+DC).
+This campaign set HIBERNATEIDLE = 120 s AC+DC believing it armed
+auto-hibernate after lid-close sleep, but the later bootcamp-hibernate-auto
+campaign (`docs/tasks/bootcamp-hibernate-auto-report.md`, landed on main)
+proved by overnight evidence (the box stayed in S3, battery 77 -> 75%) that
+user/lid-initiated sleep ignores HIBERNATEIDLE on build 26200.9711.
+That campaign delivered the working lid-close-to-hibernate mechanism
+itself: the ArmHibernateAfterSleep plus HibernateAfterSleepWake wake-timer
+recipe, grace DC 1800 s / AC 3600 s.
 One residual defect (backlight dark at S4 resume) is masked by a
 self-healing step in the on-box recovery task.
 
@@ -36,7 +43,9 @@ Revert: `bcdedit /set hypervisorlaunchtype auto`.
 
 Power config changes (all with reverts in the on-box log):
 `powercfg /h /type full` (6.4 GB hiberfile); BATACTIONCRIT = 2 (Hibernate)
-AC+DC; HIBERNATEIDLE = 120 s AC+DC (revert: AC 0 / DC 1500).
+AC+DC; HIBERNATEIDLE = 120 s AC+DC (revert: AC 0 / DC 1500) - later proven
+inert for lid sleep and superseded by the bootcamp-hibernate-auto
+wake-timer recipe, whose record keeps HIBERNATEIDLE 1800/3600 as inert.
 LIDACTION was attempted and confirmed inert on this firmware.
 
 ## Attempted and closed (A2b, A2a)
