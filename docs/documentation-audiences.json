@@ -329,7 +329,15 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/durable-watchers-feasibility.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/calm.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/durable-watchers.md",
       "audience": "operator-current"
     },
     {
