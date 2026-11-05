@@ -21,10 +21,9 @@ require_python3() {
 
 HOST_BIN=$ROOT/bin/fm-durable-watch.sh
 BENCH_BIN=$ROOT/bin/fm-durable-watch-bench.sh
-INSTALL_BIN=$ROOT/bin/fm-install-durable-pi.sh
 
 fixture_home() {  # <name> -> prints FM_HOME path
-  local dir=$FM_TEST_TMPDIR/fm-home-$1
+  local dir=$FM_TEST_TMPDIR/fm-durable-watch-$1-$$
   mkdir -p "$dir/config" "$dir/state"
   printf '%s\n' "$dir"
 }
@@ -62,7 +61,7 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _json(self, code, obj):
-        body = json.dumps(obj).encode()
+        body = json.dumps(obj, separators=(',', ':')).encode()
         self.send_response(code)
         self.send_header('content-type', 'application/json')
         self.send_header('content-length', str(len(body)))
@@ -148,12 +147,16 @@ assert_contains "$out" "config/durable-watchers" "arm refusal names the config p
 assert_contains "$out" "fm-install-durable-pi.sh" "arm refusal names the installer"
 assert_absent "$home/state/durable-watchers" "arm without config creates no state"
 
-for sub in send status stop; do
+for sub in status stop; do
   out=$(FM_HOME="$home" bash "$HOST_BIN" "$sub" keeper 2>&1 </dev/null)
   code=$?
   expect_code 3 "$code" "$sub without config exits 3"
   assert_contains "$out" "config/durable-watchers" "$sub refusal names the config path"
 done
+out=$(FM_HOME="$home" bash "$HOST_BIN" send keeper "test message" 2>&1 </dev/null)
+code=$?
+expect_code 3 "$code" "send without config exits 3"
+assert_contains "$out" "config/durable-watchers" "send refusal names the config path"
 pass "gate: every subcommand refuses cleanly without config"
 
 # --- 3. malformed definition refusal ----------------------------------------
@@ -187,7 +190,7 @@ pass "send: file-first durable steering while the host is down"
 
 # --- 5. host drain: requestId mapping is stable, instructions applied --------
 home=$(fixture_home 'drain')
-fixstate=$FM_TEST_TMPDIR/fixture-drain
+fixstate=$FM_TEST_TMPDIR/fm-durable-watch-fixture-drain-$$
 mkdir -p "$fixstate"
 fixture_backend "$fixstate"
 trap 'kill $FIXTURE_PID 2>/dev/null' EXIT

@@ -41,7 +41,7 @@ if [ -z "$checkout" ] || [ ! -d "$checkout/apps/dpi-backend/src" ]; then
 fi
 
 BACKEND_DIR=$checkout/apps/dpi-backend
-scratch=$FM_TEST_TMPDIR/durable-live
+scratch=$FM_TEST_TMPDIR/durable-live-$$
 mkdir -p "$scratch/data" "$scratch/work"
 
 free_port() {
@@ -56,13 +56,16 @@ PYEOF
 
 start_backend() {  # <log-file> -> sets BACKEND_PID
   local log=$1
-  DPI_PROVIDER=faux \
-    DPI_HOME="$scratch/dpihome" \
-    DPI_PORT=$BENCH_PORT \
-    DPI_DATA_DIR="$scratch/data" \
-    DPI_START_DIRS="$scratch/work" \
-    DPI_TOKEN=$TOKEN \
-    nohup npx --prefix "$BACKEND_DIR" tsx "$BACKEND_DIR/src/main.ts" >"$log" 2>&1 &
+  (
+    cd "$BACKEND_DIR" || exit 1
+    exec env DPI_PROVIDER=faux \
+      DPI_HOME="$scratch/data" \
+      DPI_PORT="$BENCH_PORT" \
+      DPI_DATA_DIR="$scratch/data" \
+      DPI_START_DIRS="$scratch/work" \
+      DPI_TOKEN=$TOKEN \
+      npx tsx src/main.ts
+  ) >"$log" 2>&1 &
   BACKEND_PID=$!
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
     curl -s -m 1 "http://127.0.0.1:$BENCH_PORT/healthz" 2>/dev/null | grep -q '"ok":true' && return 0
@@ -117,7 +120,7 @@ assert_contains "$out" '"status"' "steer while busy is accepted"
 kill "$BACKEND_PID" 2>/dev/null
 wait "$BACKEND_PID" 2>/dev/null
 BACKEND_PID=
-( cd "$BACKEND_DIR" && start_backend "$scratch/backend2.log" ) || exit 1
+start_backend "$scratch/backend2.log" || exit 1
 out=$(curl -s "$API/sessions/$sid/submissions/$(python3 -c "import json;print(json.loads('''$out''')['submissionId'])")?waitMs=30000" -H "$AUTH")
 case $out in
   *'"status":"done"'*) pass "steer submitted before the kill completes after resume" ;;

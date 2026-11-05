@@ -85,6 +85,20 @@ Three levels, in order:
 2. Opt out: delete the definition file or the directory; the watcher returns to the ordinary session path. Durable state stays on disk under `state/durable-watchers/` and can be archived or deleted without touching anything else.
 3. Remove the feature: revert the PR. It adds new files plus doc sections and removes or moves nothing, so `git revert` restores the tree exactly. The runtime checkout under `state/durable-pi` is home data, not repo content, and is deleted with `rm -rf` if desired.
 
+## Verification
+
+Committed regression coverage: `tests/fm-durable-watch.test.sh` pins the portable contracts (byte-identity when off, gate refusals, definition parsing, file-first send, the stable message-id-to-requestId mapping against a fixture backend, occupied-port refusal, and table rendering from recorded evidence), and `tests/fm-durable-watch-live.test.sh` proves the real path end to end against an installed checkout and skips with an explicit notice naming the installer when no checkout exists.
+
+Live results, 2026-11-05, dpi-backend 1.0.3, Node v26.8.1, faux provider, Linux x86_64:
+
+- `bash tests/fm-durable-watch.test.sh`: all contract rows pass.
+- `FM_DURABLE_PI_DIR=<checkout> bash tests/fm-durable-watch-live.test.sh`: session created, repeated requestId replayed without a second run, steer while busy accepted, steer submitted before a mid-run kill completed after resume, and the benchmark produced a parseable table with both evidence files.
+- `fm-install-durable-pi.sh <destination>`: cloned commit `37165c619573dbaf425463038bbffecfe576beec`, `npm ci` succeeded (167 packages), installed HEAD equals the pin.
+- Comparison run (`fm-durable-watch-bench.sh --cycles 4 --bytes-per-cycle 300 --steers-per-cycle 1 --inject-restart-at 2`, faux): baseline steer delivery 3/4 with the in-flight steer lost at the restart, durable 4/4 with the same steer answered after resume; wall time per cycle comparable (about 3.6s vs 3.8s); restart recovery comparable (about 0.9s vs 1.2s).
+- Scaled run (`--cycles 6 --bytes-per-cycle 30000 --inject-restart-at 3`, faux): the reliability result holds (baseline 5/6, durable 6/6) and the table shows the growing-context cost structure the bench exists to expose; faux totals remain synthetic and are labeled as such.
+
+Operational facts learned live and pinned here because the bench depends on them: the backend rejects request bodies over 256kb (the bench caps `cycles x bytes-per-cycle` at 200000 and truncates the baseline rebuild), compaction thresholds have backend-enforced minimums (`keepRecentTokens` at least 500), and a submission admitted by a previous backend process reports `pending` without long-polling, so the bench's resume poll loops until done.
+
 ## Adversarial pass findings folded into the design
 
 - "Byte-identical when off" needs proof, not assertion: the portable tests assert that no existing script references the new paths and that the gate refusals are the only reachable surface without config.

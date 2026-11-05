@@ -103,6 +103,9 @@ The shared no-mistakes gate lifecycle boundary is summarized in [architecture.md
 | `fm-watch-arm.sh`        | Verified home-scoped watcher arm wrapper with loud cycle endings and bounded lifecycle ledger |
 | `fm-watch-checkpoint.sh` | Run one bounded foreground watcher checkpoint for Codex-style supervision            |
 | `fm-watch.sh`            | Singleton-safe watcher: absorb benign wakes, detect stalled local-secondmate wake queues, and exit on actionable ones |
+| `fm-durable-watch.sh`    | Host, steer, and inspect one config-gated durable standing watcher on a pinned durable-pi backend ([durable-watchers.md](durable-watchers.md)) |
+| `fm-durable-watch-bench.sh` | Benchmark the durable-watcher path against the plain-session baseline and print one comparison table; `render` reprints from recorded evidence |
+| `fm-install-durable-pi.sh` | Install the pinned disler/durable-pi checkout the durable-watcher path and bench run on |
 | `fm-inactive-reconcile.sh` | Reconcile long-inactive direct crewmate terminal outcomes without forge access |
 | `fm-afk-contract.sh`     | Own the away-or-quiet record's posture, schema, entry, read-back, archive, and cross-subsystem authority lock |
 | `fm-afk-start.sh`        | Run the common sourceable away-mode daemon entry in the foreground                      |
