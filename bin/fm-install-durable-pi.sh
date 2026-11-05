@@ -12,8 +12,9 @@
 # firstmate's tracked files depends on it existing.
 #
 # Requires: git, npm, network access to github.com and the npm registry.
-# Refuses without downloading when the destination already holds a checkout,
-# when a pin is missing for this platform, or when git/npm are absent.
+# Refuses without downloading when the destination already holds a checkout
+# or is not empty, or when git/npm are absent; refuses before moving anything
+# into place when the pinned commit is absent from the cloned repository.
 #
 # Usage:
 #   fm-install-durable-pi.sh <destination-directory>

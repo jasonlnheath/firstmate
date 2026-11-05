@@ -38,9 +38,11 @@
 #       [--scratch DIR] [--keep]
 #   fm-durable-watch-bench.sh render <baseline.evidence.json> <durable.evidence.json>
 #
+# --inject-restart-at 0 disables the injected restart; the default injects at
+# cycles/2.
+#
 # render  Reprint the comparison table from two recorded evidence files
 #         without any backend, so a run can be re-reported later.
-#         --inject-restart-at 0 disables the injected restart.
 #
 # Evidence: <scratch>/baseline.evidence.json and <scratch>/durable.evidence.json.
 # Exit codes: 2 usage or refusal, 4 backend failure.

@@ -35,6 +35,7 @@ bin/fm-durable-watch.sh stop keeper
 
 `arm` ensures the backend (one owned instance per watcher unless the definition attaches to a `backend_url`), creates or resumes the session, applies the prompt file as agent instructions, then polls the watcher's steering inbox.
 Each message is submitted with the message id as its requestId, so a repeated delivery is admitted once.
+A submission the backend refuses is kept in the inbox and retried on the next poll, so no steer is silently lost.
 `send` is file-first: it appends to `state/durable-watchers/<name>.inbox/` and works while the host is down.
 `stop` ends the owned backend by its recorded pid; durable state stays on disk and the next `arm` resumes in place.
 Each watcher owns its own data directory, port, and token; the token never leaves the home.
@@ -52,7 +53,7 @@ Pass `--provider` and `--model` plus the provider's API key in the environment f
 
 ## Known limits
 
-- Request bodies are capped at 256kb by the backend, which bounds the baseline rebuild message and the scenario size.
+- Request bodies are capped at 256kb by the backend; `send` refuses a message over 200000 bytes rather than queue one the backend would reject forever, and the same bound caps the bench scenario size.
 - The pinned pi-durable tool set has no image input yet, so a visual keeper works through textual tool output (DOM and JS proofs, pixel-diff CLIs).
 - dpi-backend agents use its fixed shipped tool set; the pilot runs on bash and the shipped tools only.
 - The device token is a shell on the host: bind to loopback only and never expose the port.

@@ -26,9 +26,10 @@
 #         resumes the session, applies the prompt file as agent instructions,
 #         logs the recovery inspection, then polls the watcher's steering
 #         inbox: each message is submitted with requestId pf-<msgid> and
-#         whenBusy=steer, its submission outcome is appended to the
-#         submissions log, and the message is acknowledged by moving it to
-#         handled/. --once drains one inbox pass and exits. On exit the owned
+#         whenBusy=steer; an accepted submission's outcome is appended to the
+#         submissions log and the message is acknowledged by moving it to
+#         handled/, while a refused submission is kept in the inbox for
+#         retry. --once drains one inbox pass and exits. On exit the owned
 #         backend is left standing so the next arm resumes in place; `stop`
 #         ends it.
 # send    Append the message to state/durable-watchers/<name>.inbox/ as the
