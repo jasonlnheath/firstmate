@@ -101,7 +101,7 @@ Operational facts learned live and pinned here because the bench depends on them
 
 ## Adversarial pass findings folded into the design
 
-- "Byte-identical when off" needs proof, not assertion: the portable tests assert that no existing script references the new paths and that the gate refusals are the only reachable surface without config.
+- "Byte-identical when off" stays a current-tree fact, not a pinned test: no existing script references the new paths (only the new files and their docs do), and the portable tests prove the reachable-off surface behaviorally - every subcommand refuses without config and creates no state.
 - A killed bench backend must not leak into a live home: the bench owns its own scratch data dir, port, and token, and verifies `/healthz` against its own port before and after.
 - Steer delivery during a busy run must not silently drop: the bench counts a steer as delivered only when a distinct answer entry follows it, and the host records unanswered submissions by submission id for inspection.
 - The faux model's token counts are synthetic, so faux numbers measure structure (cycles, context size, restart recovery, delivery), not cost; the table labels the mode so no faux row can be read as a cost claim.

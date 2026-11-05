@@ -39,7 +39,8 @@
 # stop    Stop the watcher's owned backend by the recorded pid, never a
 #         name-based kill. Durable state stays on disk for the next arm.
 #
-# Exit codes: 3 gate or definition refusal, 4 backend unreachable, 2 usage.
+# Exit codes: 3 gate or definition refusal, 4 backend unreachable or send
+# queue failure, 2 usage or oversize input.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -372,15 +373,26 @@ cmd_send() {  # <name> <message...>
   shift
   local message=$*
   load_definition "$name"
-  local inbox="$STATE/$name.inbox" n next
+  local inbox="$STATE/$name.inbox" n next bytes msgfile tmpfile
+  bytes=$(printf '%s' "$message" | wc -c)
+  [ "$bytes" -le 200000 ] ||
+    die 2 "message is $bytes bytes; the backend rejects bodies over 256kb, so send refuses messages over 200000 bytes (split or shorten the steer)"
   mkdir -p "$inbox"
   chmod 700 "$inbox" 2>/dev/null || true
-  # Number past every message already handed to the backend (handled/): a
-  # requestId is admitted once, so a reused number would replay an old answer.
-  n=$(find "$inbox" -name '[0-9]*.msg' 2>/dev/null | sed 's#.*/##; s#\.msg$##' | sort -n | tail -n 1)
-  next=$((10#${n:-0} + 1))
-  printf '%s\n' "$message" > "$inbox/$(printf '%04d' "$next").msg"
-  printf 'queued: %s\n' "$inbox/$(printf '%04d' "$next").msg"
+  tmpfile=$(mktemp "$inbox/.send.XXXXXX") || die 4 "cannot create a temp file in $inbox"
+  printf '%s\n' "$message" > "$tmpfile"
+  for _ in $(seq 1 64); do
+    # Number past every message already handed to the backend (handled/): a
+    # requestId is admitted once, so a reused number would replay an old answer.
+    n=$(find "$inbox" -name '[0-9]*.msg' 2>/dev/null | sed 's#.*/##; s#\.msg$##' | sort -n | tail -n 1)
+    next=$((10#${n:-0} + 1))
+    msgfile="$inbox/$(printf '%04d' "$next").msg"
+    mv -n "$tmpfile" "$msgfile" 2>/dev/null || true
+    [ ! -e "$tmpfile" ] && break
+    msgfile=
+  done
+  [ -n "$msgfile" ] || { rm -f "$tmpfile"; die 4 "cannot queue the message: $inbox is unwritable or another sender keeps colliding"; }
+  printf 'queued: %s\n' "$msgfile"
 }
 
 recorded_backend_env() {  # <name>: set API_URL/TOKEN from the recorded env, or die 4

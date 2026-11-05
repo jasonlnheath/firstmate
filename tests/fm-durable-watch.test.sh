@@ -202,7 +202,34 @@ assert_present "$home/state/durable-watchers/keeper.inbox/0002.msg" "send number
 assert_contains "$(cat "$home/state/durable-watchers/keeper.inbox/0001.msg")" "refresh the board" "message body is preserved"
 pass "send: file-first durable steering while the host is down"
 
-# --- 4. host drain: requestId mapping is stable, instructions applied --------
+# --- 4. send refuses a steer the backend could never admit -------------------
+home=$(fixture_home 'oversize')
+write_config "$home" keeper
+# The message is the space-joined argv, so the oversize arrives as two chunks.
+bigchunk=$(head -c 100001 /dev/zero | tr '\0' 'x')
+out=$(FM_HOME="$home" bash "$HOST_BIN" send keeper "$bigchunk" "$bigchunk" 2>&1 </dev/null)
+expect_code 2 "$?" "oversized send exits 2"
+assert_contains "$out" "200000" "oversize refusal names the cap"
+assert_absent "$home/state/durable-watchers/keeper.inbox" "oversized message is not queued"
+pass "send: refuses a steer the backend would reject forever"
+
+# --- 5. concurrent sends never lose or overwrite a steer ---------------------
+home=$(fixture_home 'racing')
+write_config "$home" keeper
+for i in $(seq 1 12); do
+  FM_HOME="$home" bash "$HOST_BIN" send keeper "racing steer $i" >/dev/null 2>&1 &
+done
+wait
+inbox="$home/state/durable-watchers/keeper.inbox"
+count=$(find "$inbox" -maxdepth 1 -name '[0-9]*.msg' | wc -l)
+assert_equals 12 "$count" "concurrent sends all queue a distinct message"
+bodies=$(cat "$inbox/"*.msg)
+for i in $(seq 1 12); do
+  assert_contains "$bodies" "racing steer $i" "racing steer $i body survives"
+done
+pass "send: concurrent sends never overwrite a steer"
+
+# --- 6. host drain: requestId mapping is stable, instructions applied --------
 fixstate=$(fm_test_tmproot fm-durable-watch-fixture-drain)
 mkdir -p "$fixstate"
 fixture_backend "$fixstate"
@@ -224,7 +251,7 @@ count=$(grep -c -F '"requestId": "pf-0001"' "$fixstate/submissions.jsonl")
 assert_equals 2 "$count" "repeated delivery reuses the identical requestId (admitted once by the backend)"
 pass "host: stable requestId mapping across repeated delivery"
 
-# --- 5. send numbering stays monotonic across drains -------------------------
+# --- 7. send numbering stays monotonic across drains -------------------------
 fixstate=$(fm_test_tmproot fm-durable-watch-fixture-numbering)
 mkdir -p "$fixstate"
 fixture_backend "$fixstate"
@@ -240,7 +267,7 @@ assert_contains "$(cat "$fixstate/submissions.jsonl")" '"requestId": "pf-0002"' 
 assert_grep 'cycle two steer' "$fixstate/submissions.jsonl" "post-drain steer body reaches the backend"
 pass "host: send numbering stays monotonic across drains"
 
-# --- 6. failed submission stays unacknowledged and retries -------------------
+# --- 8. failed submission stays unacknowledged and retries -------------------
 fixstate=$(fm_test_tmproot fm-durable-watch-fixture-retry)
 mkdir -p "$fixstate"
 fixture_backend "$fixstate"
@@ -261,7 +288,7 @@ assert_present "$home/state/durable-watchers/keeper.inbox/handled/0001.msg" "kep
 assert_grep 'steer while failing' "$fixstate/submissions.jsonl" "kept message reaches the backend on retry"
 pass "host: failed submission is kept for retry, never acknowledged"
 
-# --- 7. bench: argument refusals and table rendering -------------------------
+# --- 9. bench: argument refusals and table rendering -------------------------
 out=$(FM_HOME="$home" bash "$BENCH_BIN" --cycles zero 2>&1)
 expect_code 2 "$?" "bench bad --cycles exits 2"
 assert_contains "$out" "--cycles" "bench refusal names the flag"
@@ -279,12 +306,13 @@ expect_code 0 "$?" "render exits 0"
 assert_contains "$out" "baseline" "table has a baseline column"
 assert_contains "$out" "durable" "table has a durable column"
 assert_contains "$out" "synthetic" "faux provider labels token rows synthetic"
+assert_contains "$out" "final bytes" "context growth compares carried-context bytes"
 for row in "tokens/cycle" "wall time/cycle" "context growth" "restart recovery" "steer delivery"; do
   assert_contains "$out" "$row" "table has the $row row"
 done
 pass "bench: plain comparison table renders from recorded evidence"
 
-# --- 8. bench: occupied port refusal -----------------------------------------
+# --- 10. bench: occupied port refusal -----------------------------------------
 out=$(FM_HOME="$home" bash "$BENCH_BIN" --cycles 2 --port "$port" 2>&1)
 expect_code 2 "$?" "bench refuses an occupied port"
 assert_contains "$out" "port" "port refusal names the port"

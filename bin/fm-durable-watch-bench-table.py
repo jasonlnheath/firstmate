@@ -69,9 +69,9 @@ def main() -> int:
     for name, bv, dv in rows:
         print(f"{name:<34}{fmt(bv):>14}{fmt(dv):>14}{delta_str(bv, dv):>14}")
 
-    fe_b = base.get("finalActiveEntries", 0)
-    fe_d = dur.get("finalActiveEntries", 0)
-    print(f"{'context growth (final entries)':<34}{fe_b:>14}{fe_d:>14}{fe_d - fe_b:>14}")
+    fb_b = base.get("finalActiveBytes", 0)
+    fb_d = dur.get("finalActiveBytes", 0)
+    print(f"{'context growth (final bytes)':<34}{fb_b:>14}{fb_d:>14}{fb_d - fb_b:>14}")
 
     rb, rd = restart_avg(base), restart_avg(dur)
     rb_s = "n/a" if rb is None else fmt(rb)
