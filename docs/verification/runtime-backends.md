@@ -2656,7 +2656,7 @@ The fake models the T3 protocol facts that hide defects when simplified: cursor 
 
 The tracked Codex configuration guard is independent of the transport and passed on 2026-09-15 with `codex-cli 0.154.0` and Python 3.14.7.
 It proves the project model survives, `FM_TASK_ID` reaches `command/exec`, ordinary staging and commits retain the original configuration blob, and teardown restores the original CRLF bytes and Git flag.
-It capability-skips when Codex is absent and fails on absence when explicitly requested:
+It capability-skips when Codex is absent or a PATH entry answers but `codex --version` fails, and it fails in either case when explicitly requested:
 
 ```sh
 FM_T3_CODEX_CONFIG_LIVE=1 bin/fm-test-run.sh tests/fm-backend-t3code.test.sh

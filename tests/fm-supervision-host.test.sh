@@ -2352,7 +2352,10 @@ test_away_wake_is_handled_on_the_engine_and_never_reaches_main() {
   pid=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
   watcher=$(cat "$home/state/.watch.lock/pid")
   kill -TERM "$pid"
-  wait_until 200 host_exited "$home" || fail "the host did not stop on TERM"
+  # 60s like the sibling host-exit waits: TERM itself stops the host in
+  # seconds, but under 12-lane hosted-runner load every step between the
+  # signal and the host.rc write slows down, and a 20s budget expired there.
+  wait_until 600 host_exited "$home" || fail "the host did not stop on TERM"
   expect_code 143 "$(cat "$home/host.rc")" "a TERMed host must exit 143"
   wait_until 100 sh -c '! kill -0 "$1" 2>/dev/null' _ "$watcher" || fail "a stopped host left its watcher running"
   assert_absent "$home/state/.supervision-host" "a stopped host left its record"
@@ -2594,7 +2597,10 @@ test_engine_turn_is_bounded_and_its_descendants_reaped() {
   FM_SUPERVISION_HOST_TURN_TIMEOUT=3 FM_SUPERVISION_ENGINE_GRACE=1 start_host "$home"
   wait_until 150 watcher_live "$home" || fail "hang: the host never started a watcher cycle"
   append_status "$home" 'slow one'
-  wait_until 300 host_exited "$home" || fail "hang: the bounded turn did not end"
+  # 60s like the sibling host-exit waits: the bounded turn itself ends in
+  # seconds, but under 12-lane hosted-runner load every spawn in the bound,
+  # reap, and handback chain slows down, and a 30s budget expired there.
+  wait_until 600 host_exited "$home" || fail "hang: the bounded turn did not end"
   assert_re '^supervision-host: .*the engine turn hit its 3s bound; this wake is yours$' "$home/host.out" "a bounded turn must hand its wake to main"
   orphan=$(cat "$home/orphan-pid")
   wait_until 50 sh -c '! kill -0 "$1" 2>/dev/null' _ "$orphan" \

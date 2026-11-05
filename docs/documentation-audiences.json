@@ -329,7 +329,15 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/durable-watchers-feasibility.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/calm.md",
+      "audience": "operator-current"
+    },
+    {
+      "path": "docs/durable-watchers.md",
       "audience": "operator-current"
     },
     {
@@ -537,6 +545,18 @@
       "audience": "maintainer-verification"
     },
     {
+      "path": "docs/tasks/bootcamp-3finger-middleclick-report.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/tasks/bootcamp-hibernate-auto-report.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/tasks/hermes-rig-portability-report.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/usage-warner.md",
       "audience": "operator-current"
     },
@@ -663,6 +683,10 @@
     {
       "path": ".agents/skills/validation-supervision/SKILL.md",
       "audience": "agent-runtime"
+    },
+    {
+      "path": "docs/tasks/touchbar-hibernate-repair-report.md",
+      "audience": "maintainer-verification"
     }
   ]
 }
