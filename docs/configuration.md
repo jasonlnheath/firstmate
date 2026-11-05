@@ -2872,7 +2872,7 @@ The durable-watcher path hosts one standing watcher (the board-keeper shape) on 
 | `config/durable-watchers/<name>.conf` | One watcher definition: `key=value` lines. Required: `cwd` (the session working directory), `prompt` (path to the prompt file applied as agent instructions). Optional: `provider` (default `faux`), `model` (default `echo`), `poll_seconds` (default `5`), `backend_url` (attach to a running backend instead of owning one), `api_token` (bearer token for that backend), `port` (fixed port for the owned backend; auto-picked when unset). Unknown keys, missing required keys, or a non-integer `poll_seconds` refuse and name the key. |
 | `config/durable-pi-dir` | Optional first-line path to the pinned durable-pi checkout; default search is `$FM_HOME/state/durable-pi` (`FM_DURABLE_PI_DIR` overrides for one run). Installed by `bin/fm-install-durable-pi.sh`, which owns the pinned commit. |
 
-Each watcher's runtime state lives under `state/durable-watchers/` (steering inbox, session id, owned-backend env and pid files, submissions and event logs) and is home data, not repo content.
+Each watcher's runtime state lives under `state/durable-watchers/` (steering inbox, session id, owned-backend env file, submissions and event logs) and is home data, not repo content.
 The backend never binds beyond loopback.
 
 ## Spoken interface and captain inbox (config/voice-*, config/inbox-*)

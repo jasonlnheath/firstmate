@@ -53,7 +53,7 @@ def main() -> int:
     provider = dur.get("provider", "unknown")
     model = dur.get("model", "unknown")
     print(f"mode: {mode} provider: {provider} model: {model} cycles: {cycles}")
-    if mode == "faux":
+    if provider == "faux":
         print("note: faux token counts are synthetic; they measure structure, not cost")
 
     header = f"{'metric':<34}{'baseline':>14}{'durable':>14}{'delta':>14}"

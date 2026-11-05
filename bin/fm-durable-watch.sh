@@ -183,7 +183,7 @@ free_port() {
 }
 
 start_owned_backend() {  # <name> <backend-dir> <port> <token>
-  local name=$1 backend=$2 port=$3 token=$4 pid
+  local name=$1 backend=$2 port=$3 token=$4
   : > "$STATE/$name.backend.log"
   (
     cd "$backend/apps/dpi-backend" || exit 1
@@ -192,9 +192,7 @@ start_owned_backend() {  # <name> <backend-dir> <port> <token>
       DPI_START_DIRS="$C_cwd" DPI_TOKEN="$token" \
       npx tsx src/main.ts
   ) >> "$STATE/$name.backend.log" 2>&1 &
-  pid=$!
-  printf '%s\n' "$pid" > "$STATE/$name.backend.pid"
-  OWNED_PID=$pid
+  OWNED_PID=$!
 }
 
 ensure_backend() {  # <name>
@@ -210,14 +208,25 @@ ensure_backend() {  # <name>
   backend=$(find_checkout) ||
     die 3 "no durable-pi checkout found; run fm-install-durable-pi.sh $FM_HOME/state/durable-pi (or point config/durable-pi-dir at one)"
   # An owned backend already running from a previous arm is reused, never
-  # duplicated: its pid file is verified by pid, not by name.
-  if [ -f "$STATE/$name.backend.pid" ] && [ -f "$envfile" ]; then
-    read -r pid < "$STATE/$name.backend.pid"
+  # duplicated: health decides reuse (the recorded pid is the launcher wrapper,
+  # which can die before the backend it started), and a recorded instance that
+  # is still alive is waited out before any new start, so two instances never
+  # share one data dir.
+  if [ -f "$envfile" ]; then
     # shellcheck disable=SC1090
     . "$envfile"
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && healthy "$API_URL" "$TOKEN"; then
-      printf 'backend: reusing owned instance pid=%s url=%s\n' "$pid" "$API_URL"
+    if healthy "$API_URL" "$TOKEN"; then
+      printf 'backend: reusing owned instance url=%s\n' "$API_URL"
       return 0
+    fi
+    pid=${OWNED_PID:-}
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      for _ in $(seq 1 30); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+      done
+      kill -0 "$pid" 2>/dev/null &&
+        die 4 "recorded backend pid $pid is alive but not healthy on $API_URL; log: $STATE/$name.backend.log"
     fi
   fi
   mkdir -p "$STATE/$name.dpi"
@@ -299,6 +308,10 @@ print(json.dumps({"content": sys.stdin.read(), "requestId": sys.argv[1], "whenBu
   out=$(http POST "/v1/sessions/$SESSION_ID/agents/main/messages" "$body") ||
     { printf 'steer: backend unreachable for %s\n' "$base"; return 1; }
   split_http "$out"
+  case $HTTP_CODE in
+    200|202) ;;
+    *) printf 'steer: submission failed for %s (HTTP %s)\n' "$base" "$HTTP_CODE"; return 1 ;;
+  esac
   status=$(printf '%s' "$HTTP_BODY" | "$JSONL" -c 'import json,sys
 try:
     print(json.load(sys.stdin).get("status", ""))
@@ -316,7 +329,8 @@ except Exception:
 drain_once() {  # <name>
   local name=$1 msg out
   while msg=$(inbox_next "$STATE/$name.inbox"); do
-    out=$(submit_message "$name" "$msg") || break
+    out=$(submit_message "$name" "$msg") ||
+      { printf 'steer: %s kept for retry; outcome: %s\n' "$msg" "$out"; break; }
     mkdir -p "$STATE/$name.inbox/handled"
     mv "$msg" "$STATE/$name.inbox/handled/" ||
       { printf 'steer: acknowledge failed for %s; submission outcome: %s\n' "$msg" "$out"; break; }
@@ -361,7 +375,9 @@ cmd_send() {  # <name> <message...>
   local inbox="$STATE/$name.inbox" n next
   mkdir -p "$inbox"
   chmod 700 "$inbox" 2>/dev/null || true
-  n=$(find "$inbox" -maxdepth 1 -name '[0-9]*.msg' 2>/dev/null | sed 's#.*/##; s#\.msg$##' | sort -n | tail -n 1)
+  # Number past every message already handed to the backend (handled/): a
+  # requestId is admitted once, so a reused number would replay an old answer.
+  n=$(find "$inbox" -name '[0-9]*.msg' 2>/dev/null | sed 's#.*/##; s#\.msg$##' | sort -n | tail -n 1)
   next=$((10#${n:-0} + 1))
   printf '%s\n' "$message" > "$inbox/$(printf '%04d' "$next").msg"
   printf 'queued: %s\n' "$inbox/$(printf '%04d' "$next").msg"

@@ -41,7 +41,7 @@ if [ -z "$checkout" ] || [ ! -d "$checkout/apps/dpi-backend/src" ]; then
 fi
 
 BACKEND_DIR=$checkout/apps/dpi-backend
-scratch=$FM_TEST_TMPDIR/durable-live-$$
+scratch=$(fm_test_tmproot fm-durable-live)
 mkdir -p "$scratch/data" "$scratch/work"
 
 free_port() {
@@ -84,7 +84,7 @@ BENCH_PORT=$(free_port)
 TOKEN=live-test-token-0123456789abcdef012345
 API=http://127.0.0.1:$BENCH_PORT/v1
 AUTH="Authorization: Bearer $TOKEN"
-trap stop_backend EXIT
+trap 'stop_backend; fm_test_cleanup' EXIT
 
 cd "$BACKEND_DIR" || fail "cannot enter $BACKEND_DIR"
 start_backend "$scratch/backend.log"

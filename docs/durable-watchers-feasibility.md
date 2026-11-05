@@ -87,7 +87,7 @@ Three levels, in order:
 
 ## Verification
 
-Committed regression coverage: `tests/fm-durable-watch.test.sh` pins the portable contracts (byte-identity when off, gate refusals, definition parsing, file-first send, the stable message-id-to-requestId mapping against a fixture backend, occupied-port refusal, and table rendering from recorded evidence), and `tests/fm-durable-watch-live.test.sh` proves the real path end to end against an installed checkout and skips with an explicit notice naming the installer when no checkout exists.
+Committed regression coverage: `tests/fm-durable-watch.test.sh` pins the portable contracts (gate refusals, definition parsing, file-first send, the stable message-id-to-requestId mapping against a fixture backend, drain-monotonic send numbering, the unacknowledged-retry contract for failed submissions, occupied-port refusal, and table rendering from recorded evidence), and `tests/fm-durable-watch-live.test.sh` proves the real path end to end against an installed checkout and skips with an explicit notice naming the installer when no checkout exists.
 
 Live results, 2026-11-05, dpi-backend 1.0.3, Node v26.8.1, faux provider, Linux x86_64:
 

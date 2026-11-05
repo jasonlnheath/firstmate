@@ -46,6 +46,10 @@ command -v npm >/dev/null 2>&1 || die "npm is required but not installed"
 if [ -d "$DESTINATION/apps/dpi-backend/src" ]; then
   die "destination already holds a durable-pi checkout: $DESTINATION/apps/dpi-backend (remove it first to re-install)"
 fi
+if [ -d "$DESTINATION" ]; then
+  rmdir "$DESTINATION" 2>/dev/null ||
+    die "destination exists and is not empty: $DESTINATION (remove it first to re-install)"
+fi
 
 parent=$(dirname "$DESTINATION")
 mkdir -p "$parent" || die "cannot create $parent"

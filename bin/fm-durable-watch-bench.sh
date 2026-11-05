@@ -318,7 +318,9 @@ run_path() {  # <path-name> -> writes <scratch>/<path-name>.evidence.json
 
   for cycle in $(seq 1 "$CYCLES"); do
     # Baseline restart: abandon the old session, open a fresh one, and rebuild
-    # the full prior working context as its first message.
+    # the full prior working context as its first message. The usage baseline
+    # is captured off the fresh session before the rebuild submits, so the
+    # rebuild's tokens count in this cycle's delta and the totals row.
     if [ "$path_name" = baseline ] && [ "$cycle" -gt 1 ] && [ $(( (cycle - 1) % BASELINE_RESTART_EVERY )) -eq 0 ]; then
       t0=$(date +%s%3N)
       out=$(http_json POST /sessions "{\"name\":\"bench-$path_name-c$cycle\",\"cwd\":\"$WORK_DIR\",\"model\":{\"provider\":\"$PROVIDER\",\"modelId\":\"$MODEL\"}}") ||
@@ -326,6 +328,7 @@ run_path() {  # <path-name> -> writes <scratch>/<path-name>.evidence.json
       split_http "$out"
       [ "$BENCH_HTTP_CODE" = 201 ] || die 4 "baseline restart session failed (HTTP $BENCH_HTTP_CODE)"
       current_sid=$(printf '%s' "$BENCH_BODY" | "$JSONL" -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+      before=$(session_usage "$current_sid")
       rebuild=$("$JSONL" -c 'import sys
 texts = [l.rstrip("\n") for l in sys.stdin if l.strip()]
 joined = "rebuild of prior working context: " + " | ".join(texts)
@@ -333,9 +336,10 @@ print(joined[-200000:])' < "$SCRATCH/$path_name.payloads")
       submit_wait "$current_sid" "bench-$path_name-r$cycle" "$rebuild" >/dev/null
       t1=$(date +%s%3N)
       restarts+=("{\"cycle\":$cycle,\"recoveryMs\":$((t1 - t0)),\"steersAnswered\":0,\"steersMissed\":0}")
+    else
+      before=$(session_usage "$current_sid")
     fi
 
-    before=$(session_usage "$current_sid")
     t0=$(date +%s%3N)
     payload=$(mk_payload "$cycle")
     printf '%s\n' "$payload" >> "$SCRATCH/$path_name.payloads"
