@@ -2352,7 +2352,10 @@ test_away_wake_is_handled_on_the_engine_and_never_reaches_main() {
   pid=$(awk -F '\t' '$1 == "host" { print $2 }' "$home/state/.supervision-host")
   watcher=$(cat "$home/state/.watch.lock/pid")
   kill -TERM "$pid"
-  wait_until 200 host_exited "$home" || fail "the host did not stop on TERM"
+  # 60s like the sibling host-exit waits: TERM itself stops the host in
+  # seconds, but under 12-lane hosted-runner load every step between the
+  # signal and the host.rc write slows down, and a 20s budget expired there.
+  wait_until 600 host_exited "$home" || fail "the host did not stop on TERM"
   expect_code 143 "$(cat "$home/host.rc")" "a TERMed host must exit 143"
   wait_until 100 sh -c '! kill -0 "$1" 2>/dev/null' _ "$watcher" || fail "a stopped host left its watcher running"
   assert_absent "$home/state/.supervision-host" "a stopped host left its record"
