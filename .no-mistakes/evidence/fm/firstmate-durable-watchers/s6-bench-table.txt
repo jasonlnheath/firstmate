@@ -1,0 +1,36 @@
+bench: baseline cycle 1/4 wallMs=3432
+bench: baseline cycle 2/4 wallMs=4553
+bench: baseline cycle 3/4 wallMs=3448
+bench: baseline cycle 4/4 wallMs=3422
+bench: baseline evidence at /tmp/fm-dw-lab/bench/baseline.evidence.json
+bench: durable cycle 1/4 wallMs=3407
+bench: durable cycle 2/4 wallMs=4586
+bench: durable cycle 3/4 wallMs=3432
+bench: durable cycle 4/4 wallMs=3441
+bench: durable evidence at /tmp/fm-dw-lab/bench/durable.evidence.json
+mode: durable provider: faux model: echo cycles: 4
+note: faux token counts are synthetic; they measure structure, not cost
+metric                                  baseline       durable         delta
+----------------------------------------------------------------------------
+tokens/cycle (input)                      2594.0        1743.2        -850.8
+tokens/cycle (cacheRead)                  4728.8        4850.2        +121.5
+tokens/cycle (total)                     10124.2        8460.2       -1664.0
+wall time/cycle (ms)                      3713.8        3716.5          +2.8
+context growth (final bytes)               16854         19974          3120
+restart recovery (ms avg)                 2505.5        1117.0       -1388.5
+steer delivery                    3/4 (1 missed)4/4 (0 missed)              
+totals: tokens baseline=40497 durable=33841 delta=-6656 | wall baseline=14855ms durable=14866ms delta=11ms
+## render: table reprinted from the two recorded evidence files, no backend running
+mode: durable provider: faux model: echo cycles: 4
+note: faux token counts are synthetic; they measure structure, not cost
+metric                                  baseline       durable         delta
+----------------------------------------------------------------------------
+tokens/cycle (input)                      2594.0        1743.2        -850.8
+tokens/cycle (cacheRead)                  4728.8        4850.2        +121.5
+tokens/cycle (total)                     10124.2        8460.2       -1664.0
+wall time/cycle (ms)                      3713.8        3716.5          +2.8
+context growth (final bytes)               16854         19974          3120
+restart recovery (ms avg)                 2505.5        1117.0       -1388.5
+steer delivery                    3/4 (1 missed)4/4 (0 missed)              
+totals: tokens baseline=40497 durable=33841 delta=-6656 | wall baseline=14855ms durable=14866ms delta=11ms
+exit=0

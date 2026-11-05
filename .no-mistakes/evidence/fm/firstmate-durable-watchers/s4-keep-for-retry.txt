@@ -1,0 +1,13 @@
+## attached watcher with a DEAD backend url: arm must refuse exit 4 and keep the steer queued
+queued: /tmp/fm-dw-lab/home/state/durable-watchers/aux.inbox/0001.msg
+arm exit=4
+fm-durable-watch.sh: attached backend http://127.0.0.1:1 is not healthy
+aux inbox: 0001.msg  (handled absent = kept for retry)
+
+## backend becomes reachable: same queued steer drains on the next arm
+session: created 1f40e980-fdee-42e8-99b6-2d76ea1f4f08
+instructions: applied /tmp/fm-dw-lab/home/keeper-prompt.md
+resume: {"scheduling":"running","tasks":[],"submissions":[]}
+exit=0; aux handled: 0001.msg 
+aux submissions.log: 1793847977 msg=0001 submission=10 status=done
+fm-durable-watch.sh: no running owned backend recorded for aux

@@ -1,0 +1,9 @@
+## oversized steer (200003 bytes > 200000 cap) must refuse at send time, exit 2, queue nothing
+exit=2
+fm-durable-watch.sh: message is 200003 bytes; the backend rejects bodies over 256kb, so send refuses messages over 200000 bytes (split or shorten the steer)
+aux inbox contents now: handled 
+
+## 12 concurrent sends: every steer survives with a distinct number
+queued messages: 12
+lost bodies: 0
+numbers seen: 0002.msg 0003.msg 0004.msg 0005.msg 0006.msg 0007.msg 0008.msg 0009.msg 0010.msg 0011.msg 0012.msg 0013.msg 

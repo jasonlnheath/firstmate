@@ -1,0 +1,13 @@
+## send while the host is down (file-first)
+queued: /tmp/fm-dw-lab/home/state/durable-watchers/keeper.inbox/0001.msg
+inbox: 0001.msg
+
+## arm --once (owned backend start, session create, instructions, drain)
+backend: started owned instance pid=3504167 url=http://127.0.0.1:39872
+session: created 0c7dd1fe-0326-48b7-8878-d48df9308bfe
+instructions: applied /tmp/fm-dw-lab/home/keeper-prompt.md
+resume: {"scheduling":"running","tasks":[],"submissions":[]}
+exit=0
+inbox after drain: handled 
+handled: 0001.msg
+submissions.log: 1793847935 msg=0001 submission=10 status=done

@@ -1,0 +1,11 @@
+## Rollback gate: home with NO config/durable-watchers definition
+--- fm-durable-watch.sh arm keeper -> exit 3
+fm-durable-watch.sh: no definition at config/durable-watchers/keeper.conf; create one to opt in, and install the pinned checkout with fm-install-durable-pi.sh (docs/durable-watchers.md)
+--- fm-durable-watch.sh send keeper hi -> exit 3
+fm-durable-watch.sh: no definition at config/durable-watchers/keeper.conf; create one to opt in, and install the pinned checkout with fm-install-durable-pi.sh (docs/durable-watchers.md)
+--- fm-durable-watch.sh status keeper -> exit 3
+fm-durable-watch.sh: no definition at config/durable-watchers/keeper.conf; create one to opt in, and install the pinned checkout with fm-install-durable-pi.sh (docs/durable-watchers.md)
+--- fm-durable-watch.sh stop keeper -> exit 3
+fm-durable-watch.sh: no definition at config/durable-watchers/keeper.conf; create one to opt in, and install the pinned checkout with fm-install-durable-pi.sh (docs/durable-watchers.md)
+--- state dir after all refusals (must not exist):
+ls: cannot access '/tmp/fm-dw-lab/gate-home/state': No such file or directory

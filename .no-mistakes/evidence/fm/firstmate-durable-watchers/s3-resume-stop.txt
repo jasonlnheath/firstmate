@@ -1,0 +1,28 @@
+## send + drain again (numbering must continue past handled/)
+queued: /tmp/fm-dw-lab/home/state/durable-watchers/keeper.inbox/0002.msg
+backend: reusing owned instance url=http://127.0.0.1:39872
+session: resumed 0c7dd1fe-0326-48b7-8878-d48df9308bfe
+instructions: applied /tmp/fm-dw-lab/home/keeper-prompt.md
+resume: {"scheduling":"running","tasks":[],"submissions":[]}
+exit=0; handled: 0001.msg 0002.msg 
+
+## status
+session: 0c7dd1fe-0326-48b7-8878-d48df9308bfe
+inspect: {"scheduling":"running","tasks":[],"submissions":[]}
+usage: {"models": {"faux/echo": {"input": 2784, "output": 12, "cacheRead": 2770, "cacheWrite": 2785, "totalTokens": 8351, "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}}}, "tools": {}}
+
+## stop (recorded-pid kill)
+stopped: owned backend pid=3504167
+backend pid alive after stop: no
+
+## send still works while the backend is down
+queued: /tmp/fm-dw-lab/home/state/durable-watchers/keeper.inbox/0003.msg
+
+## re-arm after stop: backend restarts, SAME session resumes, queued steer drains
+backend: started owned instance pid=3509898 url=http://127.0.0.1:20151
+session: resumed 0c7dd1fe-0326-48b7-8878-d48df9308bfe
+instructions: applied /tmp/fm-dw-lab/home/keeper-prompt.md
+resume: {"scheduling":"running","tasks":[],"submissions":[]}
+exit=0
+session file now: 0c7dd1fe-0326-48b7-8878-d48df9308bfe (was: 0c7dd1fe-0326-48b7-8878-d48df9308bfe)
+handled: 0001.msg 0002.msg 0003.msg 
