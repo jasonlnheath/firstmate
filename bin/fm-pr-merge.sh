@@ -1657,6 +1657,127 @@ require_recorded_pr_identity || exit 1
 record_pr_metadata || exit 1
 require_released_captain_hold || exit 1
 
+# ---- Merge-content gate (Lesson 1 from AutoCraft deep study) ----
+# Protected paths are defined in config/protected-paths (global) or the
+# project's own config/protected-paths (per-project override, replaces
+# the global list entirely). A protected-path touch requires a second-look
+# verdict of clean before yolo auto-merge may proceed.
+#
+# The gate runs after mergeability verification but before the forge
+# command. It:
+#   1. Gets the diff between base and head
+#   2. Checks if any paths match protected patterns
+#   3. If yes, checks for a second-look verdict
+#   4. If no verdict or verdict is defect/unsure, refuses the merge
+#   5. If yolo is off, the merge always escalates to captain (handled
+#      by resolve_merge_authority / FM_PR_MERGE_AUTHORITY)
+
+FM_PR_MERGED_CONTENT_GATE_PASSED=false
+
+# Source the protected-paths library
+# shellcheck source=bin/fm-protected-paths-lib.sh
+. "$SCRIPT_DIR/fm-protected-paths-lib.sh"
+
+# fm_pr_merge_content_gate:
+#   Returns 0 if the merge-content gate is passed (no protected paths
+#   touched, or second-look verdict is clean). Returns 1 if blocked.
+fm_pr_merge_content_gate() {
+  # Get the diff paths between base and head
+  local diff_file
+  diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-diff.XXXXXX") || return 1
+
+  # Get diff paths from the PR. For GitHub, the PR base is available
+  # from the mergeable check; for GitLab/Forgejo, use the recorded base.
+  local base_branch head_commit
+  base_branch="${FM_PR_GITHUB_BASE:-${FM_PR_BASE:-}}"
+  head_commit="${FM_PR_MERGE_HEAD:-}"
+
+  if [ -z "$base_branch" ] || [ -z "$head_commit" ]; then
+    # Cannot determine the diff range; gate cannot evaluate.
+    # If yolo is on, refuse the merge (fail-closed).
+    rm -f "$diff_file"
+    return 1
+  fi
+
+  # Get the diff paths
+  if ! git diff --name-only "$base_branch".."$head_commit" > "$diff_file" 2>/dev/null; then
+    # Diff failed; gate cannot evaluate.
+    rm -f "$diff_file"
+    return 1
+  fi
+
+  # Check if any paths are protected
+  local matched_paths
+  matched_paths=$(fm_protected_paths_check "$diff_file" "${FM_PROJECT_DIR:-}") || {
+    # No protected paths matched - gate passes
+    rm -f "$diff_file"
+    return 0
+  }
+
+  # Protected paths were touched. Check for a second-look verdict.
+  rm -f "$diff_file"
+
+  # If yolo is off, the merge already escalates to captain via
+  # resolve_merge_authority / FM_PR_MERGE_AUTHORITY. The gate is
+  # a yolo-specific additional check.
+  if [ "${FM_PR_MERGE_AUTHORITY:-}" != "yolo" ]; then
+    # Yolo is off - merge always escalates, gate passes for
+    # the yolo-specific check (the captain will see the protected
+    # paths in the escalation)
+    printf 'merge-content gate: yolo is off, protected paths touched: %s\n' \
+      "$matched_paths" >&2
+    return 0
+  fi
+
+  # Yolo is on - need a second-look verdict
+  local pr_number="${FM_PR_NUMBER:-}"
+  if [ -z "$pr_number" ]; then
+    echo "error: merge-content gate: yolo is on and protected paths are touched, but PR number is unknown; refusing to merge" >&2
+    return 1
+  fi
+
+  local verdict_dir
+  verdict_dir=$(fm_second_look_verdict_dir "$STATE" "$ID" "$pr_number") || {
+    echo "error: merge-content gate: could not resolve second-look verdict directory for PR $pr_number; refusing to merge" >&2
+    return 1
+  }
+
+  local verdict
+  verdict=$(fm_second_look_read_verdict "$verdict_dir") || {
+    # No second-look verdict exists - refuse the merge
+    echo "error: merge-content gate: yolo is on and protected paths are touched, but no second-look verdict exists for PR $pr_number; refusing to merge" >&2
+    printf 'protected paths: %s\n' "$matched_paths" >&2
+    return 1
+  }
+
+  case "$verdict" in
+    clean)
+      printf 'merge-content gate: yolo on, protected paths touched, second-look verdict is clean for PR %s\n' "$pr_number" >&2
+      return 0
+      ;;
+    defect|unsure)
+      echo "error: merge-content gate: yolo is on and protected paths are touched, but second-look verdict is '$verdict' for PR $pr_number; refusing to merge" >&2
+      printf 'protected paths: %s\n' "$matched_paths" >&2
+      local stuck_reason
+      stuck_reason=$(fm_second_look_get_stuck_reason "$verdict_dir")
+      [ -n "$stuck_reason" ] && printf 'reason: %s\n' "$stuck_reason" >&2
+      return 1
+      ;;
+    *)
+      echo "error: merge-content gate: unexpected second-look verdict '$verdict' for PR $pr_number; refusing to merge" >&2
+      return 1
+      ;;
+  esac
+}
+
+# Run the merge-content gate before any forge command
+if ! fm_pr_merge_content_gate; then
+  echo "error: merge-content gate blocked the merge for $URL" >&2
+  exit 1
+fi
+
+FM_PR_MERGED_CONTENT_GATE_PASSED=true
+
 # Accepted confused-agent-grade limitation, as in bin/fm-lease-lib.sh, not an
 # oversight: if this lock-owning shell dies while its gh or glab child lives,
 # stale-owner recovery can release the record for archive or replacement and

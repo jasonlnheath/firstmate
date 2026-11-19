@@ -1250,6 +1250,27 @@ cmd_deliver() {
   hash=$(fm_pf_sha256 < "$tmp_text") || die "sha256 (shasum or sha256sum) is required" 1
   [ -n "$hash" ] || die "could not hash the reply payload" 1
 
+  # ---- Exact-text consent gate (Lesson 3 from AutoCraft deep study) ----
+  # Before posting, verify that the reply text matches a previously approved
+  # hash. Approved hashes are stored in state/fm-public-followup-consent/<id>.hash.
+  # If the hash does not match, refuse to post. This prevents the text from
+  # being altered between approval and publication (adversarial modification).
+  #
+  # The captain approves the exact bytes by running:
+  #   echo -n '<approved-text>' | sha256sum | cut -d' ' -f1
+  # and recording the hash in state/fm-public-followup-consent/<id>.hash
+  #
+  # If no consent hash exists, the gate is skipped (backward compatible).
+
+  consent_dir="$STATE/fm-public-followup-consent"
+  consent_file="$consent_dir/$id.hash"
+  if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
+    stored_hash=$(cat "$consent_file" 2>/dev/null)
+    if [ -n "$stored_hash" ] && [ "$stored_hash" != "$hash" ]; then
+      die "exact-text consent gate: the reply text hash ($hash) does not match the approved hash ($stored_hash) for obligation '$id'; the text has changed since approval. Record the approved hash in $consent_file before retrying."
+    fi
+  fi
+
   # begin-delivery is what makes a retry safe: it pins the attempt and the exact
   # payload before anything leaves the machine. The attempt is read back rather
   # than assumed, because every later receipt or error must name it exactly.

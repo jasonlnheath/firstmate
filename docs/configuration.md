@@ -3135,3 +3135,119 @@ A live lock, a missing `lsof`, any failed check, or any other fetch failure keep
 Every wait, retry, and removal is printed to stderr, and a successful recovery also prints one `recovered:` summary line to stdout so a session-start refresh - which discards fleet-sync stderr and relays only stdout - still surfaces it.
 
 The shared staleness proof lives in `bin/fm-lock-lib.sh`, which both `fm-teardown.sh` and `fm-fleet-sync.sh` use.
+
+## AutoCraft Hardening Lessons
+
+Three lessons from the AutoCraft deep study were implemented in firstmate's merge and public-posting paths. They add defense-in-depth gates that prevent silent corruption of shared tracked material and adversarial modification of public commitments.
+
+### Lesson 1: Merge-content gates (protected paths)
+
+Protected paths are defined in `config/protected-paths` (global) or `config/protected-paths` in a project's own worktree (per-project override replaces the global list entirely). Files matching any of these patterns trigger a merge-content gate: they cannot be auto-merged under yolo without a recorded second-look verdict.
+
+**Protected file classes:**
+
+| Class | Examples |
+|-------|----------|
+| CI / workflow configuration | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, `Dockerfile`, `docker-compose*.yml`, `Makefile`, `CMakeLists.txt`, `package.json`, `go.mod`, `go.sum`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `poetry.lock`, `requirements.txt`, `Pipfile.lock`, `pyproject.toml`, `setup.py`, `setup.cfg`, `tox.ini` |
+| Agent instruction files | `AGENTS.md`, `CLAUDE.md`, `AGENTS.txt`, `CLAUDE.txt` |
+| Lockfiles | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Gemfile.lock`, `poetry.lock`, `Pipfile.lock`, `go.sum`, `composer.lock` |
+| Brand / documentation | `README.md`, `README.rst`, `README.txt`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE`, `SECURITY.md`, `CHANGELOG.md` |
+| Submodule / symlink / mode changes | `.gitmodules`, `.gitmodules.bak` |
+| Executable scripts | `*.sh`, `*.bash`, `*.py`, `*.pl`, `*.rb`, `*.ts`, `*.js` |
+| Binary files | `*.bin`, `*.exe`, `*.dll`, `*.so`, `*.dylib`, `*.o`, `*.a`, `*.lib`, `*.jar`, `*.war`, `*.ear`, `*.zip`, `*.tar`, `*.tar.gz`, `*.tgz`, `*.dmg`, `*.iso`, `*.pkg`, `*.deb`, `*.rpm`, `*.whl`, `*.nupkg`, `*.msi` |
+
+**Gate behavior:**
+
+- When yolo is **off**, the merge always escalates to the captain regardless of protected paths.
+- When yolo is **on**, the merge checks for a second-look verdict:
+  - **No verdict exists**: merge is refused with a clear error message listing the protected paths touched.
+  - **Verdict is `clean`**: merge proceeds.
+  - **Verdict is `defect` or `unsure`**: merge is refused; the reason is printed.
+
+**Second-look verdicts** are stored in `state/<task-id>/.second-look/<pr-number>.verdict` with the format:
+
+```
+verdict=<clean|defect|unsure>
+head=<commit-sha>
+time=<unix-epoch>
+defect_reason=<free text, single line>
+```
+
+An `unsure` or `defect` verdict "sticks" for any future head of the same PR chain until a `clean` verdict is recorded. This prevents a new commit from silently clearing a previous defect.
+
+**Integration points:**
+
+- `bin/fm-pr-merge.sh`: the merge-content gate runs after mergeability verification and before the forge command. It is implemented in `bin/fm-protected-paths-lib.sh` and called from the GitHub, GitLab, and Forgejo merge paths.
+- `bin/fm-merge-local.sh`: the same gate runs for local-only fast-forward merges.
+- `bin/fm-second-look.sh`: the adversarial second-look runner that spawns an independent reviewer agent.
+
+### Lesson 2: Adversarial second-look runner
+
+`bin/fm-second-look.sh` spawns an independent reviewer agent to re-review a merge head with an adversarial posture: find reasons NOT to land the change.
+
+**Verdicts:**
+
+| Verdict | Meaning | Merge gate |
+|---------|---------|------------|
+| `clean` | No defects found; auto-merge may proceed | Gate passes |
+| `defect` | Defects found; auto-merge is blocked | Gate refuses, escalates to captain |
+| `unsure` | Uncertain; auto-merge is blocked | Gate refuses, escalates to captain |
+
+**How it works:**
+
+1. The merge gate (in `fm-pr-merge.sh` or `fm-merge-local.sh`) detects that protected paths are touched.
+2. It calls `bin/fm-second-look.sh --task-id <id> --pr-url <url> --head <sha>`.
+3. Firstmate spawns an independent crewmate with an adversarial brief that instructs the agent to find reasons NOT to land the change.
+4. The agent produces a verdict file at `state/<task-id>/.second-look/<pr-number>.verdict`.
+5. The merge gate reads the verdict and applies the gate logic.
+
+**The adversarial brief** instructs the reviewer to look for:
+- Bugs that existing tests miss (edge cases, off-by-one, null/empty handling)
+- Security issues (injection, path traversal, auth bypass, information leak)
+- Quiet behavior changes (API contract violations, breaking changes)
+- Performance regressions (O(n²) loops, unnecessary allocations, blocking I/O)
+- Side effects (global state mutation, race conditions, signal handling)
+- Test coverage gaps (new code paths without corresponding tests)
+- Documentation inconsistencies (code does X but docs say Y)
+- Dependency issues (new dependencies with security advisories, license changes)
+
+**Verdict persistence:**
+
+- Verdicts are stored durably in `state/<task-id>/.second-look/<pr-number>/`.
+- An `unsure` verdict sticks until a `clean` verdict clears it.
+- A `defect` verdict sticks until a `clean` verdict clears it.
+- A `clean` verdict clears the slate for future heads.
+
+### Lesson 3: Exact-text consent for public posts
+
+Before posting any public reply through the relay (X or Discord), firstmate verifies that the reply text matches a previously approved hash. If the text has changed since approval, the post is refused.
+
+**How it works:**
+
+1. The captain approves the exact bytes by recording their SHA-256 hash in `state/fm-public-followup-consent/<obligation-id>.hash`.
+2. When `bin/fm-public-followup.sh deliver` is called, it computes the hash of the reply text.
+3. If a consent hash exists and the computed hash does not match, the deliver command refuses with a clear error.
+4. If no consent hash exists, the gate is skipped (backward compatible).
+
+**Consent hash storage:**
+
+- Hashes are stored in `state/fm-public-followup-consent/<id>.hash`.
+- The hash is the SHA-256 of the exact bytes being posted.
+- If the file is a symlink, it is ignored (safety check).
+
+**Defense in depth:**
+
+- The gate runs in `bin/fm-public-followup.sh deliver` (before `begin-delivery`).
+- The gate also runs in `bin/fm-x-reply.sh` (before the actual POST to the relay).
+- Both gates use the same consent hash file, so even if the text is altered between the two points, the second gate will catch it.
+
+**Captain workflow for approving text:**
+
+```bash
+# Approve the exact text that will be posted
+echo -n '<approved-reply-text>' | sha256sum | cut -d' ' -f1 \
+  > state/fm-public-followup-consent/<obligation-id>.hash
+
+# Or record the hash manually
+echo '<sha256-hash>' > state/fm-public-followup-consent/<obligation-id>.hash
+```

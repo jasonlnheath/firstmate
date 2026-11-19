@@ -238,6 +238,30 @@ if [ -z "$TEXT" ]; then
   exit 2
 fi
 
+# ---- Exact-text consent gate (Lesson 3 from AutoCraft deep study) ----
+# Verify that the reply text matches a previously approved hash. Approved hashes
+# are stored in state/fm-public-followup-consent/<request_id>.hash. If the hash
+# does not match, refuse to post. This prevents the text from being altered
+# between approval and publication.
+#
+# The captain approves the exact bytes by recording the hash in
+# state/fm-public-followup-consent/<request_id>.hash
+#
+# If no consent hash exists, the gate is skipped (backward compatible).
+
+consent_dir="$STATE/fm-public-followup-consent"
+consent_file="$consent_dir/$REQ.hash"
+if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
+  stored_hash=$(cat "$consent_file" 2>/dev/null)
+  if [ -n "$stored_hash" ]; then
+    computed_hash=$(printf '%s' "$TEXT" | sha256sum | cut -d' ' -f1)
+    if [ "$computed_hash" != "$stored_hash" ]; then
+      echo "fm-x-reply: exact-text consent gate: the reply text hash ($computed_hash) does not match the approved hash ($stored_hash) for request $REQ; the text has changed since approval. Record the approved hash in $consent_file before retrying." >&2
+      exit 2
+    fi
+  fi
+fi
+
 # The endpoint is the only behavioral difference between an answer and a
 # follow-up; everything below (split, payload, dry-run, post) is shared.
 if [ "$FOLLOWUP" = 1 ]; then
