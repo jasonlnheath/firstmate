@@ -24,15 +24,15 @@ mkdir -p "$STATE"
 
 echo "=== Test: Second-look runner invocation ==="
 
-# Test 1: Runner accepts valid arguments
-echo -n "  Test 1: Runner accepts valid arguments... "
-if "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+# Test 1: Runner prints 'unsure' when no verdict exists
+echo -n "  Test 1: Runner prints 'unsure' when no verdict exists... "
+output=$($SCRIPT_DIR/../bin/fm-second-look.sh --task-id "test-task" \
     --pr-url "https://github.com/test/repo/pull/123" \
-    --head "abc123def456" 2>/dev/null; then
-  pass "runner accepts valid arguments"
+    --head "abc123def456" 2>/dev/null) || true
+if [ "$output" = "unsure" ]; then
+  pass "runner prints 'unsure' and exits 1 when no verdict exists"
 else
-  # Runner returns 1 (unsure) when no verdict exists - this is expected
-  pass "runner accepts valid arguments (returns 1 = unsure, expected)"
+  fail "expected stdout 'unsure', got '$output'"
 fi
 
 # Test 2: Runner rejects missing required arguments
@@ -65,17 +65,17 @@ else
   fail "verdict read incorrectly: $verdict"
 fi
 
-# Test 5: Runner reads existing verdict
-echo -n "  Test 5: Runner reads existing verdict... "
-output=$("$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+# Test 5: Runner reads existing verdict via FM_STATE_OVERRIDE
+echo -n "  Test 5: Runner reads existing verdict via FM_STATE_OVERRIDE... "
+verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "123")
+fm_second_look_write_verdict "$verdict_dir" "clean" "abc123def456"
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
     --pr-url "https://github.com/test/repo/pull/123" \
     --head "abc123def456" 2>/dev/null) || true
-if echo "$output" | grep -q "clean"; then
-  pass "runner read existing verdict"
+if [ "$output" = "clean" ]; then
+  pass "runner prints 'clean' and exits 0 when verdict matches head"
 else
-  # The runner may not actually spawn a reviewer in this test,
-  # so it returns unsure. This is acceptable.
-  pass "runner behavior is acceptable (may return unsure)"
+  fail "expected stdout 'clean', got '$output'"
 fi
 
 # Test 6: Verdict with defect reason
@@ -126,57 +126,62 @@ else
   fail "defect verdict did not block new non-clean verdict"
 fi
 
-# Test 10: Clean verdict clears stuck verdict
-echo -n "  Test 10: Clean verdict clears stuck verdict... "
+# Test 10: Clean verdict allows runner to proceed
+echo -n "  Test 10: Clean verdict allows runner to proceed... "
 verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "103")
-fm_second_look_write_verdict "$verdict_dir" "defect" "def" "found a bug"
 fm_second_look_write_verdict "$verdict_dir" "clean" "ghi"
-if fm_second_look_verdict_sticks "$verdict_dir" "clean"; then
-  pass "clean verdict clears stuck verdict"
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://github.com/test/repo/pull/103" \
+    --head "ghi" 2>/dev/null) || true
+if [ "$output" = "clean" ]; then
+  pass "clean verdict allows runner to proceed"
 else
-  fail "clean verdict did not clear stuck verdict"
-fi
-
-# Test 11: No existing verdict accepts new verdict
-echo -n "  Test 11: No existing verdict accepts new verdict... "
-verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "104")
-if fm_second_look_verdict_sticks "$verdict_dir" "clean"; then
-  pass "no existing verdict accepts new verdict"
-else
-  fail "no existing verdict should accept new verdict"
+  fail "expected 'clean', got '$output'"
 fi
 
 echo ""
 echo "=== Test: PR number extraction ==="
 
-# Test 12: GitHub PR URL extraction
-echo -n "  Test 12: GitHub PR URL extraction... "
-pr_url="https://github.com/test/repo/pull/123"
-pr_number=$(echo "$pr_url" | grep -oP 'pull/(\d+)' | grep -oP '\d+')
-if [ "$pr_number" = "123" ]; then
-  pass "GitHub PR number extracted correctly"
+# Test 12: Runner derives PR number from GitHub PR URL
+echo -n "  Test 12: Runner derives PR number from GitHub PR URL... "
+# Write a verdict for PR 123, then run the runner with a GitHub URL
+verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "123")
+fm_second_look_write_verdict "$verdict_dir" "clean" "abc123def456"
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://github.com/test/repo/pull/123" \
+    --head "abc123def456" 2>/dev/null) || true
+if [ "$output" = "clean" ]; then
+  pass "runner derives PR 123 from GitHub URL and reads verdict"
 else
-  fail "GitHub PR number incorrect: $pr_number"
+  fail "expected 'clean', got '$output'"
 fi
 
-# Test 13: GitLab MR URL extraction
-echo -n "  Test 13: GitLab MR URL extraction... "
-pr_url="https://gitlab.com/test/repo/-/merge_requests/456"
-pr_number=$(echo "$pr_url" | grep -oP 'merge_requests/(\d+)' | grep -oP '\d+')
-if [ "$pr_number" = "456" ]; then
-  pass "GitLab MR number extracted correctly"
+# Test 13: Runner derives PR number from GitLab MR URL
+echo -n "  Test 13: Runner derives PR number from GitLab MR URL... "
+# Write a verdict for PR 456, then run the runner with a GitLab URL
+verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "456")
+fm_second_look_write_verdict "$verdict_dir" "clean" "def456ghi789"
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://gitlab.com/test/repo/-/merge_requests/456" \
+    --head "def456ghi789" 2>/dev/null) || true
+if [ "$output" = "clean" ]; then
+  pass "runner derives PR 456 from GitLab URL and reads verdict"
 else
-  fail "GitLab MR number incorrect: $pr_number"
+  fail "expected 'clean', got '$output'"
 fi
 
-# Test 14: Unknown URL gets default PR number
-echo -n "  Test 14: Unknown URL gets default PR number... "
-pr_url="https://unknown.example.com/repo/abc/789"
-pr_number=$(echo "$pr_url" | grep -oP 'pull/(\d+)' | grep -oP '\d+' || echo "")
-if [ -z "$pr_number" ]; then
-  pass "Unknown URL gets default PR number (empty)"
+# Test 14: Runner uses default PR number (0) for unknown URLs
+echo -n "  Test 14: Runner uses default PR number (0) for unknown URLs... "
+# Write a verdict for PR 0, then run the runner with an unknown URL
+verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "0")
+fm_second_look_write_verdict "$verdict_dir" "clean" "ghi789jkl012"
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://unknown.example.com/repo/abc/789" \
+    --head "ghi789jkl012" 2>/dev/null) || true
+if [ "$output" = "clean" ]; then
+  pass "runner uses default PR 0 for unknown URL and reads verdict"
 else
-  fail "Unknown URL should get empty PR number: $pr_number"
+  fail "expected 'clean', got '$output'"
 fi
 
 echo ""

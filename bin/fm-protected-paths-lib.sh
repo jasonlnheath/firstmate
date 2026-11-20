@@ -21,7 +21,6 @@
 #   global config/protected-paths.
 #   Returns 0 on success, 2 if neither file exists (missing config),
 #   3 if the file exists but contains no non-comment, non-empty lines.
-_fm_pp_list_rc=0
 fm_protected_paths_list() {
   _fm_pp_list_rc=0
   local proj_dir="${1:-}"
@@ -99,42 +98,6 @@ fm_protected_paths_check() {
   return 1
 }
 
-# fm_protected_paths_check_diff <diff-output>:
-#   Checks git diff output (raw format) against protected paths.
-#   Prints matching paths to stdout. Returns 0 if any match.
-#   Usage: git diff --name-status HEAD..BRANCH | fm_protected_paths_check_diff
-fm_protected_paths_check_diff() {
-  local proj_dir="${1:-}"
-  local matched=()
-
-  while IFS= read -r line; do
-    [ -n "$line" ] || continue
-    # Extract the path (after status tab)
-    local path="${line##*$'\t'}"
-    [ -n "$path" ] || continue
-
-    local patterns
-    patterns=$(fm_protected_paths_list "$proj_dir") || continue
-
-    while IFS= read -r pattern; do
-      [ -n "$pattern" ] || continue
-      # shellcheck disable=SC2254
-      case "$path" in
-        $pattern)
-          matched+=("$path")
-          break
-          ;;
-      esac
-    done <<< "$patterns"
-  done
-
-  if [ "${#matched[@]}" -gt 0 ]; then
-    printf '%s\n' "${matched[@]}"
-    return 0
-  fi
-  return 1
-}
-
 # Second-look verdict storage:
 #   Verdicts live in state/<task-id>/.second-look/<pr-number>/current.verdict
 #   Format:
@@ -199,40 +162,6 @@ fm_second_look_write_verdict() {
 
   # Ensure only the owner can read/write
   chmod 600 "$verdict_file" 2>/dev/null || true
-  return 0
-}
-
-# fm_second_look_verdict_sticks <verdict-dir> <new-verdict>:
-#   Returns 0 if the new verdict sticks (is accepted), 1 if it is blocked
-#   by an older unsure/defect verdict on the same PR.
-#   "unsure" verdicts stick until a clean verdict clears them.
-#   "defect" verdicts stick until a clean verdict clears them.
-fm_second_look_verdict_sticks() {
-  local verdict_dir="$1"
-  local new_verdict="$2"
-  local history_file="$verdict_dir/history"
-
-  [ -f "$verdict_dir/current.verdict" ] \
-    || return 0  # No existing verdict, new one is accepted
-
-  local current
-  current=$(fm_second_look_read_verdict "$verdict_dir") || return 0
-
-  # A clean verdict clears the slate
-  [ "$current" = "clean" ] && return 0
-
-  # An unsure verdict sticks: only a clean verdict clears it
-  if [ "$current" = "unsure" ]; then
-    [ "$new_verdict" = "clean" ] && return 0
-    return 1  # New verdict blocked by stuck unsure
-  fi
-
-  # A defect verdict sticks: only a clean verdict clears it
-  if [ "$current" = "defect" ]; then
-    [ "$new_verdict" = "clean" ] && return 0
-    return 1  # New verdict blocked by stuck defect
-  fi
-
   return 0
 }
 

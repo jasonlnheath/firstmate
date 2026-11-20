@@ -208,7 +208,13 @@ case "${1:-} ${2:-}" in
         exit 0
         ;;
       *headRefOid*)
-        cat "$FM_TEST_GH_HEAD"
+        # If --json was requested, return structured JSON instead of bare SHA
+        if echo " $* " | grep -q -- '--json'; then
+          head_sha=$(cat "$FM_TEST_GH_HEAD")
+          printf '{"baseRefName":"main","headRefOid":"%s"}\n' "$head_sha"
+        else
+          cat "$FM_TEST_GH_HEAD"
+        fi
         exit 0
         ;;
       *isDraft*)
@@ -367,6 +373,11 @@ case "${1:-} ${2:-}" in
   "mr merge")
     [ ! -e "$case_dir/glab-merge-fails" ] || { echo "error: mr merge failed" >&2 ; exit 1 ; }
     : > "$case_dir/glab-merge-called"
+    exit 0
+    ;;
+  "api"*)
+    # glab api for merge request diffs - return a simple diff list
+    printf '[{"new_path":"test.sh"}]\n'
     exit 0
     ;;
 esac
