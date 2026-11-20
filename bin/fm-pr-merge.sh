@@ -1664,8 +1664,8 @@ require_released_captain_hold || exit 1
 # the global list entirely). A protected-path touch requires a second-look
 # verdict of clean before yolo auto-merge may proceed.
 #
-# The gate runs after mergeability verification but before the forge
-# command. It:
+# The gate runs before the forge command (it self-fetches base/head
+# from the PR, so it does not depend on mergeability verification). It:
 #   1. Gets the diff between base and head
 #   2. Checks if any paths match protected patterns
 #   3. If yes, checks for a second-look verdict
@@ -1673,7 +1673,7 @@ require_released_captain_hold || exit 1
 #   5. If yolo is off, the merge always escalates to captain (handled
 #      by resolve_merge_authority / FM_PR_MERGE_AUTHORITY)
 
-FM_PR_MERGED_CONTENT_GATE_PASSED=false
+
 
 # Source the protected-paths library
 # shellcheck source=bin/fm-protected-paths-lib.sh
@@ -1694,22 +1694,22 @@ fm_pr_merge_content_gate() {
   case "$provider" in
     github)
       local pr_json
-      pr_json=$(gh pr view "$URL" --json baseRefName,headRefOid 2>/dev/null) || return 1
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.baseRefName // empty' 2>/dev/null) || return 1
-      head_commit=$(printf '%s' "$pr_json" | jq -r '.headRefOid // empty' 2>/dev/null) || return 1
+      pr_json=$(gh pr view "$URL" --json baseRefName,headRefOid 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.baseRefName // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.headRefOid // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
       ;;
     gitlab)
       local pr_json
-      pr_json=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null) || return 1
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.target_branch // empty' 2>/dev/null) || return 1
-      head_commit=$(printf '%s' "$pr_json" | jq -r '.sha // empty' 2>/dev/null) || return 1
+      pr_json=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.target_branch // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.sha // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
       ;;
     forgejo)
       local pr_json
       pr_json=$(tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
-        "/repos/{owner}/{repo}/pulls/$PR_NUMBER" 2>/dev/null) || return 1
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.base.ref // empty' 2>/dev/null) || return 1
-      head_commit=$(printf '%s' "$pr_json" | jq -r '.head.sha // empty' 2>/dev/null) || return 1
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER" 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.base.ref // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.head.sha // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
       ;;
     *)
       echo "error: merge-content gate: unknown provider '$provider'" >&2
@@ -1739,7 +1739,11 @@ fm_pr_merge_content_gate() {
       fi ;;
     gitlab)
       # glab has no 'mr diffs' subcommand; use the API to get changed file names
-      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$PROJECT_URL/repository/merge_requests/$PR_NUMBER/diffs" -F json 2>/dev/null \
+      # The endpoint is GET /projects/:id/merge_requests/:iid/diffs
+      # where :id is the URL-encoded project path (owner%2Frepo)
+      local encoded_path
+      encoded_path=$(printf '%s' "$FM_PR_PATH" | sed 's|/|%2F|g')
+      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" -F json 2>/dev/null \
         | jq -r '.diffs[].new_path // empty' 2>/dev/null > "$diff_file" || {
         rm -f "$diff_file"
         return 1
@@ -1852,7 +1856,7 @@ if ! fm_pr_merge_content_gate; then
   exit 1
 fi
 
-FM_PR_MERGED_CONTENT_GATE_PASSED=true
+
 
 # Accepted confused-agent-grade limitation, as in bin/fm-lease-lib.sh, not an
 # oversight: if this lock-owning shell dies while its gh or glab child lives,
