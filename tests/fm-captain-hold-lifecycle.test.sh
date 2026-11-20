@@ -117,9 +117,15 @@ case "${1:-} ${2:-}" in
       *statusCheckRollup*)
         printf '%s\n' '{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}'
         ;;
-      *baseRefName,headRefOid*)
-        # The merge-content gate reads base and head as one JSON record.
-        printf '%s\n' '{"baseRefName":"main","headRefOid":"1111111111111111111111111111111111111111"}'
+      *--json\ headRefOid*)
+        # The merge-content gate reads the head as one JSON record; a caller
+        # passing -q consumes the bare SHA, exactly as real gh applies the
+        # filter before printing.
+        if echo " $* " | grep -q -- ' -q '; then
+          printf '%s\n' 1111111111111111111111111111111111111111
+        else
+          printf '%s\n' '{"headRefOid":"1111111111111111111111111111111111111111"}'
+        fi
         ;;
       *" -q "*) printf '%s\n' 1111111111111111111111111111111111111111 ;;
       *headRefOid*) printf '%s\n' 1111111111111111111111111111111111111111 ;;

@@ -163,9 +163,15 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "{\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"reviewDecision\":\"APPROVED\"}"
         exit 0
         ;;
-      *baseRefName,headRefOid*)
-        # The merge-content gate reads base and head as one JSON record.
-        printf '%s\n' "{\"baseRefName\":\"main\",\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\"}"
+      *--json\ headRefOid*)
+        # The merge-content gate reads the head as one JSON record; a caller
+        # passing -q consumes the bare SHA, exactly as real gh applies the
+        # filter before printing.
+        if echo " $* " | grep -q -- ' -q '; then
+          printf '%s\n' "${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}"
+        else
+          printf '%s\n' "{\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\"}"
+        fi
         exit 0
         ;;
     esac

@@ -6,7 +6,10 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Read by fm-protected-paths-lib.sh to locate the global config/protected-paths.
+# The list fm-protected-paths-lib.sh resolves: a project's own
+# config/protected-paths when present, else the tracked
+# bin/fm-protected-paths.default next to the library (FM_ROOT is only the
+# lib's fallback anchor for that default).
 # shellcheck disable=SC2034
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 STATE="${FM_STATE_OVERRIDE:-${TMPDIR:-/tmp}/fm-test-state-$$}"

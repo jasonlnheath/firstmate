@@ -6,7 +6,10 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Read by fm-protected-paths-lib.sh to locate the global config/protected-paths.
+# The list fm-protected-paths-lib.sh resolves: a project's own
+# config/protected-paths when present, else the tracked
+# bin/fm-protected-paths.default next to the library (FM_ROOT is only the
+# lib's fallback anchor for that default).
 # shellcheck disable=SC2034
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 STATE="${FM_STATE_OVERRIDE:-${TMPDIR:-/tmp}/fm-test-state-$$}"
@@ -104,28 +107,36 @@ else
 fi
 
 echo ""
-echo "=== Test: Verdict sticking behavior ==="
+echo "=== Test: Blocking verdicts for the current head ==="
 
-# Test 8: Unsure verdict blocks new non-clean verdict
-echo -n "  Test 8: Unsure verdict blocks new non-clean verdict... "
+# Test 8: Unsure verdict for the current head blocks the runner
+echo -n "  Test 8: Unsure verdict for the current head blocks the runner... "
 verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "101")
-fm_second_look_write_verdict "$verdict_dir" "unsure" "abc"
-# Passing 'unsure' should be blocked by the stuck unsure verdict.
-if ! fm_second_look_verdict_sticks "$verdict_dir" "unsure"; then
-  pass "unsure verdict blocks new non-clean verdict"
+fm_second_look_write_verdict "$verdict_dir" "unsure" "abc101def"
+rc=0
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://github.com/test/repo/pull/101" \
+    --head "abc101def" 2>"$STATE/test8.stderr") || rc=$?
+if [ "$output" = "unsure" ] && [ "$rc" -eq 1 ] \
+    && grep -q '^BLOCKED:' "$STATE/test8.stderr"; then
+  pass "unsure verdict for the current head prints the verdict and BLOCKED, exits 1"
 else
-  fail "unsure verdict did not block new non-clean verdict"
+  fail "expected stdout 'unsure', exit 1, BLOCKED on stderr; got '$output' rc=$rc"
 fi
 
-# Test 9: Defect verdict blocks new non-clean verdict
-echo -n "  Test 9: Defect verdict blocks new non-clean verdict... "
+# Test 9: Defect verdict for the current head blocks the runner and carries the reason
+echo -n "  Test 9: Defect verdict for the current head blocks the runner... "
 verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "102")
-fm_second_look_write_verdict "$verdict_dir" "defect" "def" "found a bug"
-# Passing 'unsure' should be blocked by the stuck defect verdict.
-if ! fm_second_look_verdict_sticks "$verdict_dir" "unsure"; then
-  pass "defect verdict blocks new non-clean verdict"
+fm_second_look_write_verdict "$verdict_dir" "defect" "def102ghi" "found a critical bug"
+rc=0
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://github.com/test/repo/pull/102" \
+    --head "def102ghi" 2>"$STATE/test9.stderr") || rc=$?
+if [ "$output" = "defect" ] && [ "$rc" -eq 1 ] \
+    && grep -q '^BLOCKED:.*found a critical bug' "$STATE/test9.stderr"; then
+  pass "defect verdict for the current head prints the verdict and its reason, exits 1"
 else
-  fail "defect verdict did not block new non-clean verdict"
+  fail "expected stdout 'defect', exit 1, BLOCKED with the reason on stderr; got '$output' rc=$rc"
 fi
 
 # Test 10: Clean verdict allows runner to proceed
@@ -182,6 +193,22 @@ output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --tas
     --head "ghi789jkl012" 2>/dev/null) || true
 if [ "$output" = "clean" ]; then
   pass "runner uses default PR 0 for unknown URL and reads verdict"
+else
+  fail "expected 'clean', got '$output'"
+fi
+
+# Test 15: Runner derives the PR number on a Forgejo host no hostname grep names
+echo -n "  Test 15: Runner derives the PR number on a codeberg pulls URL... "
+# Write a verdict for PR 77, then run the runner with a codeberg URL: the
+# hostname contains neither 'forgejo' nor 'gitea', so only the gate's own
+# URL parser can derive 77.
+verdict_dir=$(fm_second_look_verdict_dir "$STATE" "test-task" "77")
+fm_second_look_write_verdict "$verdict_dir" "clean" "eee777fff"
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://codeberg.org/test/repo/pulls/77" \
+    --head "eee777fff" 2>/dev/null) || true
+if [ "$output" = "clean" ]; then
+  pass "runner derives PR 77 from a codeberg pulls URL"
 else
   fail "expected 'clean', got '$output'"
 fi
