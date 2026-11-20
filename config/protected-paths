@@ -23,6 +23,8 @@ Jenkinsfile
 Dockerfile
 docker-compose*.yml
 docker-compose*.yaml
+*/docker-compose*.yml
+*/docker-compose*.yaml
 Makefile
 GNUmakefile
 Rakefile
@@ -83,7 +85,6 @@ CHANGELOG.txt
 */Gemfile.lock
 */poetry.lock
 */Pipfile.lock
-*/go.sum
 */composer.lock
 */LICENSE
 */LICENSE.md
