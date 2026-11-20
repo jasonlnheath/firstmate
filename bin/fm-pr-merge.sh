@@ -458,6 +458,7 @@ fm_backlog_directory_present "$STATE" "state directory" || {
   exit 1
 }
 META="$STATE/$ID.meta"
+FM_PROJECT_DIR=$(grep '^project=' "$META" 2>/dev/null | cut -d= -f2- || true)
 
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
@@ -1729,16 +1730,17 @@ fm_pr_merge_content_gate() {
   # that the rest of this script uses.
   case "$provider" in
     github)
-      gh pr diff "$URL" --name-only 2>/dev/null > "$diff_file" || {
+      if ! gh pr diff "$URL" --name-only 2>/dev/null > "$diff_file"; then
         # Fallback: try with explicit repo
-        gh pr diff "$PR_NUMBER" --repo "$FM_PR_PATH" --name-only 2>/dev/null > "$diff_file" || {
+        if ! gh pr diff "$PR_NUMBER" --repo "$FM_PR_PATH" --name-only 2>/dev/null > "$diff_file"; then
           rm -f "$diff_file"
           return 1
-        }
-      }
-      ;;
+        fi
+      fi ;;
     gitlab)
-      GITLAB_HOST="$FM_PR_HOST" glab mr diffs "$PR_NUMBER" -R "$PROJECT_URL" --name-only 2>/dev/null > "$diff_file" || {
+      # glab has no 'mr diffs' subcommand; use the API to get changed file names
+      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$PROJECT_URL/repository/merge_requests/$PR_NUMBER/diffs" -F json 2>/dev/null \
+        | jq -r '.diffs[].new_path // empty' 2>/dev/null > "$diff_file" || {
         rm -f "$diff_file"
         return 1
       }
@@ -1761,7 +1763,7 @@ fm_pr_merge_content_gate() {
   local matched_paths
   matched_paths=""
   gate_rc=0
-  matched_paths=$(fm_protected_paths_check "$diff_file" "") || gate_rc=$?
+  matched_paths=$(fm_protected_paths_check "$diff_file" "${FM_PROJECT_DIR:-}") || gate_rc=$?
   # Return code 3 means missing config (fail-closed for security gate)
   if [ "$gate_rc" -eq 3 ]; then
     rm -f "$diff_file"
