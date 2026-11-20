@@ -6,7 +6,7 @@ name: CI diagnostics probe
 # this branch only; removed before the fix ships.
 
 on:
-  workflow_dispatch: {}
+  pull_request: {}
 
 permissions:
   contents: read
