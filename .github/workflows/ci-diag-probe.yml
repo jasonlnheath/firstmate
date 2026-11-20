@@ -1,0 +1,133 @@
+name: CI diagnostics probe
+
+# Throwaway diagnostic lane for the ci-suite-green task: runs targeted probes
+# against the hosted ubuntu-latest environment for the deterministic failures
+# seen in the serial test lanes. Dispatched by hand with workflow_dispatch on
+# this branch only; removed before the fix ships.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-diag-probe-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Hosted VM probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Environment fingerprint
+        run: |
+          set -u
+          echo "bash: $BASH_VERSION $(bash --version | head -1)"
+          echo "timeout: $(timeout --version | head -1)"
+          echo "ps: $(ps --version 2>&1 | head -1)"
+          echo "node: $(node --version 2>&1)"
+          echo "uname: $(uname -a)"
+          echo "pid_max: $(cat /proc/sys/kernel/pid_max)"
+          ulimit -a || true
+
+      - name: Probe 1 - closed-stdout write behavior (public-followup family)
+        run: |
+          set -u
+          d=$(mktemp -d)
+          printf 'sentinel\n' > "$d/ro"
+          # A command whose stdout is closed, which then opens files: on a
+          # fresh process the first open() can claim fd 1, silently turning
+          # the next >&1 write into a write into that file.
+          bash -c '
+            printf "line-1-to-nowhere\n" >&1
+            printf "fallback-marker\n" > "'"$d"'/first-open.txt"
+            exec 1>/dev/null
+          ' >&- 2>"$d/err.txt"
+          rc=$?
+          echo "rc=$rc"
+          echo "stderr:"; cat "$d/err.txt"
+          echo "first-open.txt exists: $([ -e "$d/first-open.txt" ] && echo yes || echo no)"
+          echo "first-open.txt content:"; cat "$d/first-open.txt" 2>/dev/null || true
+          # The exact firstmate shape: a script that appends its wake to fd 1
+          # after opening state files, run with stdout closed.
+          cat > "$d/poll.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -u
+          state=$(mktemp)
+          printf 'x' > "$state"
+          exec 9<"$state"
+          printf 'wake-line\n' >&1 || echo "write-to-fd1-failed" >&2
+          SH
+          chmod +x "$d/poll.sh"
+          out=$(bash "$d/poll.sh" >&- 2>&1); rc=$?
+          echo "poll-fd1-closed rc=$rc out=[$out]"
+
+      - name: Probe 2 - quiet checkpoint kill chain (watch-checkpoint family)
+        run: |
+          set -u
+          d=$(mktemp -d)
+          home="$d/home"
+          mkdir -p "$home/state" "$home/data" "$home/config"
+          command -v strace >/dev/null && echo "strace present" || echo "strace MISSING"
+          # Exact quiet checkpoint invocation from tests/fm-watch-checkpoint.test.sh.
+          set +e
+          if command -v strace >/dev/null; then
+            strace -f -e trace=kill,tkill,tgkill,exit_group -o "$d/strace.log" \
+              env FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
+              bash bin/fm-watch-checkpoint.sh --seconds 1 >"$d/out.txt" 2>"$d/err.txt"
+          else
+            env FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
+              bash bin/fm-watch-checkpoint.sh --seconds 1 >"$d/out.txt" 2>"$d/err.txt"
+          fi
+          rc=$?
+          set -e
+          echo "checkpoint rc=$rc (124 expected)"
+          echo "--- out:"; cat "$d/out.txt"
+          echo "--- err:"; cat "$d/err.txt"
+          if [ -f "$d/strace.log" ]; then
+            echo "--- kill calls (last 40):"
+            grep -E 'kill|tgkill|tkill' "$d/strace.log" | tail -40 || true
+            echo "--- exit_group by pid (last 20):"
+            grep -E 'exit_group' "$d/strace.log" | tail -20 || true
+          fi
+
+      - name: Probe 3 - start_shell_tree ps scan (backend-rex family)
+        run: |
+          set -u
+          d=$(mktemp -d)
+          mkdir -p "$d/tree"
+          ln -sf "$(command -v sleep)" "$d/tree/claude"
+          cat > "$d/tree/wrapper" <<'SH'
+          #!/usr/bin/env bash
+          "$1" "$2"
+          exit $?
+          SH
+          chmod +x "$d/tree/wrapper"
+          bash -c '"$1" "$2" "$3" & wait' root "$d/tree/wrapper" "$d/tree/claude" 120 >/dev/null 2>&1 &
+          TREE_ROOT=$!
+          i=0; TREE_LEAF=
+          while [ -z "$TREE_LEAF" ] && [ "$i" -lt 50 ]; do
+            TREE_LEAF=$(ps -axo pid=,args= | awk -v p="$d/tree/claude" '$2 == p { print $1; exit }')
+            [ -n "$TREE_LEAF" ] || sleep 0.1
+            i=$((i + 1))
+          done
+          echo "TREE_LEAF=$TREE_LEAF after $i polls (nonempty expected)"
+          echo "--- ps sample of tree processes:"
+          ps -axo pid=,args= | grep -F "$d/tree" || true
+          echo "--- leaf process identity:"
+          [ -n "$TREE_LEAF" ] && ps -o pid=,pgid=,comm=,args= -p "$TREE_LEAF" || true
+          echo "--- root tree identity:"
+          ps -o pid=,pgid=,comm=,args= -p "$TREE_ROOT" || true
+          kill -KILL -- "-$TREE_ROOT" 2>/dev/null || true
+
+      - name: Probe 4 - Pi package version currently resolved by latest
+        run: |
+          set -u
+          npm install -g @earendil-works/pi-coding-agent >/dev/null 2>&1
+          npm ls -g --depth 0 @earendil-works/pi-coding-agent
+          pi --version 2>&1 | head -2 || true
