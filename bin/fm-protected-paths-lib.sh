@@ -136,10 +136,11 @@ fm_protected_paths_check_diff() {
 }
 
 # Second-look verdict storage:
-#   Verdicts live in state/<task-id>/.second-look/<pr-number>.verdict
+#   Verdicts live in state/<task-id>/.second-look/<pr-number>/current.verdict
 #   Format:
 #     verdict=<clean|defect|unsure>
 #     head=<commit-sha>
+#   Local-only merges use pr-number=0.
 #     time=<unix-epoch>
 #     defect_reason=<free text, single line>
 

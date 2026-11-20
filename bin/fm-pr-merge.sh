@@ -1743,19 +1743,35 @@ fm_pr_merge_content_gate() {
       # where :id is the URL-encoded project path (owner%2Frepo)
       local encoded_path
       encoded_path=$(printf '%s' "$FM_PR_PATH" | sed 's|/|%2F|g')
-      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" -F json 2>/dev/null \
+      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" -f json 2>/dev/null \
         | jq -r '.diffs[].new_path // empty' 2>/dev/null > "$diff_file" || {
         rm -f "$diff_file"
         return 1
       }
       ;;
     forgejo)
-      tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+      # Use a subshell to capture tea's exit status; jq on empty input
+      # exits 0, so we must not let it mask a tea failure.
+      if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
         "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" 2>/dev/null \
-        | jq -r '.[].filename // empty' 2>/dev/null > "$diff_file" || {
-        rm -f "$diff_file"
-        return 1
-      }
+        | jq -r '.[].filename // empty' 2>/dev/null > "$diff_file"; then
+        # Check if the pipe failed (tea failure) vs jq failure
+        # In a pipe, the last command's status is the pipe's status.
+        # If jq succeeded but tea failed, diff_file may be empty.
+        # Use a temp file to capture tea output and check its exit.
+        local _forgejo_tmp
+        _forgejo_tmp=$(mktemp 2>/dev/null || echo /dev/null)
+        if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+          "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" > "$_forgejo_tmp" 2>/dev/null; then
+          rm -f "$diff_file" "$_forgejo_tmp"
+          return 1
+        fi
+        jq -r '.[].filename // empty' 2>/dev/null < "$_forgejo_tmp" > "$diff_file" || {
+          rm -f "$diff_file" "$_forgejo_tmp"
+          return 1
+        }
+        rm -f "$_forgejo_tmp"
+      fi
       ;;
     *)
       rm -f "$diff_file"

@@ -3216,6 +3216,7 @@ An `unsure` or `defect` verdict "sticks" for any future head of the same PR chai
 **Verdict persistence:**
 
 - Verdicts are stored durably in `state/<task-id>/.second-look/<pr-number>/`.
+- For local-only merges, the pr-number is always `0` (i.e., `state/<task-id>/.second-look/0/current.verdict`).
 - An `unsure` verdict sticks until a `clean` verdict clears it.
 - A `defect` verdict sticks until a `clean` verdict clears it.
 - A `clean` verdict clears the slate for future heads.
