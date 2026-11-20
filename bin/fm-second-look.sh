@@ -63,14 +63,14 @@ done
 [ -n "$PR_URL" ]  || { echo "error: --pr-url is required" >&2; exit 2; }
 [ -n "$HEAD_SHA" ] || { echo "error: --head is required" >&2; exit 2; }
 
-# Derive PR number from URL for verdict directory
+# Derive PR number from URL using the same parser as the merge gate
 PR_NUMBER=""
-if echo "$PR_URL" | grep -q 'github.com'; then
-  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'pull/(\d+)' | grep -oP '\d+')
-elif echo "$PR_URL" | grep -q 'gitlab.com\|gitlab\.example'; then
-  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'merge_requests/(\d+)' | grep -oP '\d+')
+if echo "$PR_URL" | grep -q 'github.com\|github\.com\.'; then
+  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'pull/(\d+)' | grep -oP '\d+' || true)
+elif echo "$PR_URL" | grep -q 'gitlab'; then
+  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'merge_requests/(\d+)' | grep -oP '\d+' || true)
 elif echo "$PR_URL" | grep -q 'forgejo\|gitea'; then
-  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'pulls/(\d+)' | grep -oP '\d+')
+  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'pulls/(\d+)' | grep -oP '\d+' || true)
 fi
 
 if [ -z "$PR_NUMBER" ]; then
@@ -81,25 +81,37 @@ VERDICT_DIR=$(fm_second_look_verdict_dir "$STATE" "$TASK_ID" "$PR_NUMBER")
 
 # Check if a verdict already exists and sticks
 EXISTING_VERDICT=""
+EXISTING_HEAD=""
 if [ -f "$VERDICT_DIR/current.verdict" ]; then
   EXISTING_VERDICT=$(fm_second_look_read_verdict "$VERDICT_DIR")
+  # Read the head that the verdict was recorded for
+  EXISTING_HEAD=$(grep '^head=' "$VERDICT_DIR/current.verdict" 2>/dev/null | cut -d= -f2- || true)
 fi
 
+# If a verdict exists, check if it applies to the current head
 if [ -n "$EXISTING_VERDICT" ]; then
-  case "$EXISTING_VERDICT" in
-    clean)
-      # Already clean - no need for another review
-      echo "clean"
-      exit 0
-      ;;
-    defect|unsure)
-      # Verdict sticks - report it
-      STUCK_REASON=$(fm_second_look_get_stuck_reason "$VERDICT_DIR")
-      echo "$EXISTING_VERDICT"
-      echo "BLOCKED: $STUCK_REASON" >&2
-      exit 1
-      ;;
-  esac
+  # If we have a --head argument, compare it to the stored head
+  if [ -n "$HEAD_SHA" ]; then
+    if [ -z "$EXISTING_HEAD" ] || [ "$EXISTING_HEAD" != "$HEAD_SHA" ]; then
+      # Verdict is for a different head (or no head recorded) - treat as absent
+      EXISTING_VERDICT=""
+    fi
+  fi
+  # If no --head was provided, use the verdict as-is (backward compatible)
+  if [ -n "$EXISTING_VERDICT" ]; then
+    case "$EXISTING_VERDICT" in
+      clean)
+        echo "clean"
+        exit 0
+        ;;
+      defect|unsure)
+        STUCK_REASON=$(fm_second_look_get_stuck_reason "$VERDICT_DIR")
+        echo "$EXISTING_VERDICT"
+        echo "BLOCKED: $STUCK_REASON" >&2
+        exit 1
+        ;;
+    esac
+  fi
 fi
 
 # Build the adversarial brief for the reviewer agent

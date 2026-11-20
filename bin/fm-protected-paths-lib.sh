@@ -19,15 +19,24 @@
 #   If <project-dir-or-empty> is a non-empty directory, reads its
 #   config/protected-paths (per-project override). Otherwise reads the
 #   global config/protected-paths.
-#   Returns 0 on success, 2 if neither file exists (missing config).
+#   Returns 0 on success, 2 if neither file exists (missing config),
+#   3 if the file exists but contains no non-comment, non-empty lines.
+_fm_pp_list_rc=0
 fm_protected_paths_list() {
+  _fm_pp_list_rc=0
   local proj_dir="${1:-}"
   local paths_file
 
   if [ -n "$proj_dir" ] && [ -d "$proj_dir" ]; then
     paths_file="$proj_dir/config/protected-paths"
     if [ -f "$paths_file" ] && [ ! -L "$paths_file" ]; then
-      cat "$paths_file" | grep -v '^\s*#' | grep -v '^\s*$'
+      local filtered
+      filtered=$(cat "$paths_file" | grep -v '^\s*#' | grep -v '^\s*$' || true)
+      if [ -z "$filtered" ]; then
+        _fm_pp_list_rc=3
+        return 3
+      fi
+      printf '%s\n' "$filtered"
       return 0
     fi
   fi
@@ -35,7 +44,13 @@ fm_protected_paths_list() {
   # Fall back to global list
   paths_file="$FM_ROOT/config/protected-paths"
   if [ -f "$paths_file" ] && [ ! -L "$paths_file" ]; then
-    cat "$paths_file" | grep -v '^\s*#' | grep -v '^\s*$'
+    local filtered
+    filtered=$(cat "$paths_file" | grep -v '^\s*#' | grep -v '^\s*$' || true)
+    if [ -z "$filtered" ]; then
+      _fm_pp_list_rc=3
+      return 3
+    fi
+    printf '%s\n' "$filtered"
     return 0
   fi
 
@@ -56,6 +71,8 @@ fm_protected_paths_check() {
   patterns=$(fm_protected_paths_list "$proj_dir") || list_rc=$?
   # Return code 2 means missing config (fail-closed for security gate)
   [ "$list_rc" -eq 2 ] && return 3
+  # Return code 3 means config exists but is empty (fail-closed for security gate)
+  [ "$list_rc" -eq 3 ] && return 3
   [ "$list_rc" -eq 1 ] && return 1
 
   while IFS= read -r path; do
