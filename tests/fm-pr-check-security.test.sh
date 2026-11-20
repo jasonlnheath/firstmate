@@ -163,7 +163,17 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "{\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"reviewDecision\":\"APPROVED\"}"
         exit 0
         ;;
+      *baseRefName,headRefOid*)
+        # The merge-content gate reads base and head as one JSON record.
+        printf '%s\n' "{\"baseRefName\":\"main\",\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\"}"
+        exit 0
+        ;;
     esac
+    ;;
+  "pr diff")
+    # The merge-content gate reads the changed-path list; the fixture PR
+    # touches no protected path, so the list is empty.
+    exit 0
     ;;
   "pr merge")
     [ -z "${FM_TEST_GH_MERGE_HOOK:-}" ] || "$FM_TEST_GH_MERGE_HOOK"

@@ -117,8 +117,17 @@ case "${1:-} ${2:-}" in
       *statusCheckRollup*)
         printf '%s\n' '{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}'
         ;;
+      *baseRefName,headRefOid*)
+        # The merge-content gate reads base and head as one JSON record.
+        printf '%s\n' '{"baseRefName":"main","headRefOid":"1111111111111111111111111111111111111111"}'
+        ;;
+      *" -q "*) printf '%s\n' 1111111111111111111111111111111111111111 ;;
       *headRefOid*) printf '%s\n' 1111111111111111111111111111111111111111 ;;
     esac
+    ;;
+  "pr diff")
+    # The merge-content gate reads the changed-path list; the fixture PR
+    # touches no protected path, so the list is empty.
     ;;
   "pr merge") printf 'merged:\n  number: %s\n  status: ok\n' "${3:-}" ;;
   "api graphql")

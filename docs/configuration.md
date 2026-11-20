@@ -3142,19 +3142,19 @@ Three lessons from the AutoCraft deep study were implemented in firstmate's merg
 
 ### Lesson 1: Merge-content gates (protected paths)
 
-Protected paths are defined in `config/protected-paths` (global) or `config/protected-paths` in a project's own worktree (per-project override replaces the global list entirely). Files matching any of these patterns trigger a merge-content gate: they cannot be auto-merged under yolo without a recorded second-look verdict.
+Protected paths resolve in exactly two steps. The tracked default list ships at `bin/fm-protected-paths.default` and carries the adopted classes below. A project may replace it entirely with its own `<project>/config/protected-paths`; a present-but-empty override disarms the gate, and every merge in that project is refused until the list is restored. Files matching any pattern trigger a merge-content gate: they cannot be auto-merged under yolo without a recorded second-look verdict.
 
-**Protected file classes:**
+**Default protected file classes** (`bin/fm-protected-paths.default`):
 
 | Class | Examples |
 |-------|----------|
-| CI / workflow configuration | `.github/workflows/*.yml`, `.gitlab-ci.yml`, `Jenkinsfile`, `Dockerfile`, `docker-compose*.yml`, `Makefile`, `CMakeLists.txt`, `package.json`, `go.mod`, `go.sum`, `Cargo.toml`, `Cargo.lock`, `Gemfile.lock`, `poetry.lock`, `requirements.txt`, `Pipfile.lock`, `pyproject.toml`, `setup.py`, `setup.cfg`, `tox.ini` |
-| Agent instruction files | `AGENTS.md`, `CLAUDE.md`, `AGENTS.txt`, `CLAUDE.txt` |
-| Lockfiles | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Gemfile.lock`, `poetry.lock`, `Pipfile.lock`, `go.sum`, `composer.lock` |
-| Brand / documentation | `README.md`, `README.rst`, `README.txt`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE`, `SECURITY.md`, `CHANGELOG.md` |
-| Submodule / symlink / mode changes | `.gitmodules`, `.gitmodules.bak` |
-| Executable scripts | `*.sh`, `*.bash`, `*.py`, `*.pl`, `*.rb`, `*.ts`, `*.js` |
-| Binary files | `*.bin`, `*.exe`, `*.dll`, `*.so`, `*.dylib`, `*.o`, `*.a`, `*.lib`, `*.jar`, `*.war`, `*.ear`, `*.zip`, `*.tar`, `*.tar.gz`, `*.tgz`, `*.dmg`, `*.iso`, `*.pkg`, `*.deb`, `*.rpm`, `*.whl`, `*.nupkg`, `*.msi` |
+| CI / workflow configuration | `.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.circleci/config.yml`, `.travis.yml`, `.drone.yml`, `cloudbuild.yaml` (each with a nested `*/` variant) |
+| Agent instruction files | `AGENTS.md`, `CLAUDE.md` (with nested variants) |
+| Lockfiles | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Gemfile.lock`, `poetry.lock`, `Pipfile.lock`, `composer.lock`, `go.sum`, `bun.lockb`, `deno.lock`, `flake.lock`, `uv.lock`, and more (with nested variants) |
+| Submodule pointers | `.gitmodules` (with nested variants) |
+| Binaries | `*.bin`, `*.exe`, `*.dll`, `*.so`, `*.dylib`, `*.jar`, `*.zip`, `*.tar.gz`, `*.dmg`, `*.deb`, `*.whl`, `*.AppImage`, and more (with nested variants) |
+
+Mode changes on executable scripts are gated by review policy rather than this list: a name-based gate cannot see the executable bit. A home may extend coverage through a project's own `config/protected-paths` override, which replaces the default list for that project.
 
 **Gate behavior:**
 

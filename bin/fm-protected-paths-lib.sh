@@ -1,38 +1,44 @@
+#!/usr/bin/env bash
 # fm-protected-paths-lib.sh - merge-content gate helpers (Lesson 1 from AutoCraft)
 #
 # This library provides:
-#   1. Reading the protected-path list (global + per-project override)
+#   1. Reading the protected-path list (tracked default + per-project override)
 #   2. Checking a set of diff paths against the protected list
 #   3. Reading/writing second-look verdicts for merge gating
 #
-# The protected-path list is in config/protected-paths (global) and
-# optionally config/protected-paths in a project's worktree (per-project override).
-# When a project has its own file, it replaces the global list entirely.
+# The protected-path list resolves in exactly two steps:
+#   1. <project>/config/protected-paths - a project's own list; when present it
+#      replaces the tracked default entirely. A present-but-empty file disarms
+#      the gate, so every merge in that project is refused until the list is
+#      restored (fail-closed).
+#   2. bin/fm-protected-paths.default - the tracked default list this repo
+#      maintains, carrying the adopted classes (CI/workflow configuration,
+#      agent-instruction files, lockfiles, submodule pointers, binaries).
+# An absent default is a broken installation and is also fail-closed.
 #
 # Second-look verdicts are stored in state/<task-id>/.second-look/<pr-number>/current.verdict
 # with the format: verdict=<clean|defect|unsure> head=<commit-sha> time=<epoch>
-# An unsure verdict "sticks" for any future head of the same PR chain until a
-# clean verdict is recorded.
+# A verdict is bound to the head it reviewed: the merge gates compare the stored
+# head against the current head, and a verdict for another head is treated as
+# absent, so a new commit can never inherit an old clean verdict.
 
 # fm_protected_paths_list <project-dir-or-empty>:
 #   Prints one glob pattern per line to stdout.
-#   If <project-dir-or-empty> is a non-empty directory, reads its
-#   config/protected-paths (per-project override). Otherwise reads the
-#   global config/protected-paths.
-#   Returns 0 on success, 2 if neither file exists (missing config),
-#   3 if the file exists but contains no non-comment, non-empty lines.
+#   If <project-dir-or-empty> is a non-empty directory carrying its own
+#   config/protected-paths, that per-project list replaces the default.
+#   Otherwise the tracked default bin/fm-protected-paths.default is printed.
+#   Returns 0 on success, 2 if no list file exists (broken installation),
+#   3 if the resolved file exists but contains no non-comment, non-empty lines
+#   (a deliberately disarmed gate; callers refuse the merge).
 fm_protected_paths_list() {
-  _fm_pp_list_rc=0
   local proj_dir="${1:-}"
-  local paths_file
+  local paths_file filtered
 
   if [ -n "$proj_dir" ] && [ -d "$proj_dir" ]; then
     paths_file="$proj_dir/config/protected-paths"
     if [ -f "$paths_file" ] && [ ! -L "$paths_file" ]; then
-      local filtered
-      filtered=$(cat "$paths_file" | grep -v '^\s*#' | grep -v '^\s*$' || true)
+      filtered=$(grep -v '^[[:space:]]*#' "$paths_file" | grep -v '^[[:space:]]*$' || true)
       if [ -z "$filtered" ]; then
-        _fm_pp_list_rc=3
         return 3
       fi
       printf '%s\n' "$filtered"
@@ -40,13 +46,15 @@ fm_protected_paths_list() {
     fi
   fi
 
-  # Fall back to global list
-  paths_file="$FM_ROOT/config/protected-paths"
+  # Tracked default list ships with the repo, next to this library in bin/.
+  # Resolve it from the library's own directory so a fabricated or alternate
+  # FM_ROOT cannot strand the gate without its list.
+  local lib_dir
+  lib_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) 2>/dev/null || lib_dir=$FM_ROOT
+  paths_file="$lib_dir/fm-protected-paths.default"
   if [ -f "$paths_file" ] && [ ! -L "$paths_file" ]; then
-    local filtered
-    filtered=$(cat "$paths_file" | grep -v '^\s*#' | grep -v '^\s*$' || true)
+    filtered=$(grep -v '^[[:space:]]*#' "$paths_file" | grep -v '^[[:space:]]*$' || true)
     if [ -z "$filtered" ]; then
-      _fm_pp_list_rc=3
       return 3
     fi
     printf '%s\n' "$filtered"
@@ -68,15 +76,16 @@ fm_protected_paths_check() {
   local list_rc=0
 
   patterns=$(fm_protected_paths_list "$proj_dir") || list_rc=$?
-  # Return code 2 means missing config (fail-closed for security gate)
+  # Return code 2 means no list file exists anywhere (broken installation):
+  # refuse rather than merge unguarded.
   [ "$list_rc" -eq 2 ] && return 3
-  # Return code 3 means config exists but is empty (fail-closed for security gate)
+  # Return code 3 means the resolved file exists but is empty (a deliberately
+  # disarmed gate): refuse rather than merge unguarded.
   [ "$list_rc" -eq 3 ] && return 3
   [ "$list_rc" -eq 1 ] && return 1
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    # Skip paths that are only added (not modified/deleted) - we gate on changes to existing files
     # Check against each pattern
     while IFS= read -r pattern; do
       [ -n "$pattern" ] || continue
