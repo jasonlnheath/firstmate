@@ -3164,7 +3164,7 @@ Protected paths are defined in `config/protected-paths` (global) or `config/prot
   - **Verdict is `clean`**: merge proceeds.
   - **Verdict is `defect` or `unsure`**: merge is refused; the reason is printed.
 
-**Second-look verdicts** are stored in `state/<task-id>/.second-look/<pr-number>.verdict` with the format:
+**Second-look verdicts** are stored in `state/<task-id>/.second-look/<pr-number>/current.verdict` with the format:
 
 ```
 verdict=<clean|defect|unsure>
@@ -3195,11 +3195,12 @@ An `unsure` or `defect` verdict "sticks" for any future head of the same PR chai
 
 **How it works:**
 
-1. The merge gate (in `fm-pr-merge.sh` or `fm-merge-local.sh`) detects that protected paths are touched.
-2. It calls `bin/fm-second-look.sh --task-id <id> --pr-url <url> --head <sha>`.
-3. Firstmate spawns an independent crewmate with an adversarial brief that instructs the agent to find reasons NOT to land the change.
-4. The agent produces a verdict file at `state/<task-id>/.second-look/<pr-number>.verdict`.
-5. The merge gate reads the verdict and applies the gate logic.
+1. The merge gate (in `fm-pr-merge.sh` or `fm-merge-local.sh`) detects that protected paths are touched and yolo is on.
+2. It checks for an existing second-look verdict in `state/<task-id>/.second-look/<pr-number>/current.verdict`.
+3. If no verdict exists, the merge is refused and the captain is notified.
+4. The captain (or an operator) runs `bin/fm-second-look.sh --task-id <id> --pr-url <url> --head <sha>` to spawn an independent reviewer.
+5. The reviewer produces a verdict file at `state/<task-id>/.second-look/<pr-number>/current.verdict`.
+6. The merge gate reads the verdict and applies the gate logic.
 
 **The adversarial brief** instructs the reviewer to look for:
 - Bugs that existing tests miss (edge cases, off-by-one, null/empty handling)
@@ -3237,9 +3238,10 @@ Before posting any public reply through the relay (X or Discord), firstmate veri
 
 **Defense in depth:**
 
-- The gate runs in `bin/fm-public-followup.sh deliver` (before `begin-delivery`).
-- The gate also runs in `bin/fm-x-reply.sh` (before the actual POST to the relay).
-- Both gates use the same consent hash file, so even if the text is altered between the two points, the second gate will catch it.
+- The gate runs in `bin/fm-public-followup.sh deliver` (before `begin-delivery`), keyed by obligation ID.
+- The gate also runs in `bin/fm-x-reply.sh` (before the actual POST to the relay), keyed by relay request ID.
+- Both gates independently verify the reply text before posting, providing layered protection.
+- A present-but-empty or unreadable consent hash file is treated as a refusal (fail-closed), not as a skip.
 
 **Captain workflow for approving text:**
 

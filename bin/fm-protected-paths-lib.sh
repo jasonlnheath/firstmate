@@ -19,7 +19,7 @@
 #   If <project-dir-or-empty> is a non-empty directory, reads its
 #   config/protected-paths (per-project override). Otherwise reads the
 #   global config/protected-paths.
-#   Returns 0 on success, 1 if neither file exists.
+#   Returns 0 on success, 2 if neither file exists (missing config).
 fm_protected_paths_list() {
   local proj_dir="${1:-}"
   local paths_file
@@ -39,7 +39,7 @@ fm_protected_paths_list() {
     return 0
   fi
 
-  return 1
+  return 2
 }
 
 # fm_protected_paths_check <diff-paths-file> <project-dir-or-empty>:
@@ -51,8 +51,12 @@ fm_protected_paths_check() {
   local proj_dir="${2:-}"
   local patterns
   local matched=()
+  local list_rc=0
 
-  patterns=$(fm_protected_paths_list "$proj_dir") || return 1
+  patterns=$(fm_protected_paths_list "$proj_dir") || list_rc=$?
+  # Return code 2 means missing config (fail-closed for security gate)
+  [ "$list_rc" -eq 2 ] && return 3
+  [ "$list_rc" -eq 1 ] && return 1
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue

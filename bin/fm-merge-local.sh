@@ -152,7 +152,10 @@ git -C "$PROJ" diff --name-only "$DEFAULT".."$BRANCH" > "$local_diff_file" 2>/de
 }
 
 # Check if any paths are protected
-matched_paths=$(fm_protected_paths_check "$local_diff_file" "${FM_PROJECT_DIR:-}") || {
+matched_paths=$(fm_protected_paths_check "$local_diff_file" "") || {
+  local rc=$?
+  # Return code 3 means missing config (fail-closed for security gate)
+  [ "$rc" -eq 3 ] && { rm -f "$local_diff_file"; exit 1; }
   # No protected paths matched - gate passes
   rm -f "$local_diff_file"
   matched_paths=""
@@ -162,9 +165,12 @@ if [ -n "$matched_paths" ]; then
   # Protected paths were touched. Check for a second-look verdict.
   rm -f "$local_diff_file"
 
-  # For local merges, yolo is determined by the task's merge authority.
+  # For local merges, yolo is determined by the task's merge posture.
   # Read from the meta file.
-  local yolo="${FM_MERGE_AUTHORITY:-}"
+  yolo="off"
+  if [ -f "$META" ]; then
+    yolo=$(grep '^yolo=' "$META" | tail -1 | cut -d= -f2- || true)
+  fi
   if [ "$yolo" != "yolo" ]; then
     # Yolo is off - merge always escalates to captain
     printf 'merge-content gate: yolo is off, protected paths touched: %s\n' "$matched_paths" >&2

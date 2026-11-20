@@ -1266,7 +1266,12 @@ cmd_deliver() {
   consent_file="$consent_dir/$id.hash"
   if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
     stored_hash=$(cat "$consent_file" 2>/dev/null)
-    if [ -n "$stored_hash" ] && [ "$stored_hash" != "$hash" ]; then
+    # A present-but-empty or unreadable hash file disarms the gate:
+    # the captain believes it is armed while any text posts. Treat as refusal.
+    if [ -z "$stored_hash" ]; then
+      die "exact-text consent gate: the consent hash file for obligation '$id' is present but empty or unreadable; the gate cannot be verified. Record the approved hash in $consent_file before retrying."
+    fi
+    if [ "$stored_hash" != "$hash" ]; then
       die "exact-text consent gate: the reply text hash ($hash) does not match the approved hash ($stored_hash) for obligation '$id'; the text has changed since approval. Record the approved hash in $consent_file before retrying."
     fi
   fi
