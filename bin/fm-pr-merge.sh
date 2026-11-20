@@ -1659,14 +1659,14 @@ record_pr_metadata || exit 1
 require_released_captain_hold || exit 1
 
 # ---- Merge-content gate (Lesson 1 from AutoCraft deep study) ----
-# Protected paths are defined in config/protected-paths (global) or the
-# project's own config/protected-paths (per-project override, replaces
-# the global list entirely). A protected-path touch requires a second-look
+# Protected paths are defined in the tracked bin/fm-protected-paths.default
+# or the project's own config/protected-paths (per-project override, replaces
+# the default list entirely). A protected-path touch requires a second-look
 # verdict of clean before yolo auto-merge may proceed.
 #
-# The gate runs before the forge command (it self-fetches base/head
+# The gate runs before the forge command (it self-fetches the head
 # from the PR, so it does not depend on mergeability verification). It:
-#   1. Gets the diff between base and head
+#   1. Gets the pull request's changed-path list
 #   2. Checks if any paths match protected patterns
 #   3. If yes, checks for a second-look verdict
 #   4. If no verdict or verdict is defect/unsure, refuses the merge
@@ -1687,21 +1687,16 @@ fm_pr_merge_content_gate() {
   local diff_file
   diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-diff.XXXXXX") || return 1
 
-  # Get the base branch and head commit from the PR info directly.
+  # Get the head commit from the PR info directly.
   # The gate runs before the provider-specific merge commands, so
-  # FM_PR_MERGE_HEAD and FM_PR_GITHUB_BASE are not yet set. An unreadable read
+  # FM_PR_MERGE_HEAD is not yet set. An unreadable read
   # is refused with the same message the verify step would print, so the
   # refusal names the unreadable state rather than only the gate.
-  local base_branch head_commit provider="$PROVIDER"
+  local head_commit provider="$PROVIDER"
   case "$provider" in
     github)
       local pr_json
-      pr_json=$(gh pr view "$URL" --json baseRefName,headRefOid 2>/dev/null) || {
-        rm -f "$diff_file"
-        echo "error: could not read the GitHub pull request state before merging" >&2
-        return 1
-      }
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.baseRefName // empty' 2>/dev/null) || {
+      pr_json=$(gh pr view "$URL" --json headRefOid 2>/dev/null) || {
         rm -f "$diff_file"
         echo "error: could not read the GitHub pull request state before merging" >&2
         return 1
@@ -1715,11 +1710,6 @@ fm_pr_merge_content_gate() {
     gitlab)
       local pr_json
       pr_json=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null) || {
-        rm -f "$diff_file"
-        echo "error: could not read the GitLab merge request state before merging" >&2
-        return 1
-      }
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.target_branch // empty' 2>/dev/null) || {
         rm -f "$diff_file"
         echo "error: could not read the GitLab merge request state before merging" >&2
         return 1
@@ -1738,11 +1728,6 @@ fm_pr_merge_content_gate() {
         echo "error: could not read the Forgejo pull request state before merging" >&2
         return 1
       }
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.base.ref // empty' 2>/dev/null) || {
-        rm -f "$diff_file"
-        echo "error: could not read the Forgejo pull request state before merging" >&2
-        return 1
-      }
       head_commit=$(printf '%s' "$pr_json" | jq -r '.head.sha // empty' 2>/dev/null) || {
         rm -f "$diff_file"
         echo "error: could not read the Forgejo pull request state before merging" >&2
@@ -1756,9 +1741,9 @@ fm_pr_merge_content_gate() {
       ;;
   esac
 
-  if [ -z "$base_branch" ] || [ -z "$head_commit" ]; then
-    # Cannot determine the diff range; the gate cannot evaluate and refuses
-    # rather than merging unguarded.
+  if [ -z "$head_commit" ]; then
+    # Cannot bind a second-look verdict to the head being merged; the gate
+    # cannot evaluate and refuses rather than merging unguarded.
     rm -f "$diff_file"
     case "$provider" in
       github) echo "error: could not read the GitHub pull request state before merging" >&2 ;;

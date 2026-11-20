@@ -31,6 +31,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 # shellcheck source=bin/fm-protected-paths-lib.sh
 . "$SCRIPT_DIR/fm-protected-paths-lib.sh"
+# shellcheck source=bin/fm-pr-lib.sh
+. "$SCRIPT_DIR/fm-pr-lib.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -64,13 +66,11 @@ done
 [ -n "$HEAD_SHA" ] || { echo "error: --head is required" >&2; exit 2; }
 
 # Derive PR number from URL using the same parser as the merge gate
+# (bin/fm-pr-merge.sh arms FM_PR_NUMBER through fm_pr_url_parse), so the
+# verdict this runner writes lands in the directory the gate reads.
 PR_NUMBER=""
-if echo "$PR_URL" | grep -q 'github.com\|github\.com\.'; then
-  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'pull/(\d+)' | grep -oP '\d+' || true)
-elif echo "$PR_URL" | grep -q 'gitlab'; then
-  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'merge_requests/(\d+)' | grep -oP '\d+' || true)
-elif echo "$PR_URL" | grep -q 'forgejo\|gitea'; then
-  PR_NUMBER=$(echo "$PR_URL" | grep -oP 'pulls/(\d+)' | grep -oP '\d+' || true)
+if fm_pr_url_parse "$PR_URL"; then
+  PR_NUMBER="$FM_PR_NUMBER"
 fi
 
 if [ -z "$PR_NUMBER" ]; then
