@@ -19,7 +19,7 @@ jobs:
   probe:
     name: Hosted VM probes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
@@ -27,67 +27,91 @@ jobs:
       - name: Environment fingerprint
         run: |
           set -u
-          echo "bash: $BASH_VERSION $(bash --version | head -1)"
-          echo "timeout path: $(command -v timeout)"
-          timeout --version | head -2 || true
-          echo "coreutils dpkg:"; dpkg -l 2>/dev/null | grep -E 'coreutils|uutils' || true
-          echo "gnu timeout candidates:"; ls -la /usr/bin/timeout /bin/timeout /usr/bin/timeout.gnu 2>/dev/null || true
+          echo "bash: $BASH_VERSION"
+          echo "timeout: $(timeout --version 2>&1 | head -1)"
+          echo "gnu timeout candidates:"; dpkg -L gnu-coreutils 2>/dev/null | grep -m3 'bin/timeout' || true
           echo "ps: $(ps --version 2>&1 | head -1)"
-          echo "node: $(node --version 2>&1)"
-          echo "uname: $(uname -a)"
+          echo "head: $(head --version 2>&1 | head -1)"
+          echo "sed: $(sed --version 2>&1 | head -1)"
+          echo "mktemp: $(mktemp --version 2>&1 | head -1)"
+          echo "rm: $(rm --version 2>&1 | head -1)"
 
-      - name: Probe 1 - closed-stdout write behavior (public-followup family)
+      - name: Probe 1 - exact-shape closed-stdout replica with fd inspection
         run: |
           set -u
           d=$(mktemp -d)
-          # The exact firstmate shape: a script that writes its wake to fd 1
-          # after opening state files, run with stdout closed, stderr kept.
-          cat > "$d/poll.sh" <<'SH'
+          # The poll's own view of fd 1 under the test's exact redirection
+          # shape, written to an explicitly opened fd so the report survives
+          # the closed stdout.
+          cat > "$d/poll.sh" <<SH
           #!/usr/bin/env bash
           set -u
-          state=$(mktemp)
-          printf 'x' > "$state"
-          exec 9<"$state"
-          read -r _ <"$state" || true
-          printf 'wake-line\n' >&1 || { echo "write-to-fd1-failed rc=$?" >&2; exit 3; }
-          echo "write-to-fd1-succeeded"
+          exec 9>"$d/fdreport.txt"
+          echo "--- /proc/self/fd before write:" >&9
+          ls -l /proc/self/fd >&9 2>&9
+          printf 'wake-line\n' >&1 && echo "WRITE-SUCCEEDED" >&9 || echo "WRITE-FAILED rc=\$?" >&9
           SH
           chmod +x "$d/poll.sh"
-          bash "$d/poll.sh" >&- 2>"$d/err.txt"; rc=$?
-          echo "poll-fd1-closed rc=$rc"
-          echo "stderr:"; cat "$d/err.txt"
-          # Whether an earlier open() could silently claim fd 1 in bash 5.3.
-          cat > "$d/reuse.sh" <<'SH'
-          #!/usr/bin/env bash
-          set -u
-          exec 9>/tmp/probe-reuse-probe.txt
-          printf 'wake-line\n' >&1 || { echo "write-failed" >&2; exit 3; }
-          echo "write-succeeded"
-          SH
-          chmod +x "$d/reuse.sh"
-          bash "$d/reuse.sh" >&- 2>"$d/err2.txt"; rc=$?
-          echo "reuse rc=$rc"
-          cat "$d/err2.txt"
-          [ ! -e /tmp/probe-reuse-probe.txt ] || { echo "REUSE: fd1 was claimed:"; cat /tmp/probe-reuse-probe.txt; rm -f /tmp/probe-reuse-probe.txt; }
+          rc=0; bash "$d/poll.sh" >&- 2>/dev/null || rc=$?
+          echo "exact-shape replica rc=$rc (3 = write failed, 0 = write succeeded)"
+          echo "--- fd report:"; cat "$d/fdreport.txt"
 
-      - name: Probe 2 - uutils timeout signal semantics (watch-checkpoint family)
+      - name: Probe 2 - the real public-followup suite on this VM
         run: |
           set -u
-          # Shape 1: plain sleep under INT timeout - both implementations 124.
-          set +e
-          timeout --signal=INT 1s sleep 30; echo "sleep rc=$?"
-          # Shape 2: a child that traps INT and cleans up for ~2s. GNU timeout
-          # (no kill-after) waits and returns 124 once the child exits; a
-          # reimplementation that escalates to KILL yields 137.
-          timeout --signal=INT 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "trapping-child rc=$?"
-          # Shape 3: identify the implementation in use.
-          if timeout --version 2>&1 | grep -qi 'GNU'; then
-            echo "GNU timeout in use"
-          else
-            echo "uutils timeout in use"
-          fi
+          rc=0; bash tests/fm-public-followup.test.sh > /tmp/pf-suite.log 2>&1 || rc=$?
+          echo "suite rc=$rc"
+          echo "--- failures (if any):"
+          grep -E '^(not ok|FAIL|# fail)' /tmp/pf-suite.log || echo "(none - all ok)"
+          echo "--- the wake-write test line:"
+          grep -n "could not be written" /tmp/pf-suite.log || true
+          echo "--- tail:"; tail -4 /tmp/pf-suite.log
 
-      - name: Probe 3 - the exact quiet checkpoint on the hosted VM
+      - name: Probe 3 - strace of the closed-stdout write (if installable)
+        run: |
+          set -u
+          rc=0; sudo apt-get install -y strace >/dev/null 2>&1 || rc=$?
+          if [ "$rc" -ne 0 ]; then echo "strace unavailable; skipping"; exit 0; fi
+          d=$(mktemp -d)
+          cat > "$d/poll.sh" <<SH
+          #!/usr/bin/env bash
+          set -u
+          printf 'wake-line\n' >&1 && echo "W" > "$d/result" || { echo "F\$?" > "$d/result"; }
+          SH
+          chmod +x "$d/poll.sh"
+          rc=0; strace -f -e trace=openat,dup2,dup3,write,close -o "$d/strace.log" bash "$d/poll.sh" >&- 2>/dev/null || true
+          echo "result: $(cat "$d/result" 2>/dev/null)"
+          echo "--- fd1-related trace lines:"
+          grep -E 'openat|dup' "$d/strace.log" | head -20
+
+      - name: Probe 4 - uutils timeout signal semantics (watch-checkpoint family)
+        run: |
+          set -u
+          set +e
+          echo "shape A - plain sleep, INT at 1s:"
+          timeout --signal=INT 1s sleep 30; echo "  rc=$? (124 expected)"
+          echo "shape B - child traps INT and cleans up ~2s (GNU waits -> 124):"
+          timeout --signal=INT 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "  rc=$? (137 = the CI failure)"
+          echo "shape C - same, kill-after 5s explicit:"
+          timeout --signal=INT --kill-after=5s 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "  rc=$?"
+          echo "shape D - GNU timeout if present:"
+          GNU_T=$(dpkg -L gnu-coreutils 2>/dev/null | grep -m1 'bin/timeout' || true)
+          if [ -n "$GNU_T" ] && [ -x "$GNU_T" ]; then
+            "$GNU_T" --signal=INT 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "  rc=$? (GNU reference)"
+          else
+            echo "  no gnu-coreutils timeout binary found"
+          fi
+          echo "shape E - does uutils put the child in a new process group?"
+          timeout --signal=INT 1s bash -c 'while :; do sleep 0.1; done' & TPID=$!
+          sleep 0.4
+          CH=$(pgrep -P "$TPID" | head -1)
+          if [ -n "$CH" ]; then
+            echo "  timeout pgid: $(ps -o pgid= -p "$TPID" | tr -d ' ')"
+            echo "  child  pgid: $(ps -o pgid= -p "$CH" | tr -d ' ')"
+          fi
+          wait "$TPID" 2>/dev/null || true
+
+      - name: Probe 5 - the real quiet checkpoint on this VM
         run: |
           set -u
           d=$(mktemp -d)
@@ -102,7 +126,7 @@ jobs:
           echo "--- out:"; cat "$d/out.txt"
           echo "--- err:"; cat "$d/err.txt"
 
-      - name: Probe 4 - start_shell_tree ps scan (backend-rex family)
+      - name: Probe 6 - start_shell_tree ps scan (backend-rex family)
         run: |
           set -u
           d=$(mktemp -d)
@@ -126,16 +150,14 @@ jobs:
           echo "--- ps sample of tree processes:"
           # shellcheck disable=SC2009
           ps -axo pid=,args= | grep -F "$d/tree" || true
-          echo "--- leaf identity (if found):"
-          if [ -n "$TREE_LEAF" ]; then ps -o pid=,pgid=,comm=,args= -p "$TREE_LEAF"; fi
-          echo "--- root identity:"
-          ps -o pid=,pgid=,comm=,args= -p "$TREE_ROOT" || true
-          echo "--- ps defaults:"
-          ps -axo pid=,args= 2>&1 | head -3
+          echo "--- ps ax command column widths (comm vs args):"
+          # shellcheck disable=SC2009
+          ps -axo pid=,comm= | grep -F claude || true
           kill -KILL -- "-$TREE_ROOT" 2>/dev/null || true
 
-      - name: Probe 5 - Pi package version resolved by latest
+      - name: Probe 7 - Pi package version resolved by latest
         run: |
           set -u
-          npm install -g @earendil-works/pi-coding-agent >/dev/null 2>&1
-          npm ls -g --depth 0 @earendil-works/pi-coding-agent
+          rc=0; npm install -g @earendil-works/pi-coding-agent >/dev/null 2>&1 || rc=$?
+          echo "npm install rc=$rc"
+          npm ls -g --depth 0 @earendil-works/pi-coding-agent || true
