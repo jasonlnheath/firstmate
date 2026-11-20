@@ -14,6 +14,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
 | Review bots on owned GitHub pull requests | [Contribution review bots](#contribution-review-bots-configcontribution-review-bots) |
+| Merge-content gates, second-look verdicts, or public-post consent | [AutoCraft Hardening Lessons](#autocraft-hardening-lessons) |
 | Per-run overrides and tuning | [Environment variables](#environment-variables) |
 
 ## FM_HOME
@@ -3177,7 +3178,7 @@ Verdicts are matched by head: a verdict recorded for head A does not satisfy a m
 
 **Integration points:**
 
-- `bin/fm-pr-merge.sh`: the merge-content gate runs before the forge command (it self-fetches base/head from the PR, so it does not depend on mergeability verification). It is implemented in `bin/fm-protected-paths-lib.sh` and called from the GitHub, GitLab, and Forgejo merge paths.
+- `bin/fm-pr-merge.sh`: the merge-content gate runs before the forge command (it self-fetches the head from the PR, so it does not depend on mergeability verification). It is implemented in `bin/fm-protected-paths-lib.sh` and called from the GitHub, GitLab, and Forgejo merge paths.
 - `bin/fm-merge-local.sh`: the same gate runs for local-only fast-forward merges.
 - `bin/fm-second-look.sh`: the adversarial second-look runner that reads existing verdicts or prints 'unsure' if none exists; it does not spawn reviewers itself (that is orchestrated by firstmate's supervision loop).
 

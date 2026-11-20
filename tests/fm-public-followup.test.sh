@@ -607,6 +607,76 @@ test_dry_run_does_not_close_commitment() {
   pass "a dry-run records no public delivery and leaves the commitment retryable"
 }
 
+# The exact-text consent gate (Lesson 3 from the AutoCraft deep study): once the
+# captain approves the exact bytes of a public reply, changed bytes must refuse
+# to post and only the approved bytes may go out. Drives the real deliver flow
+# end to end - the obligation reconciles to ready, then the gate compares the
+# staged reply against state/fm-public-followup-consent/<id>.hash before any
+# relay post - so the gate is executed, not re-implemented.
+test_consent_gate_blocks_changed_reply_text() {
+  local home log hash approved staged out
+  home=$(make_home consent-mismatch)
+  log="$home/curl.log"; : > "$log"
+  seed_commitment "$home" pf-consent req-consent discord main work-consent
+  emit_terminal "$home" "$home" pf-consent main work-consent >/dev/null || fail "emit failed"
+  FAKE_CURL_LOG="$log" run_pf "$home" consume >/dev/null || fail "consume failed"
+  [ "$(delivery_state "$home" pf-consent)" = ready ] \
+    || fail "the fixture must reconcile to ready before the gate can be driven"
+
+  # The captain approved DIFFERENT bytes than the staged reply.
+  approved="Approved by the captain: the fix shipped."
+  staged="Ship it: the fix landed, thanks!"
+  mkdir -p "$home/state/fm-public-followup-consent"
+  hash=$(printf '%s' "$approved" | shasum -a 256 2>/dev/null | cut -d' ' -f1)
+  [ -n "$hash" ] || hash=$(printf '%s' "$approved" | sha256sum | cut -d' ' -f1)
+  printf '%s\n' "$hash" > "$home/state/fm-public-followup-consent/pf-consent.hash"
+  printf '%s' "$staged" > "$home/staged-reply.txt"
+
+  FAKE_CURL_LOG="$log" expect_failure "changed reply bytes must refuse to post" \
+    run_pf "$home" deliver pf-consent --text-file "$home/staged-reply.txt"
+  assert_contains "$EXPECT_OUT" "exact-text consent gate" "the refusal must name the consent gate"
+  assert_contains "$EXPECT_OUT" "does not match the approved hash" \
+    "the refusal must say the approved text changed"
+  [ "$(followup_posts "$log")" -eq 0 ] || fail "a refused reply must not reach the relay"
+  [ "$(delivery_state "$home" pf-consent)" != posted ] \
+    || fail "a refused reply must not be recorded posted"
+  [ "$(task_state "$home" pf-consent)" != 'done' ] \
+    || fail "a refused reply must not close the commitment"
+
+  # The exact approved bytes release the delivery.
+  printf '%s' "$approved" > "$home/approved-reply.txt"
+  out=$(FAKE_CURL_LOG="$log" run_pf "$home" deliver pf-consent \
+      --text-file "$home/approved-reply.txt") \
+    || fail "delivering the exact approved bytes must succeed: $out"
+  assert_contains "$out" "delivered pf-consent request=req-consent platform=discord" \
+    "the approved delivery must report the original request binding"
+  [ "$(followup_posts "$log")" -eq 1 ] \
+    || fail "the approved reply must post exactly once, got $(followup_posts "$log")"
+  assert_grep 'Approved by the captain: the fix shipped.' "$log" \
+    "the relay must receive the exact approved bytes"
+  [ "$(task_state "$home" pf-consent)" = 'done' ] \
+    || fail "the approved delivery must close the commitment"
+
+  # A present-but-empty hash file is an armed-but-broken gate: the captain
+  # believes it is armed, so any text must refuse rather than post.
+  home=$(make_home consent-empty)
+  log="$home/curl.log"; : > "$log"
+  seed_commitment "$home" pf-empty req-empty discord main work-empty
+  emit_terminal "$home" "$home" pf-empty main work-empty >/dev/null || fail "emit failed"
+  FAKE_CURL_LOG="$log" run_pf "$home" consume >/dev/null || fail "consume failed"
+  mkdir -p "$home/state/fm-public-followup-consent"
+  : > "$home/state/fm-public-followup-consent/pf-empty.hash"
+  printf '%s' "any text at all" > "$home/any-reply.txt"
+  FAKE_CURL_LOG="$log" expect_failure "an empty consent hash file must refuse to post" \
+    run_pf "$home" deliver pf-empty --text-file "$home/any-reply.txt"
+  assert_contains "$EXPECT_OUT" "present but empty" \
+    "the empty-hash refusal must name the unverifiable gate"
+  [ "$(followup_posts "$log")" -eq 0 ] || fail "an empty hash file must not let a reply post"
+  [ "$(task_state "$home" pf-empty)" != 'done' ] \
+    || fail "an empty hash file must not close the commitment"
+  pass "the exact-text consent gate refuses changed bytes, releases the approved reply, and refuses an empty hash file"
+}
+
 test_late_receipt_closes_the_exact_attempt_without_reposting() {
   local home log out posts attempt
   home=$(make_home late-receipt)
@@ -3927,6 +3997,7 @@ test_duplicate_event_and_replay_are_noops
 test_invalid_events_are_refused_and_quarantined
 test_relay_failure_holds_without_false_completion
 test_dry_run_does_not_close_commitment
+test_consent_gate_blocks_changed_reply_text
 test_late_receipt_closes_the_exact_attempt_without_reposting
 test_typed_terminal_clear_only_removes_legacy_link
 test_interrupted_delivery_refuses_to_repost
