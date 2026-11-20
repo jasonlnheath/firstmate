@@ -1,0 +1,10 @@
+ok - fm-pr-merge aggregates agreeing merge-queue rules
+ok - fm-pr-merge propagates a real merge failure without silently succeeding
+ok - the merge-content gate refuses a yolo GitHub merge whose diff touches a protected path with no verdict
+ok - the merge-content gate refuses a yolo GitLab merge whose diff touches a protected path
+ok - the merge-content gate refuses a yolo Forgejo merge whose diff touches a protected path
+ok - the merge-content gate releases a protected-path merge once the second look is clean for the same head
+ok - fm-pr-merge refuses with the forge's own output quoted apart from its verdict
+ok - fm-pr-merge reads a plan-gated 403 on branch rules as no merge queue, not unreadable
+ok - fm-pr-merge propagates a real glab merge failure without silently succeeding
+ok - away merge proceeds on a plan-gated 403 because that repository cannot have a merge queue

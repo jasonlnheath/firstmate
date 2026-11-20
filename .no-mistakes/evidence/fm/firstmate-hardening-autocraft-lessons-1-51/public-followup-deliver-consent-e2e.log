@@ -1,0 +1,1 @@
+ok - the exact-text consent gate refuses changed bytes, releases the approved reply, and refuses an empty hash file

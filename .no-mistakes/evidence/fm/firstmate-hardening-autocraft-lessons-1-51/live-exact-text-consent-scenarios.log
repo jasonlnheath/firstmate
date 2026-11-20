@@ -1,0 +1,19 @@
+=== C1: captain approved exact bytes -> dry-run preview posts ===
+=== C2: ONE CHANGED BYTE after approval -> refuse ===
+=== C3: armed but EMPTY hash file -> refuse ===
+=== C4: no consent file for this request -> backward-compatible pass ===
+=== C5: adversarial - consent hash for a DIFFERENT request must not unlock this one ===
+=== C6: dry-run record shows the exact approved bytes that passed ===
+{"request_id":"req-c1","text":"Ship it: the fix landed in v2.3.1, thanks for the report!"}
+
+
+=============== RESULTS ===============
+PASS C1 matching hash passes the gate [rc=0 out=fm-x-reply: DRY RUN - would POST to https://myfirstmate.io/connector/answer (recorded: state/x-outbox/req-c1.json): Ship it: the fix landed in v2.3.1, thanks for the report!
+req-c1]
+PASS C2 changed bytes refuse, nothing recorded [rc=2 out=fm-x-reply: exact-text consent gate: the reply text hash (87a763c9c6825b4414264d26227736658822be86de521fc9ec3dce534e4633ac) does not match the approved hash (76d37f857efdd55ee9bacbcd5c7da41e4610d71369e09a5c100bf8acbfcc7ca4) for request req-c2; the text has changed since approval. Record the approved hash in /tmp/fm-live-consent.bK2KTt/state/fm-public-followup-consent/req-c2.hash before retrying.]
+PASS C3 empty hash file refuses [rc=2 out=fm-x-reply: exact-text consent gate: the consent hash file for request req-c3 is present but empty or unreadable; the gate cannot be verified. Record the approved hash in /tmp/fm-live-consent.bK2KTt/state/fm-public-followup-consent/req-c3.hash before retrying.]
+PASS C4 absent consent file passes [rc=0 out=fm-x-reply: DRY RUN - would POST to https://myfirstmate.io/connector/answer (recorded: state/x-outbox/req-c4.json): Ship it: the fix landed in v2.3.1, thanks for the report!
+req-c4]
+PASS C5 per-request scoping: other-req hash irrelevant here [rc=0 out=fm-x-reply: DRY RUN - would POST to https://myfirstmate.io/connector/answer (recorded: state/x-outbox/req-c5.json): Ship it: the fix landed in v2.3.1, thanks for the report!
+req-c5]
+PASS C6 outbox carries exact approved text

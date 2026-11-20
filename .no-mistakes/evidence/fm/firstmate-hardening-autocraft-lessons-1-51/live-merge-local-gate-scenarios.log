@@ -1,0 +1,74 @@
+=============== L1: yolo=on, protected path, NO verdict => refuse ===============
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: merge-content gate: yolo is on and protected paths are touched, but no second-look verdict exists; refusing to merge
+protected paths: .github/workflows/ci.yml
+--exit=1--
+=============== L2: yolo=on, protected path, CLEAN verdict for head => merge ===============
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+merge-content gate: yolo on, protected paths touched, second-look verdict is clean
+merged fm/task-l1 into local main (d2914c4 -> d5e3335) in /tmp/fm-live-merge-local.GXW43Q/l2/proj
+--exit=0--
+=============== L3: yolo=on, protected path, DEFECT verdict => refuse ===============
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: merge-content gate: yolo is on and protected paths are touched, but second-look verdict is 'defect'; refusing to merge
+protected paths: .github/workflows/ci.yml
+reason: a second-look defect verdict is still active: workflow grants secrets to untrusted PRs
+--exit=1--
+=============== L4: yolo=on, protected path, STALE-head verdict => refuse ===============
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head 86aa4939035957289f77413fb4270682986e15cf, not the current branch head 123ac54d315cf788358051882c6711a0b32cda89; refusing to merge
+protected paths: .github/workflows/ci.yml
+--exit=1--
+=============== L5: yolo=OFF, protected path => proceeds with escalation note ===============
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+merge-content gate: yolo is off, protected paths touched: .github/workflows/ci.yml
+merged fm/task-l1 into local main (542daca -> 1ff5f3c) in /tmp/fm-live-merge-local.GXW43Q/l5/proj
+--exit=0--
+=============== L6: yolo=on, NO protected path, no verdict => merge ===============
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+merged fm/task-l1 into local main (542daca -> f6feeb8) in /tmp/fm-live-merge-local.GXW43Q/l6/proj
+--exit=0--
+
+=============== RESULTS ===============
+PASS L1 refuse-no-verdict (exit=1, main unchanged)
+PASS L2 clean-verdict merge (exit=0, main at ship head)
+PASS L3 defect-verdict refuse (exit=1, reason surfaced)
+PASS L4 stale-head verdict refuse (exit=1)
+PASS L5 yolo-off escalation note + merge (exit=0)
+PASS L6 unprotected merge passes (exit=0)

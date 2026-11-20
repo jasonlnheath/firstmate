@@ -1,0 +1,18 @@
+=== S1: no verdict => unsure, exit 1 ===
+=== S2: clean verdict for same head => stdout clean, exit 0 ===
+=== S3: defect verdict same head => verdict + BLOCKED reason, exit 1 ===
+=== S4: stale-head verdict => treated absent => unsure, exit 1 ===
+=== S5: codeberg forgejo URL => verdict dir .second-look/12 ===
+
+=== P1: per-project config/protected-paths REPLACES the default list ===
+=== P2: present-but-EMPTY project override => fail-closed rc 3 ===
+
+=============== RESULTS ===============
+PASS S1 no-verdict => stdout=unsure rc=1 [saw stdout=unsure rc=1 err=]
+PASS S2 clean same-head => stdout=clean rc=0 [saw stdout=clean rc=0]
+PASS S3 defect => BLOCKED reason rc=1 [saw stdout=defect rc=1 err=BLOCKED: a second-look defect verdict is still active: SQL injection in query builder|]
+PASS S4 stale-head => stdout=unsure rc=1 [saw stdout=unsure rc=1]
+PASS S5 codeberg PR-number parity => reads .second-look/12 [saw stdout=clean dirs=12 ]
+PASS P1 override replaces default - AGENTS.md NOT protected under override [rc=1 match=]
+PASS P1b override root pattern matches [rc=0 match=SECRET.txt]
+PASS P2 empty override disarms => refuse [rc=3]

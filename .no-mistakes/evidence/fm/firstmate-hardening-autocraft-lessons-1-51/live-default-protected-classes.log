@@ -1,0 +1,18 @@
+--- adopted classes must be gated ---
+PROTECTED  .github/workflows/ci.yml
+PROTECTED  deep/nested/.github/workflows/deploy.yaml
+PROTECTED  .gitlab-ci.yml
+PROTECTED  ops/Jenkinsfile
+PROTECTED  AGENTS.md
+PROTECTED  packages/sub/CLAUDE.md
+PROTECTED  package-lock.json
+PROTECTED  apps/web/package-lock.json
+PROTECTED  Cargo.lock
+PROTECTED  .gitmodules
+PROTECTED  vendor/libfoo.a
+HOLE       bin/helper (rc=1 match=)
+--- ordinary work must stay un-gated ---
+FREE       src/main.rs
+FREE       README.md
+FREE       docs/guide.md
+FREE       tests/unit.test.sh
