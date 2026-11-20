@@ -154,7 +154,7 @@ git -C "$PROJ" diff --name-only "$DEFAULT".."$BRANCH" > "$local_diff_file" 2>/de
 # Check if any paths are protected
 matched_paths=""
 gate_rc=0
-matched_paths=$(fm_protected_paths_check "$local_diff_file" "") || gate_rc=$?
+matched_paths=$(fm_protected_paths_check "$local_diff_file" "$PROJ") || gate_rc=$?
 # Return code 3 means missing config (fail-closed for security gate)
 if [ "$gate_rc" -eq 3 ]; then
   rm -f "$local_diff_file"
@@ -181,13 +181,11 @@ if [ -n "$matched_paths" ]; then
     printf 'merge-content gate: yolo is off, protected paths touched: %s\n' "$matched_paths" >&2
   else
     # Yolo is on - need a second-look verdict
-    local verdict_dir
     verdict_dir=$(fm_second_look_verdict_dir "$STATE" "$ID" "0") || {
       echo "error: merge-content gate: could not resolve second-look verdict directory; refusing to merge" >&2
       exit 1
     }
 
-    local verdict
     verdict=$(fm_second_look_read_verdict "$verdict_dir") || {
       # No second-look verdict exists - refuse the merge
       echo "error: merge-content gate: yolo is on and protected paths are touched, but no second-look verdict exists; refusing to merge" >&2
@@ -196,10 +194,11 @@ if [ -n "$matched_paths" ]; then
     }
 
     # Check that the verdict was recorded for the same head we're about to merge.
-    local stored_head
     stored_head=$(grep '^head=' "$verdict_dir/current.verdict" 2>/dev/null | cut -d= -f2- || true)
-    if [ -z "$stored_head" ] || [ "$stored_head" != "$BRANCH" ]; then
-      echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head ${stored_head:-<none>}, not the current branch $BRANCH; refusing to merge" >&2
+    # Compare to the actual commit SHA of the branch, not the branch name
+    branch_sha=$(git -C "$PROJ" rev-parse "$BRANCH" 2>/dev/null || true)
+    if [ -z "$stored_head" ] || [ "$stored_head" != "$branch_sha" ]; then
+      echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head ${stored_head:-<none>}, not the current branch head $branch_sha; refusing to merge" >&2
       printf 'protected paths: %s\n' "$matched_paths" >&2
       exit 1
     fi
@@ -211,7 +210,6 @@ if [ -n "$matched_paths" ]; then
       defect|unsure)
         echo "error: merge-content gate: yolo is on and protected paths are touched, but second-look verdict is '$verdict'; refusing to merge" >&2
         printf 'protected paths: %s\n' "$matched_paths" >&2
-        local stuck_reason
         stuck_reason=$(fm_second_look_get_stuck_reason "$verdict_dir")
         [ -n "$stuck_reason" ] && printf 'reason: %s\n' "$stuck_reason" >&2
         exit 1

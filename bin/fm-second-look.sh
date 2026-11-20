@@ -193,12 +193,22 @@ printf '%s' "$BRIEF" > "$BRIEF_FILE"
 if [ -f "$VERDICT_DIR/current.verdict" ]; then
   VERDICT=$(fm_second_look_read_verdict "$VERDICT_DIR")
   if [ -n "$VERDICT" ]; then
-    echo "$VERDICT"
-    rm -f "$BRIEF_FILE"
-    case "$VERDICT" in
-      clean) exit 0 ;;
-      *) exit 1 ;;
-    esac
+    # Apply the same head binding as the early block
+    if [ -n "$HEAD_SHA" ]; then
+      stored_head=$(grep '^head=' "$VERDICT_DIR/current.verdict" 2>/dev/null | cut -d= -f2- || true)
+      if [ -z "$stored_head" ] || [ "$stored_head" != "$HEAD_SHA" ]; then
+        # Verdict is for a different head - fall through to fresh review
+        VERDICT=""
+      fi
+    fi
+    if [ -n "$VERDICT" ]; then
+      echo "$VERDICT"
+      rm -f "$BRIEF_FILE"
+      case "$VERDICT" in
+        clean) exit 0 ;;
+        *) exit 1 ;;
+      esac
+    fi
   fi
 fi
 

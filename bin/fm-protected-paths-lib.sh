@@ -9,7 +9,7 @@
 # optionally config/protected-paths in a project's worktree (per-project override).
 # When a project has its own file, it replaces the global list entirely.
 #
-# Second-look verdicts are stored in state/<task-id>/.second-look/<pr-number>.verdict
+# Second-look verdicts are stored in state/<task-id>/.second-look/<pr-number>/current.verdict
 # with the format: verdict=<clean|defect|unsure> head=<commit-sha> time=<epoch>
 # An unsure verdict "sticks" for any future head of the same PR chain until a
 # clean verdict is recorded.
