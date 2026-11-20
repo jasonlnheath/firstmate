@@ -8,7 +8,7 @@
 #
 # Global list is this file. Per-project override is
 # config/protected-paths in the project's own worktree (read by
-# bin/fm-project-protected-paths.sh when present).
+# fm_protected_paths_list in bin/fm-protected-paths-lib.sh when present).
 #
 # The list is the union of AutoCraft's "content a person looks at" gates
 # and Firstmate's safety boundaries.
@@ -48,6 +48,49 @@ tox.ini
 CHANGELOG.md
 CHANGELOG.rst
 CHANGELOG.txt
+# Nested variants for root-anchored patterns (bash case * does not match /)
+*/package.json
+*/composer.json
+*/Cargo.toml
+*/go.mod
+*/go.sum
+*/requirements.txt
+*/pyproject.toml
+*/setup.py
+*/setup.cfg
+*/pom.xml
+*/build.gradle
+*/build.gradle.kts
+*/CMakeLists.txt
+*/Makefile
+*/GNUmakefile
+*/Rakefile
+*/Gemfile
+*/CHANGELOG.md
+*/CHANGELOG.rst
+*/CHANGELOG.txt
+*/README.md
+*/README.rst
+*/README.txt
+*/AGENTS.md
+*/CLAUDE.md
+*/AGENTS.txt
+*/CLAUDE.txt
+*/package-lock.json
+*/yarn.lock
+*/pnpm-lock.yaml
+*/Cargo.lock
+*/Gemfile.lock
+*/poetry.lock
+*/Pipfile.lock
+*/go.sum
+*/composer.lock
+*/LICENSE
+*/LICENSE.md
+*/LICENSE.txt
+*/SECURITY.md
+*/CONTRIBUTING.md
+*/CODE_OF_CONDUCT.md
 
 # Agent instruction files
 AGENTS.md
@@ -78,6 +121,8 @@ LICENSE.txt
 SECURITY.md
 
 # Submodule / symlink / mode changes
+.gitmodules
+.gitmodules.bak
 **/.gitmodules
 **/.gitmodules.bak
 

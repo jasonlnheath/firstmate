@@ -253,12 +253,24 @@ consent_dir="$STATE/fm-public-followup-consent"
 consent_file="$consent_dir/$REQ.hash"
 if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
   stored_hash=$(cat "$consent_file" 2>/dev/null)
-  if [ -n "$stored_hash" ]; then
-    computed_hash=$(printf '%s' "$TEXT" | sha256sum | cut -d' ' -f1)
-    if [ "$computed_hash" != "$stored_hash" ]; then
-      echo "fm-x-reply: exact-text consent gate: the reply text hash ($computed_hash) does not match the approved hash ($stored_hash) for request $REQ; the text has changed since approval. Record the approved hash in $consent_file before retrying." >&2
-      exit 2
-    fi
+  # A present-but-empty or unreadable hash file disarms the gate:
+  # the captain believes it is armed while any text posts. Treat as refusal.
+  if [ -z "$stored_hash" ]; then
+    echo "fm-x-reply: exact-text consent gate: the consent hash file for request $REQ is present but empty or unreadable; the gate cannot be verified. Record the approved hash in $consent_file before retrying." >&2
+    exit 2
+  fi
+  # Use the same sha256 helper as fm-public-followup-lib.sh for consistency
+  computed_hash=$(printf '%s' "$TEXT" | shasum -a 256 2>/dev/null | cut -d' ' -f1)
+  if [ -z "$computed_hash" ]; then
+    computed_hash=$(printf '%s' "$TEXT" | sha256sum 2>/dev/null | cut -d' ' -f1)
+  fi
+  if [ -z "$computed_hash" ]; then
+    echo "fm-x-reply: exact-text consent gate: could not compute sha256 hash of reply text; refusing to post" >&2
+    exit 2
+  fi
+  if [ "$computed_hash" != "$stored_hash" ]; then
+    echo "fm-x-reply: exact-text consent gate: the reply text hash ($computed_hash) does not match the approved hash ($stored_hash) for request $REQ; the text has changed since approval. Record the approved hash in $consent_file before retrying." >&2
+    exit 2
   fi
 fi
 

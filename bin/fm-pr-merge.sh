@@ -1686,11 +1686,36 @@ fm_pr_merge_content_gate() {
   local diff_file
   diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-diff.XXXXXX") || return 1
 
-  # Get diff paths from the PR. For GitHub, the PR base is available
-  # from the mergeable check; for GitLab/Forgejo, use the recorded base.
-  local base_branch head_commit
-  base_branch="${FM_PR_GITHUB_BASE:-${FM_PR_BASE:-}}"
-  head_commit="${FM_PR_MERGE_HEAD:-}"
+  # Get the base branch and head commit from the PR info directly.
+  # The gate runs before the provider-specific merge commands, so
+  # FM_PR_MERGE_HEAD and FM_PR_GITHUB_BASE are not yet set.
+  local base_branch head_commit provider="$PROVIDER"
+  case "$provider" in
+    github)
+      local pr_json
+      pr_json=$(gh pr view "$URL" --json baseRefName,headRefOid 2>/dev/null) || return 1
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.baseRefName // empty' 2>/dev/null) || return 1
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.headRefOid // empty' 2>/dev/null) || return 1
+      ;;
+    gitlab)
+      local pr_json
+      pr_json=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null) || return 1
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.target_branch // empty' 2>/dev/null) || return 1
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.sha // empty' 2>/dev/null) || return 1
+      ;;
+    forgejo)
+      local pr_json
+      pr_json=$(tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER" 2>/dev/null) || return 1
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.base.ref // empty' 2>/dev/null) || return 1
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.head.sha // empty' 2>/dev/null) || return 1
+      ;;
+    *)
+      echo "error: merge-content gate: unknown provider '$provider'" >&2
+      rm -f "$diff_file"
+      return 1
+      ;;
+  esac
 
   if [ -z "$base_branch" ] || [ -z "$head_commit" ]; then
     # Cannot determine the diff range; gate cannot evaluate.
@@ -1708,7 +1733,10 @@ fm_pr_merge_content_gate() {
 
   # Check if any paths are protected
   local matched_paths
-  matched_paths=$(fm_protected_paths_check "$diff_file" "${FM_PROJECT_DIR:-}") || {
+  matched_paths=$(fm_protected_paths_check "$diff_file" "") || {
+    local rc=$?
+    # Return code 3 means missing config (fail-closed for security gate)
+    [ "$rc" -eq 3 ] && { rm -f "$diff_file"; return 1; }
     # No protected paths matched - gate passes
     rm -f "$diff_file"
     return 0
@@ -1718,9 +1746,13 @@ fm_pr_merge_content_gate() {
   rm -f "$diff_file"
 
   # If yolo is off, the merge already escalates to captain via
-  # resolve_merge_authority / FM_PR_MERGE_AUTHORITY. The gate is
-  # a yolo-specific additional check.
-  if [ "${FM_PR_MERGE_AUTHORITY:-}" != "yolo" ]; then
+  # resolve_merge_authority. The gate is a yolo-specific additional check.
+  # Read yolo posture from the task meta file.
+  local yolo="off"
+  if [ -f "$META" ]; then
+    yolo=$(grep '^yolo=' "$META" | tail -1 | cut -d= -f2- || true)
+  fi
+  if [ "$yolo" != "on" ]; then
     # Yolo is off - merge always escalates, gate passes for
     # the yolo-specific check (the captain will see the protected
     # paths in the escalation)
@@ -1749,6 +1781,16 @@ fm_pr_merge_content_gate() {
     printf 'protected paths: %s\n' "$matched_paths" >&2
     return 1
   }
+
+  # Check that the verdict was recorded for the same head we're about to merge.
+  # If the PR has been updated since the second-look ran, we need a fresh review.
+  local stored_head
+  stored_head=$(grep '^head=' "$verdict_dir/current.verdict" 2>/dev/null | cut -d= -f2- || true)
+  if [ -n "$stored_head" ] && [ "$stored_head" != "$head_commit" ]; then
+    echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head $stored_head, not the current head $head_commit; refusing to merge" >&2
+    printf 'protected paths: %s\n' "$matched_paths" >&2
+    return 1
+  fi
 
   case "$verdict" in
     clean)
