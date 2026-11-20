@@ -3177,13 +3177,13 @@ An `unsure` or `defect` verdict "sticks" for any future head of the same PR chai
 
 **Integration points:**
 
-- `bin/fm-pr-merge.sh`: the merge-content gate runs after mergeability verification and before the forge command. It is implemented in `bin/fm-protected-paths-lib.sh` and called from the GitHub, GitLab, and Forgejo merge paths.
+- `bin/fm-pr-merge.sh`: the merge-content gate runs before the forge command (it self-fetches base/head from the PR, so it does not depend on mergeability verification). It is implemented in `bin/fm-protected-paths-lib.sh` and called from the GitHub, GitLab, and Forgejo merge paths.
 - `bin/fm-merge-local.sh`: the same gate runs for local-only fast-forward merges.
-- `bin/fm-second-look.sh`: the adversarial second-look runner that spawns an independent reviewer agent.
+- `bin/fm-second-look.sh`: the adversarial second-look runner that reads existing verdicts or prints 'unsure' if none exists; it does not spawn reviewers itself (that is orchestrated by firstmate's supervision loop).
 
 ### Lesson 2: Adversarial second-look runner
 
-`bin/fm-second-look.sh` spawns an independent reviewer agent to re-review a merge head with an adversarial posture: find reasons NOT to land the change.
+`bin/fm-second-look.sh` reads existing verdicts from `state/<task-id>/.second-look/<pr-number>/current.verdict` and returns the verdict (clean/defect/unsure) if present, or prints 'unsure' and exits 1 if no verdict exists. The actual adversarial review is performed by firstmate spawning an independent reviewer agent with the brief defined below.
 
 **Verdicts:**
 
@@ -3198,9 +3198,10 @@ An `unsure` or `defect` verdict "sticks" for any future head of the same PR chai
 1. The merge gate (in `fm-pr-merge.sh` or `fm-merge-local.sh`) detects that protected paths are touched and yolo is on.
 2. It checks for an existing second-look verdict in `state/<task-id>/.second-look/<pr-number>/current.verdict`.
 3. If no verdict exists, the merge is refused and the captain is notified.
-4. The captain (or an operator) runs `bin/fm-second-look.sh --task-id <id> --pr-url <url> --head <sha>` to spawn an independent reviewer.
-5. The reviewer produces a verdict file at `state/<task-id>/.second-look/<pr-number>/current.verdict`.
-6. The merge gate reads the verdict and applies the gate logic.
+4. Firstmate (or an operator) runs `bin/fm-second-look.sh --task-id <id> --pr-url <url> --head <sha>` to check for an existing verdict.
+5. If no verdict exists, firstmate spawns an independent reviewer agent with the adversarial brief below.
+6. The spawned reviewer produces a verdict file at `state/<task-id>/.second-look/<pr-number>/current.verdict`.
+7. The merge gate reads the verdict and applies the gate logic.
 
 **The adversarial brief** instructs the reviewer to look for:
 - Bugs that existing tests miss (edge cases, off-by-one, null/empty handling)
