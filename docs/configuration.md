@@ -3173,7 +3173,7 @@ time=<unix-epoch>
 defect_reason=<free text, single line>
 ```
 
-An `unsure` or `defect` verdict "sticks" for any future head of the same PR chain until a `clean` verdict is recorded. This prevents a new commit from silently clearing a previous defect.
+Verdicts are matched by head: a verdict recorded for head A does not satisfy a merge request for head B. The merge gate compares the stored head against the current branch head; a mismatch means no verdict exists for that head, so the merge is refused. This prevents a new commit from silently clearing a previous defect without re-review.
 
 **Integration points:**
 
@@ -3217,9 +3217,10 @@ An `unsure` or `defect` verdict "sticks" for any future head of the same PR chai
 
 - Verdicts are stored durably in `state/<task-id>/.second-look/<pr-number>/`.
 - For local-only merges, the pr-number is always `0` (i.e., `state/<task-id>/.second-look/0/current.verdict`).
-- An `unsure` verdict sticks until a `clean` verdict clears it.
-- A `defect` verdict sticks until a `clean` verdict clears it.
-- A `clean` verdict clears the slate for future heads.
+- Verdicts are matched by head: a verdict for head A does not satisfy a merge for head B.
+- A `clean` verdict for the current head allows the merge to proceed.
+- A `defect` or `unsure` verdict for the current head blocks the merge.
+- A verdict for a different head is treated as absent (the merge is refused until a verdict for the current head exists).
 
 ### Lesson 3: Exact-text consent for public posts
 

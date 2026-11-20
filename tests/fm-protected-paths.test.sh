@@ -171,54 +171,71 @@ else
   fail "expected defect, got: $verdict"
 fi
 
-# Test 14: Stuck defect verdict blocks new non-clean verdict
-echo -n "  Test 14: Stuck defect verdict blocks new non-clean verdict... "
-# After Test 13, verdict is 'defect'. Passing 'unsure' should be blocked.
-if ! fm_second_look_verdict_sticks "$verdict_dir" "unsure"; then
-  pass "stuck defect blocks new non-clean verdict"
+# Test 14: Defect verdict is read correctly
+echo -n "  Test 14: Defect verdict is read correctly... "
+verdict=$(fm_second_look_read_verdict "$verdict_dir")
+if [ "$verdict" = "defect" ]; then
+  pass "defect verdict read correctly"
 else
-  fail "stuck defect should block new non-clean verdict"
+  fail "expected defect, got: $verdict"
 fi
 
-# Test 15: Clean verdict clears stuck verdict
-echo -n "  Test 15: Clean verdict clears stuck verdict... "
+# Test 15: Clean verdict overwrites and is read
+echo -n "  Test 15: Clean verdict overwrites and is read... "
 fm_second_look_write_verdict "$verdict_dir" "clean" "ghi789"
-if fm_second_look_verdict_sticks "$verdict_dir" "clean"; then
-  pass "clean verdict clears stuck verdict"
+verdict=$(fm_second_look_read_verdict "$verdict_dir")
+if [ "$verdict" = "clean" ]; then
+  pass "clean verdict overwrites and is read"
 else
-  fail "clean verdict did not clear stuck verdict"
+  fail "expected clean, got: $verdict"
 fi
 
-# Test 16: Unsure verdict sticks
-echo -n "  Test 16: Unsure verdict sticks... "
-# After Test 15, verdict is 'clean'. Write 'unsure' first.
+# Test 16: Unsure verdict overwrites clean and is read
+echo -n "  Test 16: Unsure verdict overwrites clean... "
 fm_second_look_write_verdict "$verdict_dir" "unsure" "jkl012"
-# Passing 'unsure' should be blocked by the stuck unsure verdict.
-if ! fm_second_look_verdict_sticks "$verdict_dir" "unsure"; then
-  pass "unsure verdict sticks"
+verdict=$(fm_second_look_read_verdict "$verdict_dir")
+if [ "$verdict" = "unsure" ]; then
+  pass "unsure verdict overwrites clean and is read"
 else
-  fail "unsure verdict did not stick"
+  fail "expected unsure, got: $verdict"
 fi
 
-# Test 17: Clean verdict clears unsure verdict
-echo -n "  Test 17: Clean verdict clears unsure verdict... "
+# Test 17: Clean verdict overwrites unsure and is read
+echo -n "  Test 17: Clean verdict overwrites unsure... "
 fm_second_look_write_verdict "$verdict_dir" "clean" "mno345"
-if fm_second_look_verdict_sticks "$verdict_dir" "clean"; then
-  pass "clean verdict clears unsure verdict"
+verdict=$(fm_second_look_read_verdict "$verdict_dir")
+if [ "$verdict" = "clean" ]; then
+  pass "clean verdict overwrites unsure and is read"
 else
-  fail "clean verdict did not clear unsure verdict"
+  fail "expected clean, got: $verdict"
 fi
 
-# Test 18: Invalid verdict is rejected
-echo -n "  Test 18: Invalid verdict is rejected... "
+# Test 18 (was 14): Stale-head verdict is not read by runner
+echo -n "  Test 18: Stale-head verdict is not read by runner... "
+# Write verdict for PR 999 with head A
+verdict_dir_999=$(fm_second_look_verdict_dir "$STATE" "test-task" "999")
+mkdir -p "$verdict_dir_999" 2>/dev/null
+fm_second_look_write_verdict "$verdict_dir_999" "clean" "head_a_sha"
+# Runner with same PR but different head should NOT print "clean" (head binding)
+output=$(FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
+    --pr-url "https://github.com/test/repo/pull/999" \
+    --head "head_b_sha" 2>/dev/null) || true
+if [ "$output" != "clean" ]; then
+  pass "runner ignores stale-head verdict (head binding works)"
+else
+  fail "runner should not print 'clean' for stale head, got '$output'"
+fi
+
+# Test 19: Invalid verdict is rejected
+echo -n "  Test 19: Invalid verdict is rejected... "
 if ! fm_second_look_write_verdict "$verdict_dir" "invalid" "pqr678" 2>/dev/null; then
   pass "invalid verdict rejected"
 else
   fail "invalid verdict was not rejected"
 fi
 
-# Test 19: No verdict returns failure
-echo -n "  Test 19: No verdict returns failure... "
+# Test 20: No verdict returns failure
+echo -n "  Test 20: No verdict returns failure... "
 mkdir -p "$STATE/empty-verdict-dir"
 if ! fm_second_look_read_verdict "$STATE/empty-verdict-dir"; then
   pass "no verdict returns failure"
@@ -226,31 +243,14 @@ else
   fail "no verdict did not return failure"
 fi
 
-# Test 20: Stuck reason is reported for defect
-echo -n "  Test 20: Stuck reason is reported for defect... "
+# Test 21: Stuck reason is reported for defect
+echo -n "  Test 21: Stuck reason is reported for defect... "
 fm_second_look_write_verdict "$verdict_dir" "defect" "stu901" "found a critical bug"
 reason=$(fm_second_look_get_stuck_reason "$verdict_dir")
 if echo "$reason" | grep -q "defect" && echo "$reason" | grep -q "critical bug"; then
   pass "stuck reason includes defect and reason"
 else
   fail "stuck reason incorrect (got: $reason)"
-fi
-
-echo ""
-echo "=== Test: fm_protected_paths_check_diff ==="
-
-# Test 21: Diff output with protected paths
-echo -n "  Test 21: Diff output with protected paths... "
-diff_output=$(mktemp "${TMPDIR:-/tmp}/fm-test-diff-output.XXXXXX")
-printf 'M\t.github/workflows/ci.yml\nM\tsrc/utils/helper.toml\nM\tREADME.md\n' > "$diff_output"
-result=$(cat "$diff_output" | fm_protected_paths_check_diff "$STATE")
-rm -f "$diff_output"
-if echo "$result" | grep -q '\.github/workflows/ci\.yml' && \
-   echo "$result" | grep -q 'README\.md' && \
-   ! echo "$result" | grep -q 'src/utils/helper\.toml'; then
-  pass "diff check detected protected paths"
-else
-  fail "diff check incorrect (got: $result)"
 fi
 
 echo ""

@@ -146,87 +146,55 @@ else
 fi
 
 echo ""
-echo "=== Test: Gate simulation ==="
+echo "=== Test: Real gate execution ==="
 
-# Test 11: Gate simulation - matching hash
-echo -n "  Test 11: Gate simulation - matching hash... "
+# Test 11: Real gate - matching hash (fm-x-reply.sh with FMX_DRY)
+echo -n "  Test 11: Real gate - matching hash passes... "
 text="This is the approved reply text."
 hash=$(printf '%s' "$text" | sha256sum | cut -d' ' -f1)
-echo "$hash" > "$STATE/fm-public-followup-consent/gate-match.hash"
-computed_hash=$(printf '%s' "$text" | sha256sum | cut -d' ' -f1)
-consent_file="$STATE/fm-public-followup-consent/gate-match.hash"
-gate_result="pass"
-if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
-  stored_hash=$(cat "$consent_file" 2>/dev/null)
-  if [ -n "$stored_hash" ] && [ "$stored_hash" != "$computed_hash" ]; then
-    gate_result="fail"
-  fi
-fi
-if [ "$gate_result" = "pass" ]; then
-  pass "gate passes with matching hash"
+echo "$hash" > "$STATE/fm-public-followup-consent/test11.hash"
+rc=0
+output=$(FM_STATE_OVERRIDE="$STATE" FMX_DRY_RUN=1 "$SCRIPT_DIR/../bin/fm-x-reply.sh" "test11" "$text" 2>&1) || rc=$?
+if [ $rc -eq 0 ] && echo "$output" | grep -q "^test11$"; then
+  pass "fm-x-reply.sh passes with matching hash (FMX_DRY_RUN)"
 else
-  fail "gate should pass with matching hash"
+  fail "expected exit 0 and stdout 'test11', got rc=$rc output='$output'"
 fi
 
-# Test 12: Gate simulation - mismatched hash
-echo -n "  Test 12: Gate simulation - mismatched hash... "
+# Test 12: Real gate - mismatched hash (fm-x-reply.sh with FMX_DRY_RUN)
+echo -n "  Test 12: Real gate - mismatched hash refuses... "
 text="This is the approved reply text."
-hash=$(printf '%s' "$text" | sha256sum | cut -d' ' -f1)
-echo "wrong-hash" > "$STATE/fm-public-followup-consent/gate-mismatch.hash"
-computed_hash=$(printf '%s' "$text" | sha256sum | cut -d' ' -f1)
-consent_file="$STATE/fm-public-followup-consent/gate-mismatch.hash"
-gate_result="pass"
-if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
-  stored_hash=$(cat "$consent_file" 2>/dev/null)
-  if [ -n "$stored_hash" ] && [ "$stored_hash" != "$computed_hash" ]; then
-    gate_result="fail"
-  fi
-fi
-if [ "$gate_result" = "fail" ]; then
-  pass "gate fails with mismatched hash"
+echo "wrong-hash-value" > "$STATE/fm-public-followup-consent/test12.hash"
+rc=0
+output=$(FM_STATE_OVERRIDE="$STATE" FMX_DRY_RUN=1 "$SCRIPT_DIR/../bin/fm-x-reply.sh" "test12" "$text" 2>&1) || rc=$?
+if [ $rc -eq 2 ] && echo "$output" | grep -q "exact-text consent gate"; then
+  pass "fm-x-reply.sh refuses with mismatched hash (exit 2)"
 else
-  fail "gate should fail with mismatched hash"
+  fail "expected exit 2 and 'exact-text consent gate', got rc=$rc"
 fi
 
-# Test 13: Gate simulation - no consent file
-echo -n "  Test 13: Gate simulation - no consent file... "
+# Test 13: Real gate - no consent file (backward compatible)
+echo -n "  Test 13: Real gate - no consent file passes... "
 text="This is the reply text."
-computed_hash=$(printf '%s' "$text" | sha256sum | cut -d' ' -f1)
-consent_file="$STATE/fm-public-followup-consent/no-consent.hash"
-gate_result="pass"
-if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
-  stored_hash=$(cat "$consent_file" 2>/dev/null)
-  if [ -n "$stored_hash" ] && [ "$stored_hash" != "$computed_hash" ]; then
-    gate_result="fail"
-  fi
-fi
-if [ "$gate_result" = "pass" ]; then
-  pass "gate passes with no consent file (backward compatible)"
+rm -f "$STATE/fm-public-followup-consent/test13.hash"
+rc=0
+output=$(FM_STATE_OVERRIDE="$STATE" FMX_DRY_RUN=1 "$SCRIPT_DIR/../bin/fm-x-reply.sh" "test13" "$text" 2>&1) || rc=$?
+if [ $rc -eq 0 ] && echo "$output" | grep -q "^test13$"; then
+  pass "fm-x-reply.sh passes with no consent file (backward compatible)"
 else
-  fail "gate should pass with no consent file"
+  fail "expected exit 0 and stdout 'test13', got rc=$rc"
 fi
 
-# Test 14: Gate simulation - symlink consent file
-echo -n "  Test 14: Gate simulation - symlink consent file... "
+# Test 14: Real gate - empty hash file refuses (r4-7 fix)
+echo -n "  Test 14: Real gate - empty hash file refuses... "
 text="This is the reply text."
-hash=$(printf '%s' "$text" | sha256sum | cut -d' ' -f1)
-echo "$hash" > "$STATE/fm-public-followup-consent/gate-symlink-real.hash"
-rm -f "$STATE/fm-public-followup-consent/gate-symlink.hash"
-ln -s "$STATE/fm-public-followup-consent/gate-symlink-real.hash" \
-      "$STATE/fm-public-followup-consent/gate-symlink.hash"
-computed_hash=$(printf '%s' "$text" | sha256sum | cut -d' ' -f1)
-consent_file="$STATE/fm-public-followup-consent/gate-symlink.hash"
-gate_result="pass"
-if [ -f "$consent_file" ] && [ ! -L "$consent_file" ]; then
-  stored_hash=$(cat "$consent_file" 2>/dev/null)
-  if [ -n "$stored_hash" ] && [ "$stored_hash" != "$computed_hash" ]; then
-    gate_result="fail"
-  fi
-fi
-if [ "$gate_result" = "pass" ]; then
-  pass "gate passes with symlink consent file (ignored)"
+printf '' > "$STATE/fm-public-followup-consent/test14.hash"
+rc=0
+output=$(FM_STATE_OVERRIDE="$STATE" FMX_DRY_RUN=1 "$SCRIPT_DIR/../bin/fm-x-reply.sh" "test14" "$text" 2>&1) || rc=$?
+if [ $rc -eq 2 ] && echo "$output" | grep -q "present but empty"; then
+  pass "fm-x-reply.sh refuses with empty hash file (exit 2)"
 else
-  fail "gate should pass with symlink consent file"
+  fail "expected exit 2 and 'present but empty', got rc=$rc"
 fi
 
 echo ""
