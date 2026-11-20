@@ -2,8 +2,8 @@ name: CI diagnostics probe
 
 # Throwaway diagnostic lane for the ci-suite-green task: runs targeted probes
 # against the hosted ubuntu-latest environment for the deterministic failures
-# seen in the serial test lanes. Dispatched by hand with workflow_dispatch on
-# this branch only; removed before the fix ships.
+# seen in the serial test lanes. Dispatched via pull_request on this branch
+# only; removed before the fix ships.
 
 on:
   pull_request: {}
@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-diag-probe-${{ github.run_id }}
-  cancel-in-progress: false
+  group: ci-diag-probe-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   probe:
@@ -28,75 +28,81 @@ jobs:
         run: |
           set -u
           echo "bash: $BASH_VERSION $(bash --version | head -1)"
-          echo "timeout: $(timeout --version | head -1)"
+          echo "timeout path: $(command -v timeout)"
+          timeout --version | head -2 || true
+          echo "coreutils dpkg:"; dpkg -l 2>/dev/null | grep -E 'coreutils|uutils' || true
+          echo "gnu timeout candidates:"; ls -la /usr/bin/timeout /bin/timeout /usr/bin/timeout.gnu 2>/dev/null || true
           echo "ps: $(ps --version 2>&1 | head -1)"
           echo "node: $(node --version 2>&1)"
           echo "uname: $(uname -a)"
-          echo "pid_max: $(cat /proc/sys/kernel/pid_max)"
-          ulimit -a || true
 
       - name: Probe 1 - closed-stdout write behavior (public-followup family)
         run: |
           set -u
           d=$(mktemp -d)
-          printf 'sentinel\n' > "$d/ro"
-          # A command whose stdout is closed, which then opens files: on a
-          # fresh process the first open() can claim fd 1, silently turning
-          # the next >&1 write into a write into that file.
-          bash -c '
-            printf "line-1-to-nowhere\n" >&1
-            printf "fallback-marker\n" > "'"$d"'/first-open.txt"
-            exec 1>/dev/null
-          ' >&- 2>"$d/err.txt"
-          rc=$?
-          echo "rc=$rc"
-          echo "stderr:"; cat "$d/err.txt"
-          echo "first-open.txt exists: $([ -e "$d/first-open.txt" ] && echo yes || echo no)"
-          echo "first-open.txt content:"; cat "$d/first-open.txt" 2>/dev/null || true
-          # The exact firstmate shape: a script that appends its wake to fd 1
-          # after opening state files, run with stdout closed.
+          # The exact firstmate shape: a script that writes its wake to fd 1
+          # after opening state files, run with stdout closed, stderr kept.
           cat > "$d/poll.sh" <<'SH'
           #!/usr/bin/env bash
           set -u
           state=$(mktemp)
           printf 'x' > "$state"
           exec 9<"$state"
-          printf 'wake-line\n' >&1 || echo "write-to-fd1-failed" >&2
+          read -r _ <"$state" || true
+          printf 'wake-line\n' >&1 || { echo "write-to-fd1-failed rc=$?" >&2; exit 3; }
+          echo "write-to-fd1-succeeded"
           SH
           chmod +x "$d/poll.sh"
-          out=$(bash "$d/poll.sh" >&- 2>&1); rc=$?
-          echo "poll-fd1-closed rc=$rc out=[$out]"
+          bash "$d/poll.sh" >&- 2>"$d/err.txt"; rc=$?
+          echo "poll-fd1-closed rc=$rc"
+          echo "stderr:"; cat "$d/err.txt"
+          # Whether an earlier open() could silently claim fd 1 in bash 5.3.
+          cat > "$d/reuse.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -u
+          exec 9>/tmp/probe-reuse-probe.txt
+          printf 'wake-line\n' >&1 || { echo "write-failed" >&2; exit 3; }
+          echo "write-succeeded"
+          SH
+          chmod +x "$d/reuse.sh"
+          bash "$d/reuse.sh" >&- 2>"$d/err2.txt"; rc=$?
+          echo "reuse rc=$rc"
+          cat "$d/err2.txt"
+          [ ! -e /tmp/probe-reuse-probe.txt ] || { echo "REUSE: fd1 was claimed:"; cat /tmp/probe-reuse-probe.txt; rm -f /tmp/probe-reuse-probe.txt; }
 
-      - name: Probe 2 - quiet checkpoint kill chain (watch-checkpoint family)
+      - name: Probe 2 - uutils timeout signal semantics (watch-checkpoint family)
+        run: |
+          set -u
+          # Shape 1: plain sleep under INT timeout - both implementations 124.
+          set +e
+          timeout --signal=INT 1s sleep 30; echo "sleep rc=$?"
+          # Shape 2: a child that traps INT and cleans up for ~2s. GNU timeout
+          # (no kill-after) waits and returns 124 once the child exits; a
+          # reimplementation that escalates to KILL yields 137.
+          timeout --signal=INT 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "trapping-child rc=$?"
+          # Shape 3: identify the implementation in use.
+          if timeout --version 2>&1 | grep -qi 'GNU'; then
+            echo "GNU timeout in use"
+          else
+            echo "uutils timeout in use"
+          fi
+
+      - name: Probe 3 - the exact quiet checkpoint on the hosted VM
         run: |
           set -u
           d=$(mktemp -d)
           home="$d/home"
           mkdir -p "$home/state" "$home/data" "$home/config"
-          command -v strace >/dev/null && echo "strace present" || echo "strace MISSING"
-          # Exact quiet checkpoint invocation from tests/fm-watch-checkpoint.test.sh.
           set +e
-          if command -v strace >/dev/null; then
-            strace -f -e trace=kill,tkill,tgkill,exit_group -o "$d/strace.log" \
-              env FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
-              bash bin/fm-watch-checkpoint.sh --seconds 1 >"$d/out.txt" 2>"$d/err.txt"
-          else
-            env FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
-              bash bin/fm-watch-checkpoint.sh --seconds 1 >"$d/out.txt" 2>"$d/err.txt"
-          fi
+          env FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
+            bash bin/fm-watch-checkpoint.sh --seconds 1 >"$d/out.txt" 2>"$d/err.txt"
           rc=$?
           set -e
-          echo "checkpoint rc=$rc (124 expected)"
+          echo "checkpoint rc=$rc (124 expected, 137 = the CI failure)"
           echo "--- out:"; cat "$d/out.txt"
           echo "--- err:"; cat "$d/err.txt"
-          if [ -f "$d/strace.log" ]; then
-            echo "--- kill calls (last 40):"
-            grep -E 'kill|tgkill|tkill' "$d/strace.log" | tail -40 || true
-            echo "--- exit_group by pid (last 20):"
-            grep -E 'exit_group' "$d/strace.log" | tail -20 || true
-          fi
 
-      - name: Probe 3 - start_shell_tree ps scan (backend-rex family)
+      - name: Probe 4 - start_shell_tree ps scan (backend-rex family)
         run: |
           set -u
           d=$(mktemp -d)
@@ -116,18 +122,20 @@ jobs:
             [ -n "$TREE_LEAF" ] || sleep 0.1
             i=$((i + 1))
           done
-          echo "TREE_LEAF=$TREE_LEAF after $i polls (nonempty expected)"
+          echo "TREE_LEAF=[$TREE_LEAF] after $i polls (nonempty expected)"
           echo "--- ps sample of tree processes:"
+          # shellcheck disable=SC2009
           ps -axo pid=,args= | grep -F "$d/tree" || true
-          echo "--- leaf process identity:"
-          [ -n "$TREE_LEAF" ] && ps -o pid=,pgid=,comm=,args= -p "$TREE_LEAF" || true
-          echo "--- root tree identity:"
+          echo "--- leaf identity (if found):"
+          if [ -n "$TREE_LEAF" ]; then ps -o pid=,pgid=,comm=,args= -p "$TREE_LEAF"; fi
+          echo "--- root identity:"
           ps -o pid=,pgid=,comm=,args= -p "$TREE_ROOT" || true
+          echo "--- ps defaults:"
+          ps -axo pid=,args= 2>&1 | head -3
           kill -KILL -- "-$TREE_ROOT" 2>/dev/null || true
 
-      - name: Probe 4 - Pi package version currently resolved by latest
+      - name: Probe 5 - Pi package version resolved by latest
         run: |
           set -u
           npm install -g @earendil-works/pi-coding-agent >/dev/null 2>&1
           npm ls -g --depth 0 @earendil-works/pi-coding-agent
-          pi --version 2>&1 | head -2 || true
