@@ -1689,27 +1689,65 @@ fm_pr_merge_content_gate() {
 
   # Get the base branch and head commit from the PR info directly.
   # The gate runs before the provider-specific merge commands, so
-  # FM_PR_MERGE_HEAD and FM_PR_GITHUB_BASE are not yet set.
+  # FM_PR_MERGE_HEAD and FM_PR_GITHUB_BASE are not yet set. An unreadable read
+  # is refused with the same message the verify step would print, so the
+  # refusal names the unreadable state rather than only the gate.
   local base_branch head_commit provider="$PROVIDER"
   case "$provider" in
     github)
       local pr_json
-      pr_json=$(gh pr view "$URL" --json baseRefName,headRefOid 2>/dev/null) || { rm -f "$diff_file"; return 1; }
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.baseRefName // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
-      head_commit=$(printf '%s' "$pr_json" | jq -r '.headRefOid // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      pr_json=$(gh pr view "$URL" --json baseRefName,headRefOid 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitHub pull request state before merging" >&2
+        return 1
+      }
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.baseRefName // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitHub pull request state before merging" >&2
+        return 1
+      }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.headRefOid // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitHub pull request state before merging" >&2
+        return 1
+      }
       ;;
     gitlab)
       local pr_json
-      pr_json=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null) || { rm -f "$diff_file"; return 1; }
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.target_branch // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
-      head_commit=$(printf '%s' "$pr_json" | jq -r '.sha // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+      pr_json=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitLab merge request state before merging" >&2
+        return 1
+      }
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.target_branch // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitLab merge request state before merging" >&2
+        return 1
+      }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.sha // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitLab merge request state before merging" >&2
+        return 1
+      }
       ;;
     forgejo)
       local pr_json
       pr_json=$(tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
-        "/repos/{owner}/{repo}/pulls/$PR_NUMBER" 2>/dev/null) || { rm -f "$diff_file"; return 1; }
-      base_branch=$(printf '%s' "$pr_json" | jq -r '.base.ref // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
-      head_commit=$(printf '%s' "$pr_json" | jq -r '.head.sha // empty' 2>/dev/null) || { rm -f "$diff_file"; return 1; }
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER" 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the Forgejo pull request state before merging" >&2
+        return 1
+      }
+      base_branch=$(printf '%s' "$pr_json" | jq -r '.base.ref // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the Forgejo pull request state before merging" >&2
+        return 1
+      }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.head.sha // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the Forgejo pull request state before merging" >&2
+        return 1
+      }
       ;;
     *)
       echo "error: merge-content gate: unknown provider '$provider'" >&2
@@ -1719,9 +1757,14 @@ fm_pr_merge_content_gate() {
   esac
 
   if [ -z "$base_branch" ] || [ -z "$head_commit" ]; then
-    # Cannot determine the diff range; gate cannot evaluate.
-    # If yolo is on, refuse the merge (fail-closed).
+    # Cannot determine the diff range; the gate cannot evaluate and refuses
+    # rather than merging unguarded.
     rm -f "$diff_file"
+    case "$provider" in
+      github) echo "error: could not read the GitHub pull request state before merging" >&2 ;;
+      gitlab) echo "error: could not read the GitLab merge request state before merging" >&2 ;;
+      forgejo) echo "error: could not read the Forgejo pull request state before merging" >&2 ;;
+    esac
     return 1
   fi
 
@@ -1738,13 +1781,15 @@ fm_pr_merge_content_gate() {
         fi
       fi ;;
     gitlab)
-      # glab has no 'mr diffs' subcommand; use the API to get changed file names
-      # The endpoint is GET /projects/:id/merge_requests/:iid/diffs
-      # where :id is the URL-encoded project path (owner%2Frepo)
+      # glab has no 'mr diffs' subcommand; use the API to get changed file names.
+      # The endpoint is GET /projects/:id/merge_requests/:iid/diffs where :id is
+      # the URL-encoded project path (owner%2Frepo); it returns a JSON array of
+      # diff records. No form flags: any -f/-F field switches glab's request
+      # method to POST, and this read must stay a GET.
       local encoded_path
       encoded_path=$(printf '%s' "$FM_PR_PATH" | sed 's|/|%2F|g')
-      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" -f json 2>/dev/null \
-        | jq -r '.diffs[].new_path // empty' 2>/dev/null > "$diff_file" || {
+      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" 2>/dev/null \
+        | jq -r '.[] | (.new_path // empty)' 2>/dev/null > "$diff_file" || {
         rm -f "$diff_file"
         return 1
       }

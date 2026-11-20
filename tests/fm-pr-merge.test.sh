@@ -208,8 +208,10 @@ case "${1:-} ${2:-}" in
         exit 0
         ;;
       *headRefOid*)
-        # If --json was requested, return structured JSON instead of bare SHA
-        if echo " $* " | grep -q -- '--json'; then
+        # The merge-content gate reads base and head as one JSON record; a
+        # caller passing -q (bin/fm-pr-check.sh) consumes the bare SHA, exactly
+        # as real gh applies the filter before printing.
+        if echo " $* " | grep -q -- '--json' && ! echo " $* " | grep -q -- ' -q '; then
           head_sha=$(cat "$FM_TEST_GH_HEAD")
           printf '{"baseRefName":"main","headRefOid":"%s"}\n' "$head_sha"
         else
@@ -255,6 +257,11 @@ case "${1:-} ${2:-}" in
       exit 1
     fi
     cat "$FM_TEST_GH_OUTCOME"
+    exit 0
+    ;;
+  "pr diff")
+    # The merge-content gate reads the changed-path list; the fixture PR
+    # touches no protected path, so the list is empty.
     exit 0
     ;;
   api\ *)
@@ -376,8 +383,9 @@ case "${1:-} ${2:-}" in
     exit 0
     ;;
   "api"*)
-    # glab api for merge request diffs - return a simple diff list
-    printf '[{"new_path":"test.sh"}]\n'
+    # glab api for merge request diffs - the fixture merge request touches no
+    # protected path, so the changed-file list is empty.
+    printf '[]\n'
     exit 0
     ;;
 esac
@@ -395,7 +403,7 @@ write_mr_json() {
   local file=$1 kv key value
   local state=opened detail=mergeable conflicts=false discussions=true
   local head=$MR_HEAD pipeline_sha=$MR_HEAD pipeline_status=success pipeline=present
-  local merge_when_pipeline_succeeds=false merge_after=null
+  local merge_when_pipeline_succeeds=false merge_after=null target_branch=main
   shift
   for kv in "$@"; do
     key=${kv%%=*}
@@ -411,6 +419,7 @@ write_mr_json() {
       pipeline) pipeline=$value ;;
       merge_when_pipeline_succeeds) merge_when_pipeline_succeeds=$value ;;
       merge_after) merge_after=$value ;;
+      target_branch) target_branch=$value ;;
       *) fail "write_mr_json: unknown field '$key'" ;;
     esac
   done
@@ -421,8 +430,8 @@ write_mr_json() {
     "$state" "$detail" "$conflicts" > "$file"
   printf '"blocking_discussions_resolved":%s,"sha":"%s","head_pipeline":%s,' \
     "$discussions" "$head" "$pipeline" >> "$file"
-  printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s}\n' \
-    "$merge_when_pipeline_succeeds" "$merge_after" >> "$file"
+  printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s,"target_branch":"%s"}\n' \
+    "$merge_when_pipeline_succeeds" "$merge_after" "$target_branch" >> "$file"
 }
 
 # tea mock recording every invocation, so a test can prove the login and
@@ -508,6 +517,11 @@ case "$endpoint" in
       printf '{}\n'
     fi
     ;;
+  */files)
+    # The merge-content gate's changed-path read; the fixture pull request
+    # touches no protected path, so the file list is empty.
+    printf '[]\n'
+    ;;
   *)
     [ ! -e "$log_dir/tea-view-fails" ] || exit 1
     if [ -e "$log_dir/tea-merged" ] && [ -s "$log_dir/tea-post-merge-view-failures" ]; then
@@ -535,7 +549,7 @@ SH
 # with named fields overridden so one case drives exactly one condition.
 write_forgejo_pr_json() {
   local file=$1 kv key value
-  local state=open mergeable=true merged=false draft=false head=$FJ_HEAD
+  local state=open mergeable=true merged=false draft=false head=$FJ_HEAD base_ref=main
   shift
   for kv in "$@"; do
     key=${kv%%=*}
@@ -546,11 +560,12 @@ write_forgejo_pr_json() {
       merged) merged=$value ;;
       draft) draft=$value ;;
       head) head=$value ;;
+      base_ref) base_ref=$value ;;
       *) fail "write_forgejo_pr_json: unknown field '$key'" ;;
     esac
   done
-  printf '{"state":"%s","mergeable":%s,"merged":%s,"draft":%s,"head":{"sha":"%s"}}\n' \
-    "$state" "$mergeable" "$merged" "$draft" "$head" > "$file"
+  printf '{"state":"%s","mergeable":%s,"merged":%s,"draft":%s,"head":{"sha":"%s"},"base":{"ref":"%s"}}\n' \
+    "$state" "$mergeable" "$merged" "$draft" "$head" "$base_ref" > "$file"
 }
 
 # write_forgejo_status_json <file> [state=<value>] [total_count=<n>]

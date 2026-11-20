@@ -6,6 +6,8 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Read by fm-protected-paths-lib.sh to locate the global config/protected-paths.
+# shellcheck disable=SC2034
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 STATE="${FM_STATE_OVERRIDE:-${TMPDIR:-/tmp}/fm-test-state-$$}"
 
@@ -26,7 +28,7 @@ echo "=== Test: Second-look runner invocation ==="
 
 # Test 1: Runner prints 'unsure' when no verdict exists
 echo -n "  Test 1: Runner prints 'unsure' when no verdict exists... "
-output=$($SCRIPT_DIR/../bin/fm-second-look.sh --task-id "test-task" \
+output=$("$SCRIPT_DIR/../bin/fm-second-look.sh" --task-id "test-task" \
     --pr-url "https://github.com/test/repo/pull/123" \
     --head "abc123def456" 2>/dev/null) || true
 if [ "$output" = "unsure" ]; then

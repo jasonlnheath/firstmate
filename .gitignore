@@ -11,7 +11,5 @@ __pycache__/
 *.pyc
 .env
 config/*
-# Protected paths list is tracked (used by merge-content gates)
-!config/protected-paths
 
 .tools/

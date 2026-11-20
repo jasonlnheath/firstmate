@@ -6,6 +6,8 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Read by fm-protected-paths-lib.sh to locate the global config/protected-paths.
+# shellcheck disable=SC2034
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 STATE="${FM_STATE_OVERRIDE:-${TMPDIR:-/tmp}/fm-test-state-$$}"
 
@@ -24,41 +26,41 @@ mkdir -p "$STATE"
 
 echo "=== Test: fm_protected_paths_list ==="
 
-# Test 1: Global list exists
-echo -n "  Test 1: Global protected-paths list exists... "
+# Test 1: Tracked default list exists
+echo -n "  Test 1: Tracked default protected-paths list exists... "
 result=$(fm_protected_paths_list)
 if [ -n "$result" ]; then
-  pass "global list has $(echo "$result" | wc -l) patterns"
+  pass "default list has $(echo "$result" | wc -l) patterns"
 else
-  fail "global list is empty"
+  fail "default list is empty"
 fi
 
-# Test 2: Global list contains CI patterns
-echo -n "  Test 2: Global list contains CI patterns... "
-if echo "$result" | grep -q '\.github/workflows/\*\.yml'; then
+# Test 2: Default list contains CI patterns
+echo -n "  Test 2: Default list contains CI patterns... "
+if echo "$result" | grep -q '^\.github/workflows/\*$'; then
   pass "contains .github/workflows pattern"
 else
   fail "missing .github/workflows pattern"
 fi
 
-# Test 3: Global list contains lockfile patterns
-echo -n "  Test 3: Global list contains lockfile patterns... "
+# Test 3: Default list contains lockfile patterns
+echo -n "  Test 3: Default list contains lockfile patterns... "
 if echo "$result" | grep -q 'package-lock\.json'; then
   pass "contains package-lock.json pattern"
 else
   fail "missing package-lock.json pattern"
 fi
 
-# Test 4: Global list contains agent instruction patterns
-echo -n "  Test 4: Global list contains agent instruction patterns... "
+# Test 4: Default list contains agent instruction patterns
+echo -n "  Test 4: Default list contains agent instruction patterns... "
 if echo "$result" | grep -q 'AGENTS\.md'; then
   pass "contains AGENTS.md pattern"
 else
   fail "missing AGENTS.md pattern"
 fi
 
-# Test 5: Per-project override replaces global
-echo -n "  Test 5: Per-project override replaces global... "
+# Test 5: Per-project override replaces the tracked default
+echo -n "  Test 5: Per-project override replaces the tracked default... "
 mkdir -p "$STATE/test-project/config"
 echo "*.sh" > "$STATE/test-project/config/protected-paths"
 result=$(fm_protected_paths_list "$STATE/test-project")
@@ -68,8 +70,8 @@ else
   fail "per-project override did not replace global (got: $result)"
 fi
 
-# Test 6: Missing per-project file falls back to global
-echo -n "  Test 6: Missing per-project file falls back to global... "
+# Test 6: Missing per-project file falls back to the tracked default
+echo -n "  Test 6: Missing per-project file falls back to the tracked default... "
 mkdir -p "$STATE/test-project2"
 result=$(fm_protected_paths_list "$STATE/test-project2")
 if [ -n "$result" ]; then
@@ -97,7 +99,7 @@ fi
 # Use a project with empty protected-paths to test non-protected paths
 echo -n "  Test 8: Non-protected path is not detected... "
 mkdir -p "$STATE/empty-protected-project/config"
-> "$STATE/empty-protected-project/config/protected-paths"
+: > "$STATE/empty-protected-project/config/protected-paths"
 diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-test-diff.XXXXXX")
 printf '%s\n' 'src/utils/helper.js' > "$diff_file"
 result=$(fm_protected_paths_check "$diff_file" "$STATE/empty-protected-project") || true
@@ -132,7 +134,7 @@ printf '%s\n' 'README.md' >> "$diff_file"
 result=$(fm_protected_paths_check "$diff_file" || true)
 rm -f "$diff_file"
 if echo "$result" | grep -q '\.github/workflows/ci\.yml' && \
-   echo "$result" | grep -q 'README\.md' && \
+   ! echo "$result" | grep -q 'README\.md' && \
    ! echo "$result" | grep -q 'src/utils/helper\.toml'; then
   pass "excluded non-protected path"
 else
