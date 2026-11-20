@@ -91,6 +91,12 @@ CHANGELOG.txt
 */SECURITY.md
 */CONTRIBUTING.md
 */CODE_OF_CONDUCT.md
+*/Jenkinsfile
+*/Dockerfile
+*/Pipfile
+*/tox.ini
+*/.bumpversion.cfg
+*/.version
 
 # Agent instruction files
 AGENTS.md

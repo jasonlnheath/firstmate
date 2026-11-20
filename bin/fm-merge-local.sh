@@ -152,14 +152,19 @@ git -C "$PROJ" diff --name-only "$DEFAULT".."$BRANCH" > "$local_diff_file" 2>/de
 }
 
 # Check if any paths are protected
-matched_paths=$(fm_protected_paths_check "$local_diff_file" "") || {
-  local rc=$?
-  # Return code 3 means missing config (fail-closed for security gate)
-  [ "$rc" -eq 3 ] && { rm -f "$local_diff_file"; exit 1; }
-  # No protected paths matched - gate passes
+matched_paths=""
+gate_rc=0
+matched_paths=$(fm_protected_paths_check "$local_diff_file" "") || gate_rc=$?
+# Return code 3 means missing config (fail-closed for security gate)
+if [ "$gate_rc" -eq 3 ]; then
+  rm -f "$local_diff_file"
+  exit 1
+fi
+# Return code 1 means no protected paths matched - gate passes
+if [ "$gate_rc" -eq 1 ] && [ -z "$matched_paths" ]; then
   rm -f "$local_diff_file"
   matched_paths=""
-}
+fi
 
 if [ -n "$matched_paths" ]; then
   # Protected paths were touched. Check for a second-look verdict.
@@ -171,7 +176,7 @@ if [ -n "$matched_paths" ]; then
   if [ -f "$META" ]; then
     yolo=$(grep '^yolo=' "$META" | tail -1 | cut -d= -f2- || true)
   fi
-  if [ "$yolo" != "yolo" ]; then
+  if [ "$yolo" != "on" ]; then
     # Yolo is off - merge always escalates to captain
     printf 'merge-content gate: yolo is off, protected paths touched: %s\n' "$matched_paths" >&2
   else
@@ -189,6 +194,15 @@ if [ -n "$matched_paths" ]; then
       printf 'protected paths: %s\n' "$matched_paths" >&2
       exit 1
     }
+
+    # Check that the verdict was recorded for the same head we're about to merge.
+    local stored_head
+    stored_head=$(grep '^head=' "$verdict_dir/current.verdict" 2>/dev/null | cut -d= -f2- || true)
+    if [ -z "$stored_head" ] || [ "$stored_head" != "$BRANCH" ]; then
+      echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head ${stored_head:-<none>}, not the current branch $BRANCH; refusing to merge" >&2
+      printf 'protected paths: %s\n' "$matched_paths" >&2
+      exit 1
+    fi
 
     case "$verdict" in
       clean)

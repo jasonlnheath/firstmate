@@ -1724,23 +1724,54 @@ fm_pr_merge_content_gate() {
     return 1
   fi
 
-  # Get the diff paths
-  if ! git diff --name-only "$base_branch".."$head_commit" > "$diff_file" 2>/dev/null; then
-    # Diff failed; gate cannot evaluate.
-    rm -f "$diff_file"
-    return 1
-  fi
+  # Get the diff paths from the forge API (not git, since CWD is the firstmate
+  # repo, not the project checkout). Use the same provider-specific approach
+  # that the rest of this script uses.
+  case "$provider" in
+    github)
+      gh pr diff "$URL" --name-only 2>/dev/null > "$diff_file" || {
+        # Fallback: try with explicit repo
+        gh pr diff "$PR_NUMBER" --repo "$FM_PR_PATH" --name-only 2>/dev/null > "$diff_file" || {
+          rm -f "$diff_file"
+          return 1
+        }
+      }
+      ;;
+    gitlab)
+      GITLAB_HOST="$FM_PR_HOST" glab mr diffs "$PR_NUMBER" -R "$PROJECT_URL" --name-only 2>/dev/null > "$diff_file" || {
+        rm -f "$diff_file"
+        return 1
+      }
+      ;;
+    forgejo)
+      tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" 2>/dev/null \
+        | jq -r '.[].filename // empty' 2>/dev/null > "$diff_file" || {
+        rm -f "$diff_file"
+        return 1
+      }
+      ;;
+    *)
+      rm -f "$diff_file"
+      return 1
+      ;;
+  esac
 
   # Check if any paths are protected
   local matched_paths
-  matched_paths=$(fm_protected_paths_check "$diff_file" "") || {
-    local rc=$?
-    # Return code 3 means missing config (fail-closed for security gate)
-    [ "$rc" -eq 3 ] && { rm -f "$diff_file"; return 1; }
-    # No protected paths matched - gate passes
+  matched_paths=""
+  gate_rc=0
+  matched_paths=$(fm_protected_paths_check "$diff_file" "") || gate_rc=$?
+  # Return code 3 means missing config (fail-closed for security gate)
+  if [ "$gate_rc" -eq 3 ]; then
+    rm -f "$diff_file"
+    return 1
+  fi
+  # Return code 1 means no protected paths matched - gate passes
+  if [ "$gate_rc" -eq 1 ] && [ -z "$matched_paths" ]; then
     rm -f "$diff_file"
     return 0
-  }
+  fi
 
   # Protected paths were touched. Check for a second-look verdict.
   rm -f "$diff_file"
@@ -1784,10 +1815,11 @@ fm_pr_merge_content_gate() {
 
   # Check that the verdict was recorded for the same head we're about to merge.
   # If the PR has been updated since the second-look ran, we need a fresh review.
+  # A verdict without a head= line is unbound and treated as absent.
   local stored_head
   stored_head=$(grep '^head=' "$verdict_dir/current.verdict" 2>/dev/null | cut -d= -f2- || true)
-  if [ -n "$stored_head" ] && [ "$stored_head" != "$head_commit" ]; then
-    echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head $stored_head, not the current head $head_commit; refusing to merge" >&2
+  if [ -z "$stored_head" ] || [ "$stored_head" != "$head_commit" ]; then
+    echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head ${stored_head:-<none>}, not the current head $head_commit; refusing to merge" >&2
     printf 'protected paths: %s\n' "$matched_paths" >&2
     return 1
   fi
