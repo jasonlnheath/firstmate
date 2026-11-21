@@ -1,0 +1,22 @@
+# CI 'Assert full history for the spawn lineage gate' step, extracted verbatim
+# from .github/workflows/ci.yml (target a8636fd3) and driven in scratch repos.
+
+=== repo: full (shallow before: true) ===
+step exit=0
+shallow after: false
+
+=== repo: truncated (shallow before: true) ===
+::error::the runner checkout is shallow; the spawn lineage gate would refuse spawns. Every self-hosted job must check out with fetch-depth: 0.
+step exit=1
+shallow after: true
+
+=== repo: clean (shallow before: false) ===
+step exit=0
+shallow after: false commits=3
+
+=== repo: unshallowable (shallow before: true) ===
+step exit=0
+shallow after: false commits=3
+
+full-depth project: rc=0 (0 = shared lineage accepted)
+depth-1 project:    rc=2 (2 = lineage undeterminable, spawn refused)

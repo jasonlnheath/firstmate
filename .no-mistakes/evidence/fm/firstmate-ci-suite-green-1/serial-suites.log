@@ -1,0 +1,723 @@
+=== [check-coverage] bin/fm-test-run.sh --check-coverage ===
+2026-11-21T17:34:05Z
+FM_TEST_COVERAGE ok total=298 parallel=26 parallel_max_ms=814249 parallel_imbalance_ms=552 parallel_unhinted=0 serial=256 serial_shards=10 serial_unhinted=26 serial_max_ms=1192918 serial_budget_ms=1200000 herdr=16
+=== [check-coverage] exit=0 ===
+=== [audiences] bin/fm-test-run.sh tests/fm-documentation-audiences.test.sh ===
+2026-11-21T17:34:13Z
+FM_TEST_BEGIN 2026-11-21T17:34:13Z tests/fm-documentation-audiences.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - documentation inventory classifies every maintained prose surface exactly once
+ok - classification, setup routing, and maintained-prose scope fail safely
+ok - required documentation owner pointers cannot silently disappear
+ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed
+FM_TEST_END 2026-11-21T17:34:15Z tests/fm-documentation-audiences.test.sh exit=0 duration_ms=1811 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=1846
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=1811 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-documentation-audiences.test.sh duration_ms=1811
+=== [audiences] exit=0 ===
+=== [rex] bin/fm-test-run.sh tests/fm-backend-rex.test.sh ===
+2026-11-21T17:34:15Z
+FM_TEST_BEGIN 2026-11-21T17:34:15Z tests/fm-backend-rex.test.sh family=rex expected_gate_skip=optional-binary
+ok - fm_backend_rex_bin: REX_BIN_DIR, then PATH, then the server bundle path
+ok - fm_backend_rex_version_check: accepts API revision 5 and refuses an older CLI, older server, or missing CLI
+ok - fm_backend_rex_parse_target: <session-uuid>:<block-uuid> only, prefixes restored
+ok - fm_backend_rex_create_task: one per-home session created once then adopted, one tab per task, scoped block label, 200x50
+warning: could not move the respawned Rex secondmate tab window:00000009-0000-7000-8000-000000000009 to the first position
+ok - fm_backend_rex_create_task: confirmed launcher session gets the tab focus-safe; unconfirmed claims refuse; nested tmux and other-home use the per-home session
+ok - fm_backend_rex_create_task: refuses an unreadable inventory, ambiguous per-home sessions, and duplicates; a gone session returns 2
+ok - fm_backend_rex_create_task_in_session: closes a bare-shell husk carrying the task label, refuses over a live one
+ok - fm_backend_rex_create_task reclaim: the fallback placement closes a bare-shell husk, refuses a live one, and spawn still refuses duplicates
+ok - rex capture: CR stripped and tailed; viewport derived from the last size.rows styled rows, implicit empty bottom row restored
+ok - fm_backend_composer_state rex: the composer holding the cursor decides; a cursor outside any composer falls back to the cursorless read
+ok - fm_backend_agent_state rex: alive/dead/ambiguous from the process view, missing on not-found, unreadable without starting a server
+ok - fm_backend_agent_state rex: a harness below a shell foreground is alive and its records are trusted; a bare shell stays dead
+ok - fm_backend_busy_state rex: OSC 7501 records count only while their owner is the foreground process or an ancestor
+ok - fm_backend_rex_current_path: the foreground process cwd
+ok - rex input: literal text after --, no call for empty input, verified key names only, line submit
+ok - fm_backend_kill rex: closes exactly its tab, treats a gone block as done, retires the emptied per-home session
+ok - fm_backend_kill rex: never kills a session this home does not own, even when it is empty
+ok - fm_backend_kill rex: refuses success unless the block is proven gone
+ok - fm-teardown rex: retiring a secondmate closes its crew and its own tab and retires its per-home session
+ok - fm_backend_rex_endpoint_absence_recheck: proof only from the recorded server; missing/dead/unproven
+ok - fm_control_endpoint_absence_verdict rex: gone only on a not-found from the recorded server
+ok - fm-control exit on rex: a stopped server goes through the recorded-server absence proof, and refuses when it cannot prove absence
+ok - fm_backend_rex_list_live: home-scoped blocks only, nothing when unreachable
+ok - fm_backend_events_capable rex: API revision 5 on both ends, read without starting a server
+ok - fm_backend_wait_transition rex: a trusted blocked edge returns its record with Rex's app, kind, and message
+ok - fm_backend_wait_transition rex: a blocked edge counts only while its owner is the foreground process or an ancestor
+ok - fm_backend_wait_transition rex: level reconcile returns a blocked block once; working and cleanup clear the marker
+ok - fm_backend_wait_transition rex: a watched block's exit or close ends the wait at once for an immediate poll
+ok - fm_backend_wait_transition rex: a reader that cannot start or ends early falls back to polling
+ok - rex: a mark, progress record, tint, and wedge alert are each one small terminal write of Firstmate's own app=firstmate record
+ok - rex: mark_read reports only Firstmate's record and fails on an unreadable pane
+ok - rex: Firstmate's own program-status records never count as the worker's busy state or blocked edge
+ok - rex: attention marks are off unless config/rex-status-marks turns them on
+ok - rex: the marks producer plans from status, writes once, repairs without re-notifying, clears on resolve, and honors off
+ok - rex: clearing a task removes its mark, tint, and caches
+ok - rex: validation progress reads captured no-mistakes status by column name
+FM_TEST_END 2026-11-21T17:34:27Z tests/fm-backend-rex.test.sh exit=0 duration_ms=12170 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=12203
+FM_TEST_SUMMARY_FAMILY family=rex count=1 duration_ms=12170 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-backend-rex.test.sh duration_ms=12170
+=== [rex] exit=0 ===
+=== [transport-lanes] bin/fm-test-run.sh tests/fm-remote-transport-lanes.test.sh ===
+2026-11-21T17:34:27Z
+FM_TEST_BEGIN 2026-11-21T17:34:27Z tests/fm-remote-transport-lanes.test.sh family=secondmate expected_gate_skip=none
+ok - atomic sequence claims remain unique and reap only after expiry
+ok - lanes run homes concurrently while each home stays FIFO
+ok - same-home jobs staged in the same second execute in staging-sequence order
+ok - same-home sequence order follows completed staging publication
+ok - a caller killed mid-wait cancels its queued job before execution
+ok - a caller killed mid-wait stops its running job's process group
+ok - a signal-less caller disconnect cancels the abandoned job through the parent probe
+ok - bounded reads after a cancellation meet their own budget with no convoy
+ok - an open caller stdin no longer wedges a non-payload remote command
+ok - a live explicit-stdin stage survives the staging-litter age bound
+ok - --stdin still delivers a payload caller's bytes
+ok - abandoned stage litter is reaped by age while live staging survives
+ALL TESTS PASSED
+FM_TEST_END 2026-11-21T17:35:37Z tests/fm-remote-transport-lanes.test.sh exit=0 duration_ms=69971 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=70007
+FM_TEST_SUMMARY_FAMILY family=secondmate count=1 duration_ms=69971 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-remote-transport-lanes.test.sh duration_ms=69971
+=== [transport-lanes] exit=0 ===
+=== [wake-queue] bin/fm-test-run.sh tests/fm-wake-queue.test.sh ===
+2026-11-21T17:35:37Z
+FM_TEST_BEGIN 2026-11-21T17:35:37Z tests/fm-wake-queue.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - an abandoned same-process lock hold is reclaimed; a parent's live hold is not
+ok - a lock wait returns within its bound once its directory is removed
+ok - without BASHPID a subshell cannot release or reclaim its parent lock and owns its own hold
+ok - bounded acquire hands ownership to the waiting caller after contention
+ok - presentation lock waits are bounded and retriable without weakening acknowledgement atomicity
+ok - malformed presentation locks report acquire failure instead of contention
+tests/wake-helpers.sh: line 357: 1168537 Killed                     PATH="$dir/fakebin:$PATH" FM_FAKE_NOW_FILE="$dir/now" FM_HOME="$dir" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$dir/state" FM_FAKE_TMUX_WINDOW='firstmate:fm-mate' FM_SECONDMATE_WAKE_STALL_SECS=1 FM_SECONDMATE_LIVENESS_SECS=99999999 FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$dir/watch-$leg.out" 2> "$dir/watch-$leg.err"
+tests/wake-helpers.sh: line 357: 1169212 Killed                     PATH="$dir/fakebin:$PATH" FM_FAKE_NOW_FILE="$dir/now" FM_HOME="$dir" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$dir/state" FM_FAKE_TMUX_WINDOW='firstmate:fm-mate' FM_SECONDMATE_WAKE_STALL_SECS=1 FM_SECONDMATE_LIVENESS_SECS=99999999 FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$dir/watch-$leg.out" 2> "$dir/watch-$leg.err"
+tests/wake-helpers.sh: line 357: 1170577 Killed                     PATH="$dir/fakebin:$PATH" FM_FAKE_NOW_FILE="$dir/now" FM_HOME="$dir" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$dir/state" FM_FAKE_TMUX_WINDOW='firstmate:fm-mate' FM_SECONDMATE_WAKE_STALL_SECS=1 FM_SECONDMATE_LIVENESS_SECS=99999999 FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$dir/watch-$leg.out" 2> "$dir/watch-$leg.err"
+ok - foreign secondmate queue alerts once per no-progress episode without age-only or cascade noise
+ok - declared external-wait pause rows do not feed secondmate wake-loop escalation
+ok - a reprovisioned queue generation starts a fresh no-progress interval
+ok - an active turn defers the secondmate stall escalation without cancelling it
+ok - a long-lived mate mid-turn is not a stall, but a queue frozen past the busy bound still alarms
+ok - a proven-idle leftover row is rung so the child home can drain without a parent alarm
+ok - TERM stops a watcher blocked in the drain-ring idle capture and runs its cleanup
+ok - busy panes defer without a ring and unknown panes keep the parent alarm
+ok - a leftover row that survives a proven-idle ring still surfaces as a genuine stall
+ok - secondmate stall markers reject symlinks without touching their targets
+ok - stall publication acknowledgement closes the pre-marker crash window
+ok - empty prefix mate cleanup preserves another mate's stall receipt
+ok - self-announced appends suppress only their own bytes and fail toward waking
+ok - separate self-announced answers after a fold stay owned; worker decisions and later lines still wake
+ok - an unreadable status still reads as unreported, with or without owned growth
+ok - a worker resolved in fold lag still wakes after this home's close
+ok - owned growth suppresses the wake without hiding the turn-ended annotation
+ok - historical annotations replay nothing already announced and keep everything new
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 1209369.1795282568.0mCgoJ
+ok - concurrent append plus drain preserves durable records through acknowledgement
+ok - signal written while no watcher runs is caught on next run
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 1226156.1795282576.1T2W5Z
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+ok - stale wake is queued before suppressor state is advanced
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 1228039.1795282577.N2fc61
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+ok - a not-provably-working stale wake is queued before its suppressor is advanced
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 1229717.1795282578.J4ghkd
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+ok - registered custom check output is queued before cadence suppression
+ok - concurrent drains replay until one post-handling acknowledgement consumes records
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 4 --recovery-generation 1232368.1795282579.UcV2b0
+ok - drain collapses obvious duplicate heartbeat and signal records
+ok - drain asserts watcher liveness: warns on a lapse, stays silent for a live watcher with a fresh beacon
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 8 --recovery-generation 1233735.1795282580.K0Qybf
+ok - structural signal enrichment is separate, deduped, home-local, and tier-zero for other wakes
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 13 --recovery-generation 1234842.1795282581.zdnST4
+ok - every readable unread status line is annotated in full while invalid status files preserve their raw wakes
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 1236659.1795282582.rygu12
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 1236659.1795282582.rygu12
+ok - slow annotation releases the append lock and a deleted status file fails open
+ok - a branch-actor scoped ack never swallows an unacked main-owned row, and main's later drain sees exactly what remains
+ok - main drain and acknowledgement exclude an active branch grant
+ok - a branch-actor acknowledgement commits secondmate stall receipts for exactly its granted rows
+ok - a branch-held row raises no queued-wake warning for main, and the same row is presented and acknowledged once the grant clears
+ok - a queue that cannot be counted keeps the queued-wake alarm up
+ok - structurally unusable rows are retired by main alone, leaving every remaining row presentable and acknowledgeable
+ok - branch grant cannot take a row already claimed by main
+ok - main's acknowledgement leaves a row that arrived after its drain for whichever actor takes it next
+ok - actor ownership filtering precedes same-key deduplication
+ok - main reclaims rows granted to an exited branch owner
+ok - a branch-actor drain with no eligible-row snapshot refuses loudly instead of draining nothing
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation existing
+ok - wake append publishes atomic recovery evidence before durable rows
+ok - recovery mint and delivery log avoid sibling $()
+ok - wake queue: large sequences advance and acknowledge as exact digit-only decimals
+ok - wake drain: generation-less legacy wakes are adopted and acknowledged
+ok - a handover undoes only the downtime its own stop published over an acknowledged episode
+ok - wake drain: a stale acknowledgement cannot retire or consume a newer recovery episode
+ok - wake drain: an acknowledgement that consumes nothing says so and names the exact command for the current wake
+ok - wake drain: a branch acknowledgement that consumes nothing names the exact command for its granted wake
+ok - wake drain: recovery acknowledgement failures are explicit and retryable
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 1268682.1795282602.WtbRVU
+ok - interruptions preserve durable rows until post-handling acknowledgement
+ok - fm_wake_queue_prune_task: prunes wakes for target task without touching other tasks
+ok - drain rotates scratch files an interrupted drain left under the queue lock
+ok - watch liveness: a dead secondmate is relaunched once, ledgered, and quiet afterwards
+ok - watch liveness: a missing secondmate endpoint is relaunched without a pre-kill
+ok - watch liveness: one tick relaunches every dead mate, queues a row each, and wakes once
+ok - watch liveness: alive and ambiguous endpoints are probed, logged, and never touched
+ok - watch liveness: the cadence marker gates probing and survives across legs
+ok - watch liveness: the attempt bound parks a flapping mate once and a live probe rearms a full budget
+ok - watch liveness: a failed auto-relaunch wakes once with its cause and is ledgered
+ok - watch liveness: an unwritable or unreadable relaunch ledger refuses to kill or spawn
+ok - watch liveness: a per-mate error keeps scanning, recovers later mates, and still wakes
+ok - watch liveness: an outcome that could not be queued surfaces as an error, not a wake
+ok - watch liveness: a mate mid-episode under the shared liveness lock is skipped entirely
+ok - watch liveness: an unreachable remote secondmate is probed, preserved, and never failed over
+FM_TEST_END 2026-11-21T17:37:37Z tests/fm-wake-queue.test.sh exit=0 duration_ms=119859 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=119898
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=1 duration_ms=119859 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-wake-queue.test.sh duration_ms=119859
+=== [wake-queue] exit=0 ===
+=== [calm-pi] bin/fm-test-run.sh tests/fm-calm-pi-extension.test.sh ===
+2026-11-21T17:37:37Z
+FM_TEST_BEGIN 2026-11-21T17:37:37Z tests/fm-calm-pi-extension.test.sh family=pure-contract-unit expected_gate_skip=none
+skip: installed @earendil-works/pi-coding-agent package not found
+ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
+skip: installed @earendil-works/pi-coding-agent package not found
+ok - missing Pi presentation class exports reach the independent adapter degradation path
+skip: installed @earendil-works/pi-coding-agent package not found
+skip: installed @earendil-works/pi-coding-agent package not found
+skip: installed @earendil-works/pi-coding-agent package not found
+skip: installed @earendil-works/pi-coding-agent package not found
+skip: installed @earendil-works/pi-coding-agent package not found
+skip: pi or tmux not found for Pi operational follow-up E2E
+skip: pi or tmux not found for Pi Calm queued-row Escape E2E
+skip: pi or tmux not found for Pi Calm hidden-block geometry E2E
+skip: installed @earendil-works/pi-coding-agent package not found
+skip: installed @earendil-works/pi-coding-agent package not found
+ok - the rendered-export-DOM guard renders in one pass, retries a bounded number of Chrome start-up failures, and reports the Chrome binary, Chrome version, Pi version, exit status, and Chrome diagnostic when every attempt fails
+skip: pi or tmux not found for Pi calm interactive E2E
+fm-test-run: gate skip: tests/fm-calm-pi-extension.test.sh: installed @earendil-works/pi-coding-agent package not found
+FM_TEST_END 2026-11-21T17:37:40Z tests/fm-calm-pi-extension.test.sh exit=0 duration_ms=2530 gate_skip=true
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=1 duration_ms=2568
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=2530 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-calm-pi-extension.test.sh duration_ms=2530
+=== [calm-pi] exit=0 ===
+=== [public-followup] bin/fm-test-run.sh tests/fm-public-followup.test.sh ===
+2026-11-21T17:37:40Z
+FM_TEST_BEGIN 2026-11-21T17:37:40Z tests/fm-public-followup.test.sh family=standalone expected_gate_skip=none
+ok - the suite's seeding never reaches a backlog named by ambient TASKS_AXI_FILE/BACKEND
+ok - outcome text is collapsed to one line, bounded by codepoint, and never corrupts characters
+ok - restart end-to-end: typed result reconciles from disk and delivers one reply to the original thread
+ok - failed work on a pr-merged promise delivers its honest outcome exactly once
+ok - duplicate terminal results, restart replay, and repeated delivery are all no-ops
+ok - wrong source, wrong work id, stale generation, malformed, unsupported deliverable, and forged identity are all refused
+ok - a relay transport failure is held as retryable with no false completion, and the retry posts once
+ok - a dry-run records no public delivery and leaves the commitment retryable
+ok - a late success receipt closes the exact attempt with no second post, and a mismatched attempt is refused
+ok - typed terminal cleanup clears the legacy link without posting
+ok - a delivery interrupted between post and receipt refuses to repost
+ok - a child home reports typed results but can never become the outward-post owner
+ok - typed delivery refuses to post when its cleanup registration is missing
+ok - marked secondmate teardown resolves its parent and fails closed when unavailable
+ok - local seeding publishes durable parent state before its identity marker
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - a lost launch-time parent binding is recovered from the durable local record
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - a durable local parent record does not bypass a genuinely missing parent-side registration
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - unknown durable parent fields remain forward-compatible
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - conflicting live and durable parent bindings fail closed
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - unsafe durable parent records fail closed before cleanup
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - a NUL-bearing durable parent record fails closed before cleanup
+ok - relay-disabled unmarked teardown runs no public-followup work
+ok - a marked child proceeds without tasks-axi when its parent relay is disabled
+ok - secondmate parent resolution matches the durable registry id literally
+ok - traversal-shaped registrations are rejected before path construction or posting
+ok - pending keeps registrations when tasks-axi returns malformed JSON
+ok - the retained private request context keeps the original thread deliverable after inbox cleanup
+ok - cleanup refuses while a public reply is owed and proceeds once it has landed
+ok - a relay-disabled home runs no tasks-axi call, prints nothing, and gains no artifact
+ok - a relay-enabled home with no commitments makes no backlog call and stays silent
+ok - a relay-exhausted follow-up binding is escalated rather than retried into the thread
+ok - the relay poll stays inert without a token, silent with no commitments, and surfaces a new result once
+ok - startup surfaces unresolved public commitments only in a relay home that owes one
+ok - typed public-followup records carry only public-safe summaries and deliverables
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - dropped-baton regression: delivery retains the loop and pending prints open-loop
+Note: switching to 'a8636fd3c8795c2a9d851ecfecf206b757588659'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+ok - CONTROL: the identical teardown REFUSES the moment a commitment is registered
+ok - rechain posts the shipped follow-on into the same thread
+ok - rechain resumes the same obligation after an interrupted bind
+ok - concurrent rechains cannot fork one delivered source
+ok - failed rechain retirement keeps the source claimed by one resumable destination
+ok - first register succeeds with an empty lock list under /bin/bash
+ok - registration replay preserves delivered and retired loop states
+ok - redelivery does not report a retired loop as open
+ok - retire closes delivered loops after secondmate home removal
+ok - retire fails closed for an unbound existing secondmate
+ok - retire fails closed when a secondmate ID is reassigned
+ok - rechain refuses an unrelated existing destination
+ok - pending skips a registration retired during settlement
+ok - retire --reason closes the loop and drops the open-loop line
+ok - retention creates no false teardown refusal and pending no longer prunes
+ok - expiry escalation is pinned by FMX_NOW_OVERRIDE
+ok - brief fails explicitly when typed deliverable keys are unavailable
+ok - pre-change registrations are open loops and un-rechainable, never a crash
+ok - teardown reports an unreconciled legacy Relay link
+ok - secondmate promotion matches teardown parent resolution
+ok - a public loop bound to a remote secondmate home delivers and retires
+ok - delivered remote registrations skip offline collection routes
+ok - --force still covers only the unresolved obligation, not the link clear
+ok - retire fails closed when a remote route is reassigned
+ok - retire fails closed when remote state is unreadable
+ok - retire fails closed when remote state is non-writable
+ok - retire accepts link absence in non-writable remote state
+ok - the guarded remote clear refuses a lock it cannot acquire instead of hanging
+ok - an unconfirmed remote clear is unknown completion, never a silent close
+ok - a typed terminal result emitted in a remote work home reaches the owning home
+ok - a promise that requires no deliverable is briefable and reportable
+ok - an unreachable remote work home fails loudly instead of reporting an empty inbox
+ok - an unreadable remote outbox fails collection without losing its result
+ok - invalid registration fails collection without dropping the staged result
+ok - unsafe registration entries fail collection without dropping staged results
+ok - route loss fails brief and consume without dropping the staged result
+ok - empty reachable remote collection remains a healthy no-op
+ok - remote brief rejects traversal and empty route path components
+ok - a local work home's emit path is unchanged
+ok - a duplicate report from a remote work home stays a no-op
+ok - staging requires the matching secondmate firstmate home
+ok - brief pre-fills the report path and states the format of every value it cannot know
+ok - the emitter refuses a deliverable tasks-axi would reject, naming key, value, and format
+ok - the emitter refuses a repeated deliverable key by name in both destinations
+ok - the emitter refuses an event missing a required deliverable in both destinations
+ok - the emitter's work-event rules agree with the real tasks-axi consumer on 74 cases
+ok - a rejected event records a specific reason and wakes the owning home once
+ok - a rejection collected from a remote secondmate wakes the owning home
+ok - only a failed result may answer a promise without the deliverable it promised
+ok - a failure promise keeps needing its own error_code
+ok - a rejection whose wake cannot be recorded is retried rather than lost
+ok - a rejection wake survives a poll that could not write its line
+ok - a rejection wake survives a poll that could not read its line
+ok - a wake that cannot be dropped repeats the same refusal
+ok - a refusal whose event was retained repeats its wake instead of a new one
+FM_TEST_END 2026-11-21T17:41:46Z tests/fm-public-followup.test.sh exit=0 duration_ms=246127 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=246162
+FM_TEST_SUMMARY_FAMILY family=standalone count=1 duration_ms=246127 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-public-followup.test.sh duration_ms=246127
+=== [public-followup] exit=0 ===
+=== [secondmate-e2e] bin/fm-test-run.sh tests/fm-remote-secondmate-lifecycle-e2e.test.sh ===
+2026-11-21T17:41:46Z
+FM_TEST_BEGIN 2026-11-21T17:41:46Z tests/fm-remote-secondmate-lifecycle-e2e.test.sh family=secondmate expected_gate_skip=none
+ok - overlapping remote home provisioning serializes through publication and rollback
+ok - competing cleanup of the public home cannot reach a live provisioning clone
+ok - a home that appears mid-provision makes the provision die without touching it
+ok - remote seed rollback preserves serialized competing routes
+ok - unknown readiness preserves its route and brief for reconciliation
+ok - remote seeding checks, repairs, and re-checks readiness, then stops on a remaining gap
+ok - remote seeding proceeds once the repair closes every gap
+ok - remote seeding provisions a supplied origin without touching the primary project tree
+ok - remote provisioning re-validates a supplied origin at the receiving host
+ok - seeding carries bitbucket, self-hosted, and scp-like origins through to the remote clone
+ok - remote seed registers the route and provisions the whole home and project clone on that host
+ok - remote inheritance rejects incomplete and superseded payload generations
+ok - mixed local and remote routes validate without migration
+ok - remote spawn launches on the remote-local backend and records a host-qualified route
+ok - legacy and mismatched remote endpoints fail closed before backend access
+ok - non-herdr remote endpoints are refused without changing either route
+FM_TEST_BEGIN 2026-11-21T17:52:34Z tests/fm-remote-secondmate-lifecycle-e2e.test.sh family=secondmate expected_gate_skip=none
+ok - overlapping remote home provisioning serializes through publication and rollback
+ok - competing cleanup of the public home cannot reach a live provisioning clone
+ok - a home that appears mid-provision makes the provision die without touching it
+ok - remote seed rollback preserves serialized competing routes
+ok - unknown readiness preserves its route and brief for reconciliation
+ok - remote seeding checks, repairs, and re-checks readiness, then stops on a remaining gap
+ok - remote seeding proceeds once the repair closes every gap
+ok - remote seeding provisions a supplied origin without touching the primary project tree
+ok - remote provisioning re-validates a supplied origin at the receiving host
+ok - seeding carries bitbucket, self-hosted, and scp-like origins through to the remote clone
+ok - remote seed registers the route and provisions the whole home and project clone on that host
+ok - remote inheritance rejects incomplete and superseded payload generations
+ok - mixed local and remote routes validate without migration
+ok - remote spawn launches on the remote-local backend and records a host-qualified route
+ok - legacy and mismatched remote endpoints fail closed before backend access
+ok - non-herdr remote endpoints are refused without changing either route
+ok - remote spawn serializes inheritance through launch publication
+ok - marked send and routed reply complete through the existing parent correlation owner
+ok - partial remote inheritance retains reread intent through bootstrap convergence
+ok - config push and bootstrap serialize remote inheritance convergence
+ok - remote inherited config retains and retries a failed live reread nudge
+ok - fleet snapshot projects mixed local and remote structured state
+ok - remote update imports and fast-forwards the persistent home on its configured host
+ok - the remote restart verb delegates to the host-local control plane and refuses before stopping anything
+ok - startup repairs remote readiness before probing without relaunching
+ok - watch liveness: a dead remote secondmate is auto-relaunched on its own host with one wake
+ok - watch liveness: an unreachable remote secondmate is probed, preserved, and never failed over
+ok - the host-local state read steps around a stale shadowing herdr client
+ok - startup reports alive legacy backends without changing their routes
+ok - unreachable no-ledger remote state remains explicit with no local respawn or failover
+ok - remote retirement refuses child work, then removes only its own endpoint while a shared-session sibling survives
+ok - remote retirement archives the complete parent-side status log when enabled
+ok - remote missing-status retirement remains lock-free with archival enabled
+ok - an absent remote home retires only with the dispatcher's arguments and is never recreated
+ALL TESTS PASSED
+FM_TEST_END 2026-11-21T18:00:15Z tests/fm-remote-secondmate-lifecycle-e2e.test.sh exit=0 duration_ms=460865 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=460905
+FM_TEST_SUMMARY_FAMILY family=secondmate count=1 duration_ms=460865 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-remote-secondmate-lifecycle-e2e.test.sh duration_ms=460865
+FM_TEST_BEGIN 2026-11-21T18:00:20Z tests/fm-calm-pi-extension.test.sh family=pure-contract-unit expected_gate_skip=none
+not ok - Pi calm home resolution failed: node:internal/modules/package_json_reader:314
+  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);
+        ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@earendil-works/pi-tui' imported from /tmp/fm-calm-pi-extension.KqzMSi/home-resolution/project/.pi/extensions/fm-calm.ts
+    at Object.getPackageJSONURL (node:internal/modules/package_json_reader:314:9)
+    at packageResolve (node:internal/modules/esm/resolve:772:81)
+    at moduleResolve (node:internal/modules/esm/resolve:859:18)
+    at defaultResolve (node:internal/modules/esm/resolve:989:11)
+    at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+    at ModuleJob._link (node:internal/modules/esm/module_job:182:49)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+Node.js v22.23.3
+FM_TEST_END 2026-11-21T18:00:21Z tests/fm-calm-pi-extension.test.sh exit=1 duration_ms=729 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=762
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=729 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-calm-pi-extension.test.sh duration_ms=729
+FM_TEST_BEGIN 2026-11-21T18:01:05Z tests/fm-calm-pi-extension.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Pi calm resolves its persistent home independently of Pi's launch directory
+ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
+ok - a missing collapsed-thinking presentation API degrades only that Calm adapter with a clear skip reason, while the rest of Calm still registers
+ok - missing Pi presentation class exports reach the independent adapter degradation path
+ok - Calm hides queued Firstmate rows only on a session that can keep them, keeps hidden ones out of the editor on Escape, delivers them once in order, and leaves unsupported sessions and Calm off stock
+ok - Calm registers none of its 7 built-in tool wrappers at load while config/calm is off, and all 7 synchronously at load while config/calm is on
+ok - Calm's first same-session /calm activation claims every uncontested built-in, leaves a foreign bash tool fully intact and callable, warns prominently and logs the contested name, and only rows constructed before that activation - the documented bound - fail to retroactively collapse
+ok - Pi calm centralizes transcript visibility, preserves execution/export data, keeps Pi's stock working row visible while no run is active, and persists its choice across session starts
+ok - Pi calm on collapses mid-turn assistant working notes to zero height while Calm off keeps them, leaves streaming, truncated-final, and genuine final replies untouched, never mutates the messages, ignores every /calm argument, and restores a legacy persisted max as ordinary Calm on
+skip: pi or tmux not found for Pi operational follow-up E2E
+skip: pi or tmux not found for Pi Calm queued-row Escape E2E
+skip: pi or tmux not found for Pi Calm hidden-block geometry E2E
+ok - Pi Calm working ship keeps its centered two-row asymmetric Unicode boat inside a deterministic long-wave trough, paints all water standard blue and the whole boat standard yellow with balanced resets, keeps ANSI-stripped width exact, reverses cleanly at both edges and every width, clamps visible and hidden resizes, falls back deterministically when narrow, freezes and resumes across settle/start without hidden-time jumps or duplicate timers, resets only on a fresh session, and leaves Calm-off visibility untouched
+ok - SKIP: no standalone Pi Calm extension is installed, so dual-install coverage used the pinned shared-slot contract; set FM_STANDALONE_CALM_SHIP to check one
+ok - stale session contexts on agent_start, agent_settled, and session_shutdown are skipped without crashing Calm or touching the live UI, and the replacement session's working presentation still installs
+ok - the rendered-export-DOM guard renders in one pass, retries a bounded number of Chrome start-up failures, and reports the Chrome binary, Chrome version, Pi version, exit status, and Chrome diagnostic when every attempt fails
+skip: pi or tmux not found for Pi calm interactive E2E
+FM_TEST_END 2026-11-21T18:01:21Z tests/fm-calm-pi-extension.test.sh exit=0 duration_ms=15499 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=15534
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=15499 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-calm-pi-extension.test.sh duration_ms=15499
+FM_TEST_BEGIN 2026-11-21T18:01:25Z tests/fm-calm-pi-extension.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Pi calm resolves its persistent home independently of Pi's launch directory
+ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
+ok - a missing collapsed-thinking presentation API degrades only that Calm adapter with a clear skip reason, while the rest of Calm still registers
+ok - missing Pi presentation class exports reach the independent adapter degradation path
+not ok - Pi Calm queued operational rows: file:///tmp/fm-ci-pi/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js:4009
+        for (const component of this.pendingBashComponents) {
+                                     ^
+
+TypeError: this.pendingBashComponents is not iterable
+    at InteractiveMode.updatePendingMessagesDisplay (file:///tmp/fm-ci-pi/node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js:4009:38)
+    at prototype.updatePendingMessagesDisplay (file:///tmp/fm-calm-pi-extension.tx3zVs/queued-operational-rows/lib/fm-calm-pending-operational-layout.ts:207:44)
+    at file:///tmp/fm-calm-pi-extension.tx3zVs/queued-operational-rows/[eval1]:112:8
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+
+Node.js v22.23.3
+FM_TEST_END 2026-11-21T18:01:27Z tests/fm-calm-pi-extension.test.sh exit=1 duration_ms=2181 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=2215
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=2181 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-calm-pi-extension.test.sh duration_ms=2181
+FM_TEST_BEGIN 2026-11-21T18:01:39Z tests/fm-public-followup.test.sh family=standalone expected_gate_skip=none
+ok - the suite's seeding never reaches a backlog named by ambient TASKS_AXI_FILE/BACKEND
+ok - outcome text is collapsed to one line, bounded by codepoint, and never corrupts characters
+ok - restart end-to-end: typed result reconciles from disk and delivers one reply to the original thread
+ok - failed work on a pr-merged promise delivers its honest outcome exactly once
+ok - duplicate terminal results, restart replay, and repeated delivery are all no-ops
+ok - wrong source, wrong work id, stale generation, malformed, unsupported deliverable, and forged identity are all refused
+ok - a relay transport failure is held as retryable with no false completion, and the retry posts once
+ok - a dry-run records no public delivery and leaves the commitment retryable
+ok - a late success receipt closes the exact attempt with no second post, and a mismatched attempt is refused
+ok - typed terminal cleanup clears the legacy link without posting
+ok - a delivery interrupted between post and receipt refuses to repost
+ok - a child home reports typed results but can never become the outward-post owner
+ok - typed delivery refuses to post when its cleanup registration is missing
+ok - marked secondmate teardown resolves its parent and fails closed when unavailable
+ok - local seeding publishes durable parent state before its identity marker
+ok - a lost launch-time parent binding is recovered from the durable local record
+ok - a durable local parent record does not bypass a genuinely missing parent-side registration
+ok - unknown durable parent fields remain forward-compatible
+ok - conflicting live and durable parent bindings fail closed
+ok - unsafe durable parent records fail closed before cleanup
+ok - a NUL-bearing durable parent record fails closed before cleanup
+ok - relay-disabled unmarked teardown runs no public-followup work
+ok - a marked child proceeds without tasks-axi when its parent relay is disabled
+ok - secondmate parent resolution matches the durable registry id literally
+ok - traversal-shaped registrations are rejected before path construction or posting
+ok - pending keeps registrations when tasks-axi returns malformed JSON
+ok - the retained private request context keeps the original thread deliverable after inbox cleanup
+ok - cleanup refuses while a public reply is owed and proceeds once it has landed
+ok - a relay-disabled home runs no tasks-axi call, prints nothing, and gains no artifact
+ok - a relay-enabled home with no commitments makes no backlog call and stays silent
+ok - a relay-exhausted follow-up binding is escalated rather than retried into the thread
+ok - the relay poll stays inert without a token, silent with no commitments, and surfaces a new result once
+ok - startup surfaces unresolved public commitments only in a relay home that owes one
+ok - typed public-followup records carry only public-safe summaries and deliverables
+ok - dropped-baton regression: delivery retains the loop and pending prints open-loop
+ok - CONTROL: the identical teardown REFUSES the moment a commitment is registered
+ok - rechain posts the shipped follow-on into the same thread
+ok - rechain resumes the same obligation after an interrupted bind
+ok - concurrent rechains cannot fork one delivered source
+ok - failed rechain retirement keeps the source claimed by one resumable destination
+ok - first register succeeds with an empty lock list under /bin/bash
+ok - registration replay preserves delivered and retired loop states
+ok - redelivery does not report a retired loop as open
+ok - retire closes delivered loops after secondmate home removal
+ok - retire fails closed for an unbound existing secondmate
+ok - retire fails closed when a secondmate ID is reassigned
+ok - rechain refuses an unrelated existing destination
+ok - pending skips a registration retired during settlement
+ok - retire --reason closes the loop and drops the open-loop line
+ok - retention creates no false teardown refusal and pending no longer prunes
+ok - expiry escalation is pinned by FMX_NOW_OVERRIDE
+ok - brief fails explicitly when typed deliverable keys are unavailable
+ok - pre-change registrations are open loops and un-rechainable, never a crash
+ok - teardown reports an unreconciled legacy Relay link
+ok - secondmate promotion matches teardown parent resolution
+ok - a public loop bound to a remote secondmate home delivers and retires
+ok - delivered remote registrations skip offline collection routes
+ok - --force still covers only the unresolved obligation, not the link clear
+ok - retire fails closed when a remote route is reassigned
+ok - retire fails closed when remote state is unreadable
+ok - retire fails closed when remote state is non-writable
+ok - retire accepts link absence in non-writable remote state
+ok - the guarded remote clear refuses a lock it cannot acquire instead of hanging
+ok - an unconfirmed remote clear is unknown completion, never a silent close
+ok - a typed terminal result emitted in a remote work home reaches the owning home
+ok - a promise that requires no deliverable is briefable and reportable
+ok - an unreachable remote work home fails loudly instead of reporting an empty inbox
+ok - an unreadable remote outbox fails collection without losing its result
+ok - invalid registration fails collection without dropping the staged result
+ok - unsafe registration entries fail collection without dropping staged results
+ok - route loss fails brief and consume without dropping the staged result
+ok - empty reachable remote collection remains a healthy no-op
+ok - remote brief rejects traversal and empty route path components
+ok - a local work home's emit path is unchanged
+ok - a duplicate report from a remote work home stays a no-op
+ok - staging requires the matching secondmate firstmate home
+ok - brief pre-fills the report path and states the format of every value it cannot know
+ok - the emitter refuses a deliverable tasks-axi would reject, naming key, value, and format
+ok - the emitter refuses a repeated deliverable key by name in both destinations
+ok - the emitter refuses an event missing a required deliverable in both destinations
+ok - the emitter's work-event rules agree with the real tasks-axi consumer on 74 cases
+ok - a rejected event records a specific reason and wakes the owning home once
+ok - a rejection collected from a remote secondmate wakes the owning home
+ok - only a failed result may answer a promise without the deliverable it promised
+ok - a failure promise keeps needing its own error_code
+ok - a rejection whose wake cannot be recorded is retried rather than lost
+ok - a rejection wake survives a poll that could not write its line
+ok - a rejection wake survives a poll that could not read its line
+ok - a wake that cannot be dropped repeats the same refusal
+ok - a refusal whose event was retained repeats its wake instead of a new one
+FM_TEST_END 2026-11-21T18:05:38Z tests/fm-public-followup.test.sh exit=0 duration_ms=239688 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=239722
+FM_TEST_SUMMARY_FAMILY family=standalone count=1 duration_ms=239688 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-public-followup.test.sh duration_ms=239688

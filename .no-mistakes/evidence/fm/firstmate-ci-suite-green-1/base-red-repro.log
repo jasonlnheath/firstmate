@@ -1,0 +1,40 @@
+# Base (2987e914) vs target (a8636fd3) red/green proofs, driven on this
+# rig-parity host (GNU coreutils 9.12, bash 5.3.20) on 2026-11-21.
+
+## 1. docs audience inventory: base fails on the file this change classified
+$ cd $(base extract) && bin/fm-doc-audience-check.sh
+fm-doc-audience-check: unclassified: docs/tasks/bootcamp-kbd-backlight-report.md
+exit=1
+$ (target worktree) bin/fm-doc-audience-check.sh
+fm-doc-audience-check: ok surfaces=143 local_links=1063
+exit=0
+
+## 2. CI workflow contract tests (added in this validation) against base ci.yml
+not ok - these self-hosted checkout steps would leave the shared rig workspace shallow:
+base exit=1
+target:
+ok - every self-hosted checkout step fetches full history for the shared rig workspace
+ok - the Pi install steps share one pinned version and verify what they installed
+ok - the spawn-lineage lane asserts a full-depth checkout before its suites
+target exit=0
+
+## 3. checkpoint with a uutils-shaped timeout on PATH: base reports 137, target 124
+not ok - non-GNU timeout checkpoint exit (137 means its KILL-at-INT bug ran the bound): expected exit 124, got 137
+base exit=1
+target:
+ok - a non-GNU timeout is refused the kill-after bound and the Perl fallback owns the checkpoint
+target exit=0
+
+## 4. Calm queued-rows stand-in host against the CI-pinned Pi 1.5.2 package
+##    (installed hermetically under /tmp/fm-ci-pi, FM_PI_PACKAGE_DIR override)
+target: ok - Calm hides queued Firstmate rows only on a session that can keep them... (suite exit=0)
+base:   not ok - Pi Calm queued operational rows: .../interactive-mode.js:4009
+        for (const component of this.pendingBashComponents) {
+        TypeError: this.pendingBashComponents is not iterable
+        at InteractiveMode.updatePendingMessagesDisplay (suite exit=1)
+
+## 5. public-followup "wake survives a poll that cannot write" at base
+base suite exit=0 on this host (GNU bash 5.3.20): the closed-fd-1 write behavior the
+old fixture relied on is runner-bash-specific (observed on the rig's bash 5.3.9) and
+does not reproduce here; the target fixture (fd 1 read-only on /dev/null) fails the
+poll's writes deterministically on every bash and passes live at target.
