@@ -502,16 +502,23 @@ test_agent_state_from_process_view() {
 
 # start_shell_tree: a real process tree shaped like a pane whose login shell
 # launched <leaf> through a wrapper script in its own process group: a root
-# shell (TREE_ROOT), a wrapper shell below it, and <leaf> (a `sleep` under that
-# name, TREE_LEAF) below the wrapper. Its args name <dir>/tree, so the suite's
-# fixture reaping also covers it.
+# shell (TREE_ROOT), a wrapper shell below it, and <leaf> (TREE_LEAF) below
+# the wrapper. Its args name <dir>/tree, so the suite's fixture reaping also
+# covers it.
+#
+# <leaf> is a symlink to bash running a sleep loop, not a symlink to the
+# sleep binary: on hosts whose sleep resolves through the uutils multiplexed
+# coreutils binary (ubuntu-latest since coreutils-from-uutils), executing a
+# symlink named <leaf> dispatches on argv[0] and dies with "unknown program"
+# before the process exists. Bash takes any argv[0], so the tree path stays
+# the leaf's visible path for the scan, the classifier, and the reaper.
 start_shell_tree() {  # <dir> <leaf-name>
   local dir=$1 leaf=$2 i=0
   mkdir -p "$dir/tree"
-  ln -sf "$(command -v sleep)" "$dir/tree/$leaf"
+  ln -sf "$(command -v bash)" "$dir/tree/$leaf"
   cat >"$dir/tree/wrapper" <<'SH'
 #!/usr/bin/env bash
-"$1" "$2"
+"$1" -c 'while sleep "$0"; do :; done' "$2"
 exit $?
 SH
   chmod +x "$dir/tree/wrapper"

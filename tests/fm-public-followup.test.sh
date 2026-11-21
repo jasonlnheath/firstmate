@@ -3786,7 +3786,12 @@ test_rejection_is_retried_until_its_wake_is_recorded() {
 
 # The poll's stdout IS the wake, so a poll that could not write its line has
 # woken nobody. The queued wake is this home's only remaining copy of the
-# refusal and must survive that cycle.
+# refusal and must survive that cycle. The unwritable stdout is a READ-ONLY
+# /dev/null rather than a closed fd: a closed fd 1 makes bash's pipeline fd
+# assignment claim the freed descriptor on some bash builds (5.3.9 leaves the
+# parent's fd 1 pointing at pipeline plumbing, so later writes silently
+# succeed), while writes to a read-only descriptor fail with EBADF on every
+# bash. The assertion itself is unchanged.
 test_rejection_wake_survives_a_poll_that_cannot_write() {
   local home event_id out
   home=$(make_home reject-wake-write)
@@ -3800,7 +3805,7 @@ test_rejection_wake_survives_a_poll_that_cannot_write() {
     "a refusal must queue a wake"
 
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
-    FM_STATE_OVERRIDE="$home/state" "$POLL" >&- 2>/dev/null || true
+    FM_STATE_OVERRIDE="$home/state" "$POLL" 1</dev/null 2>/dev/null || true
   assert_present "$home/state/public-followup/rejection-wakes/$event_id" \
     "a wake whose line could not be written must stay queued"
   assert_contains "$(run_poll "$home")" "public-followup rejected $event_id" \
