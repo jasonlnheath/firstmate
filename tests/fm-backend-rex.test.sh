@@ -506,21 +506,31 @@ test_agent_state_from_process_view() {
 # the wrapper. Its args name <dir>/tree, so the suite's fixture reaping also
 # covers it.
 #
-# <leaf> is a symlink to bash running a sleep loop, not a symlink to the
-# sleep binary: on hosts whose sleep resolves through the uutils multiplexed
-# coreutils binary (ubuntu-latest since coreutils-from-uutils), executing a
-# symlink named <leaf> dispatches on argv[0] and dies with "unknown program"
-# before the process exists. Bash takes any argv[0], so the tree path stays
-# the leaf's visible path for the scan, the classifier, and the reaper.
+# <leaf> is a symlink to the fm_agent_standin stand-in: a host sleep symlink
+# dies before the process exists on multicall-coreutils hosts (uutils
+# dispatches on argv[0] and rejects the foreign name), which that helper
+# guards against by compiling or runtime-validating its target. Where it
+# finds no survivor, the fallback symlink is bash running a sleep loop, since
+# bash takes any argv[0]; either way the leaf's tree path stays its visible
+# path for the scan, the classifier, and the reaper.
 start_shell_tree() {  # <dir> <leaf-name>
-  local dir=$1 leaf=$2 i=0
+  local dir=$1 leaf=$2 i=0 standin
   mkdir -p "$dir/tree"
-  ln -sf "$(command -v bash)" "$dir/tree/$leaf"
-  cat >"$dir/tree/wrapper" <<'SH'
+  if standin=$(fm_agent_standin "$dir/standin"); then
+    ln -sf "$standin" "$dir/tree/$leaf"
+    cat >"$dir/tree/wrapper" <<'SH'
+#!/usr/bin/env bash
+"$1" "$2"
+exit $?
+SH
+  else
+    ln -sf "$(command -v bash)" "$dir/tree/$leaf"
+    cat >"$dir/tree/wrapper" <<'SH'
 #!/usr/bin/env bash
 "$1" -c 'while sleep "$0"; do :; done' "$2"
 exit $?
 SH
+  fi
   chmod +x "$dir/tree/wrapper"
   bash -c '"$1" "$2" "$3" & wait' root "$dir/tree/wrapper" "$dir/tree/$leaf" "$FM_TEST_STUB_MAX_BLOCK_SECONDS" >/dev/null 2>&1 &
   TREE_ROOT=$!
