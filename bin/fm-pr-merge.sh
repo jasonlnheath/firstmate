@@ -458,6 +458,7 @@ fm_backlog_directory_present "$STATE" "state directory" || {
   exit 1
 }
 META="$STATE/$ID.meta"
+FM_PROJECT_DIR=$(grep '^project=' "$META" 2>/dev/null | cut -d= -f2- || true)
 
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
@@ -1656,6 +1657,252 @@ require_current_away_authority || away_status=$?
 require_recorded_pr_identity || exit 1
 record_pr_metadata || exit 1
 require_released_captain_hold || exit 1
+
+# ---- Merge-content gate (Lesson 1 from AutoCraft deep study) ----
+# Protected paths are defined in the tracked bin/fm-protected-paths.default
+# or the project's own config/protected-paths (per-project override, replaces
+# the default list entirely). A protected-path touch requires a second-look
+# verdict of clean before yolo auto-merge may proceed.
+#
+# The gate runs before the forge command (it self-fetches the head
+# from the PR, so it does not depend on mergeability verification). It:
+#   1. Gets the pull request's changed-path list
+#   2. Checks if any paths match protected patterns
+#   3. If yes, checks for a second-look verdict
+#   4. If no verdict or verdict is defect/unsure, refuses the merge
+#   5. If yolo is off, the merge always escalates to captain (handled
+#      by resolve_merge_authority / FM_PR_MERGE_AUTHORITY)
+
+
+
+# Source the protected-paths library
+# shellcheck source=bin/fm-protected-paths-lib.sh
+. "$SCRIPT_DIR/fm-protected-paths-lib.sh"
+
+# fm_pr_merge_content_gate:
+#   Returns 0 if the merge-content gate is passed (no protected paths
+#   touched, or second-look verdict is clean). Returns 1 if blocked.
+fm_pr_merge_content_gate() {
+  # Get the diff paths between base and head
+  local diff_file
+  diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-diff.XXXXXX") || return 1
+
+  # Get the head commit from the PR info directly.
+  # The gate runs before the provider-specific merge commands, so
+  # FM_PR_MERGE_HEAD is not yet set. An unreadable read
+  # is refused with the same message the verify step would print, so the
+  # refusal names the unreadable state rather than only the gate.
+  local head_commit provider="$PROVIDER"
+  case "$provider" in
+    github)
+      local pr_json
+      pr_json=$(gh pr view "$URL" --json headRefOid 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitHub pull request state before merging" >&2
+        return 1
+      }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.headRefOid // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitHub pull request state before merging" >&2
+        return 1
+      }
+      ;;
+    gitlab)
+      local pr_json
+      pr_json=$(GITLAB_HOST="$FM_PR_HOST" glab mr view "$PR_NUMBER" -R "$PROJECT_URL" -F json 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitLab merge request state before merging" >&2
+        return 1
+      }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.sha // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the GitLab merge request state before merging" >&2
+        return 1
+      }
+      ;;
+    forgejo)
+      local pr_json
+      pr_json=$(tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER" 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the Forgejo pull request state before merging" >&2
+        return 1
+      }
+      head_commit=$(printf '%s' "$pr_json" | jq -r '.head.sha // empty' 2>/dev/null) || {
+        rm -f "$diff_file"
+        echo "error: could not read the Forgejo pull request state before merging" >&2
+        return 1
+      }
+      ;;
+    *)
+      echo "error: merge-content gate: unknown provider '$provider'" >&2
+      rm -f "$diff_file"
+      return 1
+      ;;
+  esac
+
+  if [ -z "$head_commit" ]; then
+    # Cannot bind a second-look verdict to the head being merged; the gate
+    # cannot evaluate and refuses rather than merging unguarded.
+    rm -f "$diff_file"
+    case "$provider" in
+      github) echo "error: could not read the GitHub pull request state before merging" >&2 ;;
+      gitlab) echo "error: could not read the GitLab merge request state before merging" >&2 ;;
+      forgejo) echo "error: could not read the Forgejo pull request state before merging" >&2 ;;
+    esac
+    return 1
+  fi
+
+  # Get the diff paths from the forge API (not git, since CWD is the firstmate
+  # repo, not the project checkout). Use the same provider-specific approach
+  # that the rest of this script uses.
+  case "$provider" in
+    github)
+      if ! gh pr diff "$URL" --name-only 2>/dev/null > "$diff_file"; then
+        # Fallback: try with explicit repo
+        if ! gh pr diff "$PR_NUMBER" --repo "$FM_PR_PATH" --name-only 2>/dev/null > "$diff_file"; then
+          rm -f "$diff_file"
+          return 1
+        fi
+      fi ;;
+    gitlab)
+      # glab has no 'mr diffs' subcommand; use the API to get changed file names.
+      # The endpoint is GET /projects/:id/merge_requests/:iid/diffs where :id is
+      # the URL-encoded project path (owner%2Frepo); it returns a JSON array of
+      # diff records. No form flags: any -f/-F field switches glab's request
+      # method to POST, and this read must stay a GET.
+      local encoded_path
+      encoded_path=$(printf '%s' "$FM_PR_PATH" | sed 's|/|%2F|g')
+      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" 2>/dev/null \
+        | jq -r '.[] | (.new_path // empty)' 2>/dev/null > "$diff_file" || {
+        rm -f "$diff_file"
+        return 1
+      }
+      ;;
+    forgejo)
+      # Use a subshell to capture tea's exit status; jq on empty input
+      # exits 0, so we must not let it mask a tea failure.
+      if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" 2>/dev/null \
+        | jq -r '.[].filename // empty' 2>/dev/null > "$diff_file"; then
+        # Check if the pipe failed (tea failure) vs jq failure
+        # In a pipe, the last command's status is the pipe's status.
+        # If jq succeeded but tea failed, diff_file may be empty.
+        # Use a temp file to capture tea output and check its exit.
+        local _forgejo_tmp
+        _forgejo_tmp=$(mktemp 2>/dev/null || echo /dev/null)
+        if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+          "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" > "$_forgejo_tmp" 2>/dev/null; then
+          rm -f "$diff_file" "$_forgejo_tmp"
+          return 1
+        fi
+        jq -r '.[].filename // empty' 2>/dev/null < "$_forgejo_tmp" > "$diff_file" || {
+          rm -f "$diff_file" "$_forgejo_tmp"
+          return 1
+        }
+        rm -f "$_forgejo_tmp"
+      fi
+      ;;
+    *)
+      rm -f "$diff_file"
+      return 1
+      ;;
+  esac
+
+  # Check if any paths are protected
+  local matched_paths
+  matched_paths=""
+  gate_rc=0
+  matched_paths=$(fm_protected_paths_check "$diff_file" "${FM_PROJECT_DIR:-}") || gate_rc=$?
+  # Return code 3 means missing config (fail-closed for security gate)
+  if [ "$gate_rc" -eq 3 ]; then
+    rm -f "$diff_file"
+    return 1
+  fi
+  # Return code 1 means no protected paths matched - gate passes
+  if [ "$gate_rc" -eq 1 ] && [ -z "$matched_paths" ]; then
+    rm -f "$diff_file"
+    return 0
+  fi
+
+  # Protected paths were touched. Check for a second-look verdict.
+  rm -f "$diff_file"
+
+  # If yolo is off, the merge already escalates to captain via
+  # resolve_merge_authority. The gate is a yolo-specific additional check.
+  # Read yolo posture from the task meta file.
+  local yolo="off"
+  if [ -f "$META" ]; then
+    yolo=$(grep '^yolo=' "$META" | tail -1 | cut -d= -f2- || true)
+  fi
+  if [ "$yolo" != "on" ]; then
+    # Yolo is off - merge always escalates, gate passes for
+    # the yolo-specific check (the captain will see the protected
+    # paths in the escalation)
+    printf 'merge-content gate: yolo is off, protected paths touched: %s\n' \
+      "$matched_paths" >&2
+    return 0
+  fi
+
+  # Yolo is on - need a second-look verdict
+  local pr_number="${FM_PR_NUMBER:-}"
+  if [ -z "$pr_number" ]; then
+    echo "error: merge-content gate: yolo is on and protected paths are touched, but PR number is unknown; refusing to merge" >&2
+    return 1
+  fi
+
+  local verdict_dir
+  verdict_dir=$(fm_second_look_verdict_dir "$STATE" "$ID" "$pr_number") || {
+    echo "error: merge-content gate: could not resolve second-look verdict directory for PR $pr_number; refusing to merge" >&2
+    return 1
+  }
+
+  local verdict
+  verdict=$(fm_second_look_read_verdict "$verdict_dir") || {
+    # No second-look verdict exists - refuse the merge
+    echo "error: merge-content gate: yolo is on and protected paths are touched, but no second-look verdict exists for PR $pr_number; refusing to merge" >&2
+    printf 'protected paths: %s\n' "$matched_paths" >&2
+    return 1
+  }
+
+  # Check that the verdict was recorded for the same head we're about to merge.
+  # If the PR has been updated since the second-look ran, we need a fresh review.
+  # A verdict without a head= line is unbound and treated as absent.
+  local stored_head
+  stored_head=$(grep '^head=' "$verdict_dir/current.verdict" 2>/dev/null | cut -d= -f2- || true)
+  if [ -z "$stored_head" ] || [ "$stored_head" != "$head_commit" ]; then
+    echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head ${stored_head:-<none>}, not the current head $head_commit; refusing to merge" >&2
+    printf 'protected paths: %s\n' "$matched_paths" >&2
+    return 1
+  fi
+
+  case "$verdict" in
+    clean)
+      printf 'merge-content gate: yolo on, protected paths touched, second-look verdict is clean for PR %s\n' "$pr_number" >&2
+      return 0
+      ;;
+    defect|unsure)
+      echo "error: merge-content gate: yolo is on and protected paths are touched, but second-look verdict is '$verdict' for PR $pr_number; refusing to merge" >&2
+      printf 'protected paths: %s\n' "$matched_paths" >&2
+      local stuck_reason
+      stuck_reason=$(fm_second_look_get_stuck_reason "$verdict_dir")
+      [ -n "$stuck_reason" ] && printf 'reason: %s\n' "$stuck_reason" >&2
+      return 1
+      ;;
+    *)
+      echo "error: merge-content gate: unexpected second-look verdict '$verdict' for PR $pr_number; refusing to merge" >&2
+      return 1
+      ;;
+  esac
+}
+
+# Run the merge-content gate before any forge command
+if ! fm_pr_merge_content_gate; then
+  echo "error: merge-content gate blocked the merge for $URL" >&2
+  exit 1
+fi
+
+
 
 # Accepted confused-agent-grade limitation, as in bin/fm-lease-lib.sh, not an
 # oversight: if this lock-owning shell dies while its gh or glab child lives,

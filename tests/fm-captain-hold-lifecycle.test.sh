@@ -117,8 +117,23 @@ case "${1:-} ${2:-}" in
       *statusCheckRollup*)
         printf '%s\n' '{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"1111111111111111111111111111111111111111","baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}'
         ;;
+      *--json\ headRefOid*)
+        # The merge-content gate reads the head as one JSON record; a caller
+        # passing -q consumes the bare SHA, exactly as real gh applies the
+        # filter before printing.
+        if echo " $* " | grep -q -- ' -q '; then
+          printf '%s\n' 1111111111111111111111111111111111111111
+        else
+          printf '%s\n' '{"headRefOid":"1111111111111111111111111111111111111111"}'
+        fi
+        ;;
+      *" -q "*) printf '%s\n' 1111111111111111111111111111111111111111 ;;
       *headRefOid*) printf '%s\n' 1111111111111111111111111111111111111111 ;;
     esac
+    ;;
+  "pr diff")
+    # The merge-content gate reads the changed-path list; the fixture PR
+    # touches no protected path, so the list is empty.
     ;;
   "pr merge") printf 'merged:\n  number: %s\n  status: ok\n' "${3:-}" ;;
   "api graphql")

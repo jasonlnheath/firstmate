@@ -163,7 +163,23 @@ case "${1:-} ${2:-}" in
         printf '%s\n' "{\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"reviewDecision\":\"APPROVED\"}"
         exit 0
         ;;
+      *--json\ headRefOid*)
+        # The merge-content gate reads the head as one JSON record; a caller
+        # passing -q consumes the bare SHA, exactly as real gh applies the
+        # filter before printing.
+        if echo " $* " | grep -q -- ' -q '; then
+          printf '%s\n' "${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}"
+        else
+          printf '%s\n' "{\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\"}"
+        fi
+        exit 0
+        ;;
     esac
+    ;;
+  "pr diff")
+    # The merge-content gate reads the changed-path list; the fixture PR
+    # touches no protected path, so the list is empty.
+    exit 0
     ;;
   "pr merge")
     [ -z "${FM_TEST_GH_MERGE_HOOK:-}" ] || "$FM_TEST_GH_MERGE_HOOK"

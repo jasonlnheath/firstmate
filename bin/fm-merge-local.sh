@@ -135,6 +135,95 @@ case "$hold_status" in
     exit 1
     ;;
 esac
+
+# ---- Merge-content gate (Lesson 1 from AutoCraft deep study) ----
+# For local-only merges, check if the ship branch touches protected paths.
+# If yes, require a second-look verdict of clean before proceeding.
+
+# shellcheck source=bin/fm-protected-paths-lib.sh
+. "$SCRIPT_DIR/fm-protected-paths-lib.sh"
+
+# Get the diff paths between default branch and ship branch
+local_diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-merge-local-diff.XXXXXX")
+git -C "$PROJ" diff --name-only "$DEFAULT".."$BRANCH" > "$local_diff_file" 2>/dev/null || {
+  echo "error: merge-content gate: could not compute diff for local merge; refusing" >&2
+  rm -f "$local_diff_file"
+  exit 1
+}
+
+# Check if any paths are protected
+matched_paths=""
+gate_rc=0
+matched_paths=$(fm_protected_paths_check "$local_diff_file" "$PROJ") || gate_rc=$?
+# Return code 3 means missing config (fail-closed for security gate)
+if [ "$gate_rc" -eq 3 ]; then
+  rm -f "$local_diff_file"
+  exit 1
+fi
+# Return code 1 means no protected paths matched - gate passes
+if [ "$gate_rc" -eq 1 ] && [ -z "$matched_paths" ]; then
+  rm -f "$local_diff_file"
+  matched_paths=""
+fi
+
+if [ -n "$matched_paths" ]; then
+  # Protected paths were touched. Check for a second-look verdict.
+  rm -f "$local_diff_file"
+
+  # For local merges, yolo is determined by the task's merge posture.
+  # Read from the meta file.
+  yolo="off"
+  if [ -f "$META" ]; then
+    yolo=$(grep '^yolo=' "$META" | tail -1 | cut -d= -f2- || true)
+  fi
+  if [ "$yolo" != "on" ]; then
+    # Yolo is off - merge always escalates to captain
+    printf 'merge-content gate: yolo is off, protected paths touched: %s\n' "$matched_paths" >&2
+  else
+    # Yolo is on - need a second-look verdict
+    verdict_dir=$(fm_second_look_verdict_dir "$STATE" "$ID" "0") || {
+      echo "error: merge-content gate: could not resolve second-look verdict directory; refusing to merge" >&2
+      exit 1
+    }
+
+    verdict=$(fm_second_look_read_verdict "$verdict_dir") || {
+      # No second-look verdict exists - refuse the merge
+      echo "error: merge-content gate: yolo is on and protected paths are touched, but no second-look verdict exists; refusing to merge" >&2
+      printf 'protected paths: %s\n' "$matched_paths" >&2
+      exit 1
+    }
+
+    # Check that the verdict was recorded for the same head we're about to merge.
+    stored_head=$(grep '^head=' "$verdict_dir/current.verdict" 2>/dev/null | cut -d= -f2- || true)
+    # Compare to the actual commit SHA of the branch, not the branch name
+    branch_sha=$(git -C "$PROJ" rev-parse "$BRANCH" 2>/dev/null || true)
+    if [ -z "$stored_head" ] || [ "$stored_head" != "$branch_sha" ]; then
+      echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head ${stored_head:-<none>}, not the current branch head $branch_sha; refusing to merge" >&2
+      printf 'protected paths: %s\n' "$matched_paths" >&2
+      exit 1
+    fi
+
+    case "$verdict" in
+      clean)
+        printf 'merge-content gate: yolo on, protected paths touched, second-look verdict is clean\n' >&2
+        ;;
+      defect|unsure)
+        echo "error: merge-content gate: yolo is on and protected paths are touched, but second-look verdict is '$verdict'; refusing to merge" >&2
+        printf 'protected paths: %s\n' "$matched_paths" >&2
+        stuck_reason=$(fm_second_look_get_stuck_reason "$verdict_dir")
+        [ -n "$stuck_reason" ] && printf 'reason: %s\n' "$stuck_reason" >&2
+        exit 1
+        ;;
+      *)
+        echo "error: merge-content gate: unexpected second-look verdict '$verdict'; refusing to merge" >&2
+        exit 1
+        ;;
+    esac
+  fi
+else
+  rm -f "$local_diff_file"
+fi
+
 merge_status=0
 git -C "$PROJ" merge --ff-only "$BRANCH" >/dev/null || merge_status=$?
 fm_lock_release "$MERGE_CONTROL_LOCK" || true

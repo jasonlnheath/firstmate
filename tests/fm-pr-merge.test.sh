@@ -13,6 +13,9 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 fm_git_identity fmtest fmtest@example.invalid
 
+# shellcheck source=bin/fm-protected-paths-lib.sh
+. "$ROOT/bin/fm-protected-paths-lib.sh"
+
 PR_MERGE="$ROOT/bin/fm-pr-merge.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-merge-tests)
 BASE_PATH=$PATH
@@ -208,7 +211,15 @@ case "${1:-} ${2:-}" in
         exit 0
         ;;
       *headRefOid*)
-        cat "$FM_TEST_GH_HEAD"
+        # The merge-content gate reads the head as one JSON record; a
+        # caller passing -q (bin/fm-pr-check.sh) consumes the bare SHA, exactly
+        # as real gh applies the filter before printing.
+        if echo " $* " | grep -q -- '--json' && ! echo " $* " | grep -q -- ' -q '; then
+          head_sha=$(cat "$FM_TEST_GH_HEAD")
+          printf '{"headRefOid":"%s"}\n' "$head_sha"
+        else
+          cat "$FM_TEST_GH_HEAD"
+        fi
         exit 0
         ;;
       *isDraft*)
@@ -249,6 +260,14 @@ case "${1:-} ${2:-}" in
       exit 1
     fi
     cat "$FM_TEST_GH_OUTCOME"
+    exit 0
+    ;;
+  "pr diff")
+    # The merge-content gate reads the changed-path list; the fixture PR
+    # touches no protected path unless a case writes github-diff-paths.
+    if [ -s "${FM_TEST_GH_DIFF_PATHS:-}" ]; then
+      cat "$FM_TEST_GH_DIFF_PATHS"
+    fi
     exit 0
     ;;
   api\ *)
@@ -369,6 +388,17 @@ case "${1:-} ${2:-}" in
     : > "$case_dir/glab-merge-called"
     exit 0
     ;;
+  "api"*)
+    # glab api for merge request diffs - the changed-file list the
+    # merge-content gate reads; a case puts a protected path in it by writing
+    # glab-diff.json, and the fixture default touches none.
+    if [ -e "$case_dir/glab-diff.json" ]; then
+      cat "$case_dir/glab-diff.json"
+    else
+      printf '[]\n'
+    fi
+    exit 0
+    ;;
 esac
 exit 0
 SH
@@ -384,7 +414,7 @@ write_mr_json() {
   local file=$1 kv key value
   local state=opened detail=mergeable conflicts=false discussions=true
   local head=$MR_HEAD pipeline_sha=$MR_HEAD pipeline_status=success pipeline=present
-  local merge_when_pipeline_succeeds=false merge_after=null
+  local merge_when_pipeline_succeeds=false merge_after=null target_branch=main
   shift
   for kv in "$@"; do
     key=${kv%%=*}
@@ -400,6 +430,7 @@ write_mr_json() {
       pipeline) pipeline=$value ;;
       merge_when_pipeline_succeeds) merge_when_pipeline_succeeds=$value ;;
       merge_after) merge_after=$value ;;
+      target_branch) target_branch=$value ;;
       *) fail "write_mr_json: unknown field '$key'" ;;
     esac
   done
@@ -410,8 +441,8 @@ write_mr_json() {
     "$state" "$detail" "$conflicts" > "$file"
   printf '"blocking_discussions_resolved":%s,"sha":"%s","head_pipeline":%s,' \
     "$discussions" "$head" "$pipeline" >> "$file"
-  printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s}\n' \
-    "$merge_when_pipeline_succeeds" "$merge_after" >> "$file"
+  printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s,"target_branch":"%s"}\n' \
+    "$merge_when_pipeline_succeeds" "$merge_after" "$target_branch" >> "$file"
 }
 
 # tea mock recording every invocation, so a test can prove the login and
@@ -497,6 +528,15 @@ case "$endpoint" in
       printf '{}\n'
     fi
     ;;
+  */files)
+    # The merge-content gate's changed-path read; the fixture pull request
+    # touches no protected path unless a case writes tea-files.json.
+    if [ -e "$log_dir/tea-files.json" ]; then
+      cat "$log_dir/tea-files.json"
+    else
+      printf '[]\n'
+    fi
+    ;;
   *)
     [ ! -e "$log_dir/tea-view-fails" ] || exit 1
     if [ -e "$log_dir/tea-merged" ] && [ -s "$log_dir/tea-post-merge-view-failures" ]; then
@@ -524,7 +564,7 @@ SH
 # with named fields overridden so one case drives exactly one condition.
 write_forgejo_pr_json() {
   local file=$1 kv key value
-  local state=open mergeable=true merged=false draft=false head=$FJ_HEAD
+  local state=open mergeable=true merged=false draft=false head=$FJ_HEAD base_ref=main
   shift
   for kv in "$@"; do
     key=${kv%%=*}
@@ -535,11 +575,12 @@ write_forgejo_pr_json() {
       merged) merged=$value ;;
       draft) draft=$value ;;
       head) head=$value ;;
+      base_ref) base_ref=$value ;;
       *) fail "write_forgejo_pr_json: unknown field '$key'" ;;
     esac
   done
-  printf '{"state":"%s","mergeable":%s,"merged":%s,"draft":%s,"head":{"sha":"%s"}}\n' \
-    "$state" "$mergeable" "$merged" "$draft" "$head" > "$file"
+  printf '{"state":"%s","mergeable":%s,"merged":%s,"draft":%s,"head":{"sha":"%s"},"base":{"ref":"%s"}}\n' \
+    "$state" "$mergeable" "$merged" "$draft" "$head" "$base_ref" > "$file"
 }
 
 # write_forgejo_status_json <file> [state=<value>] [total_count=<n>]
@@ -670,6 +711,7 @@ run_pr_merge() {
   FM_TEST_GH_MERGEABLE_SEQUENCE="${FM_TEST_GH_MERGEABLE_SEQUENCE:-}" \
   FM_TEST_GH_MERGEABLE_CALLS="$case_dir/mergeable-calls" \
   FM_TEST_GH_HEAD="$case_dir/github-head" \
+  FM_TEST_GH_DIFF_PATHS="$case_dir/github-diff-paths" \
   FM_TEST_GH_RUNS="$case_dir/github-runs.json" \
   FM_TEST_GH_MERGE_RC_FILE="$case_dir/github-merge-rc" \
   FM_TEST_GH_MERGE_OUTPUT="$(cat "$case_dir/github-merge-output" 2>/dev/null || true)" \
@@ -781,6 +823,97 @@ test_merge_failure_propagates_after_recording() {
   assert_grep 'pr=https://github.com/example/repo/pull/13' "$case_dir/state/task-x1.meta" \
     "merge-fails: pr= should already be recorded even though the merge itself failed"
   pass "fm-pr-merge propagates a real merge failure without silently succeeding"
+}
+
+# The merge-content gate (Lesson 1): a protected-path touch never auto-merges
+# on green checks alone. Every other case feeds the gate an empty changed-path
+# list; these drive the gate's blocking and its clean-verdict release end to
+# end through fm-pr-merge.sh itself, with each forge's diff seam answering a
+# protected path.
+test_merge_content_gate_refuses_protected_path_without_verdict() {
+  local case_dir rc head url
+
+  head=1212121212121212121212121212121212121212
+  url=https://github.com/example/repo/pull/33
+  case_dir=$(make_case gate-protected-no-verdict)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '.github/workflows/ci.yml\n' > "$case_dir/github-diff-paths"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$url" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-protected-no-verdict: a yolo merge touching a protected path must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-protected-no-verdict: the refusal did not name the merge-content gate"
+  assert_grep 'no second-look verdict exists for PR 33' "$case_dir/stderr" \
+    "gate-protected-no-verdict: the refusal did not name the missing second-look verdict"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "gate-protected-no-verdict: the forge merge ran despite the gate's refusal"
+  pass "the merge-content gate refuses a yolo GitHub merge whose diff touches a protected path with no verdict"
+
+  case_dir=$(make_gitlab_case gate-protected-no-verdict-gitlab)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"new_path":".gitlab-ci.yml"}]\n' > "$case_dir/glab-diff.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-protected-no-verdict-gitlab: a yolo merge touching a protected path must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-protected-no-verdict-gitlab: the refusal did not name the merge-content gate"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-protected-no-verdict-gitlab: glab mr merge ran despite the gate's refusal"
+  pass "the merge-content gate refuses a yolo GitLab merge whose diff touches a protected path"
+
+  case_dir=$(make_forgejo_case gate-protected-no-verdict-forgejo)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"filename":"package-lock.json"}]\n' > "$case_dir/tea-files.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-protected-no-verdict-forgejo: a yolo merge touching a protected path must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-protected-no-verdict-forgejo: the refusal did not name the merge-content gate"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-protected-no-verdict-forgejo: the tea merge POST ran despite the gate's refusal"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose diff touches a protected path"
+}
+
+test_merge_content_gate_clean_verdict_releases_protected_merge() {
+  local case_dir rc head url verdict_dir
+
+  head=1313131313131313131313131313131313131313
+  url=https://github.com/example/repo/pull/34
+  case_dir=$(make_case gate-clean-verdict)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '.github/workflows/ci.yml\n' > "$case_dir/github-diff-paths"
+  : > "$case_dir/gh-axi.log"
+
+  verdict_dir=$(fm_second_look_verdict_dir "$case_dir/state" task-x1 34)
+  fm_second_look_write_verdict "$verdict_dir" clean "$head"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$url" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "gate-clean-verdict: a clean same-head verdict must release the protected merge"
+  assert_grep 'second-look verdict is clean for PR 34' "$case_dir/stderr" \
+    "gate-clean-verdict: the merge passed without the gate evaluating the clean verdict"
+  assert_logged_gh_merge "$case_dir" 34 example/repo --squash
+  pass "the merge-content gate releases a protected-path merge once the second look is clean for the same head"
 }
 
 test_github_merged_outcome_is_verified() {
@@ -2929,6 +3062,8 @@ test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
+test_merge_content_gate_refuses_protected_path_without_verdict
+test_merge_content_gate_clean_verdict_releases_protected_merge
 test_github_open_unqueued_outcome_refuses
 test_github_mergeable_unknown_retries_then_succeeds
 test_github_mergeable_unknown_exhausts_bound_and_reports_pending

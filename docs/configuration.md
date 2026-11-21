@@ -14,6 +14,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
 | Review bots on owned GitHub pull requests | [Contribution review bots](#contribution-review-bots-configcontribution-review-bots) |
+| Merge-content gates, second-look verdicts, or public-post consent | [AutoCraft Hardening Lessons](#autocraft-hardening-lessons) |
 | Per-run overrides and tuning | [Environment variables](#environment-variables) |
 
 ## FM_HOME
@@ -3135,3 +3136,123 @@ A live lock, a missing `lsof`, any failed check, or any other fetch failure keep
 Every wait, retry, and removal is printed to stderr, and a successful recovery also prints one `recovered:` summary line to stdout so a session-start refresh - which discards fleet-sync stderr and relays only stdout - still surfaces it.
 
 The shared staleness proof lives in `bin/fm-lock-lib.sh`, which both `fm-teardown.sh` and `fm-fleet-sync.sh` use.
+
+## AutoCraft Hardening Lessons
+
+Three lessons from the AutoCraft deep study were implemented in firstmate's merge and public-posting paths. They add defense-in-depth gates that prevent silent corruption of shared tracked material and adversarial modification of public commitments.
+
+### Lesson 1: Merge-content gates (protected paths)
+
+Protected paths resolve in exactly two steps. The tracked default list ships at `bin/fm-protected-paths.default` and carries the adopted classes below. A project may replace it entirely with its own `<project>/config/protected-paths`; a present-but-empty override disarms the gate, and every merge in that project is refused until the list is restored. Files matching any pattern trigger a merge-content gate: they cannot be auto-merged under yolo without a recorded second-look verdict.
+
+**Default protected file classes** (`bin/fm-protected-paths.default`):
+
+| Class | Examples |
+|-------|----------|
+| CI / workflow configuration | `.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.circleci/config.yml`, `.travis.yml`, `.drone.yml`, `cloudbuild.yaml` (each with a nested `*/` variant) |
+| Agent instruction files | `AGENTS.md`, `CLAUDE.md` (with nested variants) |
+| Lockfiles | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Gemfile.lock`, `poetry.lock`, `Pipfile.lock`, `composer.lock`, `go.sum`, `bun.lockb`, `deno.lock`, `flake.lock`, `uv.lock`, and more (with nested variants) |
+| Submodule pointers | `.gitmodules` (with nested variants) |
+| Binaries | `*.bin`, `*.exe`, `*.dll`, `*.so`, `*.dylib`, `*.jar`, `*.zip`, `*.tar.gz`, `*.dmg`, `*.deb`, `*.whl`, `*.AppImage`, and more (with nested variants) |
+
+Mode changes on executable scripts are gated by review policy rather than this list: a name-based gate cannot see the executable bit. A home may extend coverage through a project's own `config/protected-paths` override, which replaces the default list for that project.
+
+**Gate behavior:**
+
+- When yolo is **off**, the merge always escalates to the captain regardless of protected paths.
+- When yolo is **on**, the merge checks for a second-look verdict:
+  - **No verdict exists**: merge is refused with a clear error message listing the protected paths touched.
+  - **Verdict is `clean`**: merge proceeds.
+  - **Verdict is `defect` or `unsure`**: merge is refused; the reason is printed.
+
+**Second-look verdicts** are stored in `state/<task-id>/.second-look/<pr-number>/current.verdict` with the format:
+
+```
+verdict=<clean|defect|unsure>
+head=<commit-sha>
+time=<unix-epoch>
+defect_reason=<free text, single line>
+```
+
+Verdicts are matched by head: a verdict recorded for head A does not satisfy a merge request for head B. The merge gate compares the stored head against the current branch head; a mismatch means no verdict exists for that head, so the merge is refused. This prevents a new commit from silently clearing a previous defect without re-review.
+
+**Integration points:**
+
+- `bin/fm-pr-merge.sh`: the merge-content gate runs before the forge command (it self-fetches the head from the PR, so it does not depend on mergeability verification). It is implemented in `bin/fm-protected-paths-lib.sh` and called from the GitHub, GitLab, and Forgejo merge paths.
+- `bin/fm-merge-local.sh`: the same gate runs for local-only fast-forward merges.
+- `bin/fm-second-look.sh`: the adversarial second-look runner that reads existing verdicts or prints 'unsure' if none exists; it does not spawn reviewers itself, and no firstmate code does either - spawning the reviewer is an operator action for now (see Lesson 2).
+
+### Lesson 2: Adversarial second-look runner
+
+`bin/fm-second-look.sh` reads existing verdicts from `state/<task-id>/.second-look/<pr-number>/current.verdict` and returns the verdict (clean/defect/unsure) if present, or prints 'unsure' and exits 1 if no verdict exists. The adversarial second-look loop is captain/operator-driven for now: the merge gate refuses yolo protected-path merges until a clean verdict for the head exists, and spawning the independent reviewer agent with the brief below - and reacting to its verdict - are operator actions pending future wiring into firstmate.
+
+**Verdicts:**
+
+| Verdict | Meaning | Merge gate |
+|---------|---------|------------|
+| `clean` | No defects found; auto-merge may proceed | Gate passes |
+| `defect` | Defects found; auto-merge is blocked | Gate refuses, escalates to captain |
+| `unsure` | Uncertain; auto-merge is blocked | Gate refuses, escalates to captain |
+
+**How it works:**
+
+1. The merge gate (in `fm-pr-merge.sh` or `fm-merge-local.sh`) detects that protected paths are touched and yolo is on.
+2. It checks for an existing second-look verdict in `state/<task-id>/.second-look/<pr-number>/current.verdict`.
+3. If no verdict exists, the merge is refused and the captain is notified.
+4. `bin/fm-second-look.sh --task-id <id> --pr-url <url> --head <sha>` checks for an existing verdict: it prints the stored verdict for that head (exiting 0 only for clean), or prints 'unsure' and exits 1 when no verdict for the head exists.
+5. Recording a verdict is an operator action for now: the operator spawns an independent reviewer agent (a different session from the implementation worker) with the adversarial brief below and records its verdict at `state/<task-id>/.second-look/<pr-number>/current.verdict`; nothing in firstmate spawns the reviewer or reacts to a gate refusal automatically yet.
+6. The merge gate reads the verdict and applies the gate logic.
+
+**The adversarial brief** instructs the reviewer to look for:
+- Bugs that existing tests miss (edge cases, off-by-one, null/empty handling)
+- Security issues (injection, path traversal, auth bypass, information leak)
+- Quiet behavior changes (API contract violations, breaking changes)
+- Performance regressions (O(n²) loops, unnecessary allocations, blocking I/O)
+- Side effects (global state mutation, race conditions, signal handling)
+- Test coverage gaps (new code paths without corresponding tests)
+- Documentation inconsistencies (code does X but docs say Y)
+- Dependency issues (new dependencies with security advisories, license changes)
+
+**Verdict persistence:**
+
+- Verdicts are stored durably in `state/<task-id>/.second-look/<pr-number>/`.
+- For local-only merges, the pr-number is always `0` (i.e., `state/<task-id>/.second-look/0/current.verdict`).
+- Verdicts are matched by head: a verdict for head A does not satisfy a merge for head B.
+- A `clean` verdict for the current head allows the merge to proceed.
+- A `defect` or `unsure` verdict for the current head blocks the merge.
+- A verdict for a different head is treated as absent (the merge is refused until a verdict for the current head exists).
+
+### Lesson 3: Exact-text consent for public posts
+
+Before posting any public reply through the relay (X or Discord), firstmate verifies that the reply text matches a previously approved hash. If the text has changed since approval, the post is refused.
+
+**How it works:**
+
+1. The captain approves the exact bytes by recording their SHA-256 hash in `state/fm-public-followup-consent/<obligation-id>.hash`.
+2. When `bin/fm-public-followup.sh deliver` is called, it computes the hash of the reply text.
+3. If a consent hash exists and the computed hash does not match, the deliver command refuses with a clear error.
+4. If no consent hash exists, the gate is skipped (backward compatible).
+
+**Consent hash storage:**
+
+- Hashes are stored in `state/fm-public-followup-consent/<id>.hash`.
+- The hash is the SHA-256 of the exact bytes being posted.
+- If the file is a symlink, it is ignored (safety check).
+
+**Defense in depth:**
+
+- The gate runs in `bin/fm-public-followup.sh deliver` (before `begin-delivery`), keyed by obligation ID.
+- The gate also runs in `bin/fm-x-reply.sh` (before the actual POST to the relay), keyed by relay request ID.
+- Both gates independently verify the reply text before posting, providing layered protection.
+- A present-but-empty or unreadable consent hash file is treated as a refusal (fail-closed), not as a skip.
+
+**Captain workflow for approving text:**
+
+```bash
+# Approve the exact text that will be posted
+echo -n '<approved-reply-text>' | sha256sum | cut -d' ' -f1 \
+  > state/fm-public-followup-consent/<obligation-id>.hash
+
+# Or record the hash manually
+echo '<sha256-hash>' > state/fm-public-followup-consent/<obligation-id>.hash
+```
