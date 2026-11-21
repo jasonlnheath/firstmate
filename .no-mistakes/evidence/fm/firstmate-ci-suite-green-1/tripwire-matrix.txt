@@ -1,0 +1,15 @@
+# Live drive of the 'Assert full history for the spawn lineage gate' step
+# (extracted verbatim from .github/workflows/ci.yml job tests-portable-parallel-1)
+# against five real git repository states. Date: 2026-11-21T08:04:44Z
+
+T1 healthy full clone                      expect=pass exit=0   shallow_after=false OK
+    
+T2 stale residue, complete history         expect=pass exit=0   shallow_after=false OK
+    
+T3 genuine depth-1 truncation              expect=fail exit=1   shallow_after=true  OK
+    error::the runner checkout is shallow; the spawn lineage gate would refuse spawns. Every self-hosted job must check out with fetch-depth: 0.
+T4 stale entry + foreign object            expect=fail exit=1   shallow_after=true  OK
+    error::the runner checkout is shallow; the spawn lineage gate would refuse spawns. Every self-hosted job must check out with fetch-depth: 0.
+T5 listed entry, parent missing            expect=fail exit=1   shallow_after=true  OK
+    error::the runner checkout is shallow; the spawn lineage gate would refuse spawns. Every self-hosted job must check out with fetch-depth: 0.
+

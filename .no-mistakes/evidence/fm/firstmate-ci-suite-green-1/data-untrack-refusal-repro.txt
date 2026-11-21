@@ -1,0 +1,7 @@
+# Adversarial repro: re-tracking a captain-private data/ report must be refused
+# by the documentation audience check (the original CI refusal, run 44847883291 era).
+# Throwaway clone of target with data/spreadsheet-agentic-lanes/report.md force-added.
+# Date: 2026-11-21T08:11:26Z
+
+exit=1
+fm-doc-audience-check: unclassified: data/spreadsheet-agentic-lanes/report.md

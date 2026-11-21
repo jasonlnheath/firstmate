@@ -1,0 +1,14 @@
+# Public-followup poll stdout: read-only /dev/null instead of closed fd 1
+# Date: 2026-11-21T08:31:43Z
+#
+# Target suite (40d59a4f) on this host (bash 5.3.20):
+#   bin/fm-test-run.sh tests/fm-public-followup.test.sh -> ALL TESTS PASSED (239s), including:
+#   "ok - a rejection wake survives a poll that could not write its line"
+#
+# Base-version repro attempt (2987e914 file, run up to and including the changed test):
+#   The old closed-fd form ALSO passes on this host's bash 5.3.20 (see
+#   public-followup-base-repro.txt). The fd-1 reclaim the fix targets was observed on the
+#   hosted ubuntu-latest bash 5.3.9 build only; the new read-only /dev/null form fails
+#   with EBADF on every bash, so the scenario is a hermeticity hardening whose reported
+#   failure mode is not reproducible on this host's bash build. Host-observable proof:
+#   the changed test passes live here on a bash 5.3-family shell.

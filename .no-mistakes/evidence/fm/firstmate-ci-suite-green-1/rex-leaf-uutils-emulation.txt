@@ -1,0 +1,14 @@
+# Live drive of the rex start_shell_tree leaf fixture against an emulated uutils
+# multicall coreutils (one binary, argv[0] dispatch, unknown program refused) -
+# the ubuntu-latest drift that killed the old fixture before the process existed.
+# old shape = base 2987e914 (leaf -> symlink to `sleep`); new shape = target 40d59a4f (leaf -> bash loop).
+# Date: 2026-11-21T08:06:37Z
+
+fake sleep -> /tmp/fm-rexleaf.ZFDZRV/bin/coreutils-uutils (uutils-style multicall emulator)
+
+OLD shape after 1s: wrapper_alive=no leaf_pid=NONE out="coreutils-uutils: unknown program: watcher-leaf"
+  -> the leaf process never existed: reproduced the CI failure mode.
+
+NEW shape after 1s: wrapper_alive=yes leaf_pid=2821535
+  leaf ps row: watcher-leaf    /tmp/fm-rexleaf.ZFDZRV/tree-new/watcher-leaf -c while sleep "$0"; do :; done 100
+  -> leaf alive and visible under its own path (what the scan, classifier, and reaper need).

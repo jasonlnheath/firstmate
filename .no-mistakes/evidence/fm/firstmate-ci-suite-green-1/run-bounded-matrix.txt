@@ -1,0 +1,12 @@
+# Live drive of bin/fm-watch-checkpoint.sh run_bounded (INT-then-kill-after bound)
+# Functions extracted verbatim from base (2987e914) and target (40d59a4f).
+# A uutils-style timeout shim (non-GNU --version, KILL fires at the INT instant)
+# emulates the ubuntu-latest coreutils drift. Watcher stand-in needs 1.5s of INT cleanup.
+# Date: 2026-11-21T08:05:25Z
+
+host timeout identity: timeout (GNU coreutils) 9.12
+shim identity:         timeout 0.0.30 (uutils coreutils 0.0.30)
+
+base run_bounded    + uutils-style timeout (repro)   exit=137 watcher-cleanup=ABSENT
+target run_bounded  + uutils-style timeout           exit=124 watcher-cleanup=present
+target run_bounded  + host GNU timeout               exit=124 watcher-cleanup=present

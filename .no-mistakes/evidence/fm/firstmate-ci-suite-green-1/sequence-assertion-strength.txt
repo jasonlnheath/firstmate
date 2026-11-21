@@ -1,0 +1,24 @@
+# No-weakening guard for the sequence-claims assertions (target 40d59a4f)
+# Assertion block verbatim from tests/fm-remote-transport-lanes.test.sh:136-143,
+# each case against fresh durable-claim state. Date: 2026-11-21T08:07:29Z
+
+--- duplicate value injected (the open investigation hazard):
+FAIL: concurrent sequence claims were not unique: 1
+FAIL: concurrent sequence allocations did not retain every durable claim
+  (all four assertions passed)
+
+--- only 19 values (a lost claim):
+FAIL: concurrent sequence claims did not produce 20 values: 1
+FAIL: concurrent sequence allocations did not retain every durable claim
+  (all four assertions passed)
+
+--- does not start at 1 (first claim lost):
+FAIL: concurrent sequence claims did not start at 1: 2
+  (all four assertions passed)
+
+--- valid: 20 unique values starting at 1 WITH load-induced gaps (new contract):
+  (all four assertions passed)
+
+--- durable-claim mismatch (20 unique values, only 2 claim dirs retained):
+FAIL: concurrent sequence allocations did not retain every durable claim
+  (all four assertions passed)
