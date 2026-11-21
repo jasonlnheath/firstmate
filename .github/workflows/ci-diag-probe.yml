@@ -24,57 +24,61 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install strace
-        run: |
-          set -eu
-          sudo apt-get install -y strace >/dev/null
 
-      - name: Probe A - bash fd1 state under the closed-stdout shapes
+      - name: Probe A - isolate which parent-side construct reopens fd1
         run: |
           set -u
           echo "bash: $BASH_VERSION"
-          echo "--- shape 1: >&- 2>/dev/null, report fd1 from inside:"
-          bash -c 'ls -l /proc/self/fd >&2' >&- 2>/tmp/fd1a.txt; true
-          grep -E ' -> ' /tmp/fd1a.txt | head -8
-          echo "--- shape 2: >&- 2>/dev/null then exec 9>file, report:"
-          bash -c 'exec 9>/tmp/fd1b.txt; ls -l /proc/self/fd >&9 2>&9' >&- 2>/dev/null; true
-          grep -E ' -> ' /tmp/fd1b.txt | head -8
-          echo "--- shape 3: printf >&1 under >&- 2>/dev/null:"
-          rc=0; bash -c 'printf "wake-line\n" >&1' >&- 2>/tmp/fd1c.txt || rc=$?
-          echo "printf rc=$rc (1 = write refused)"; cat /tmp/fd1c.txt
-          echo "--- shape 4: printf >&1 under 1</dev/null (read-only stdout):"
-          rc=0; bash -c 'printf "wake-line\n" >&1' 1</dev/null 2>/tmp/fd1d.txt || rc=$?
-          echo "printf rc=$rc (1 = write refused)"; cat /tmp/fd1d.txt
-
-      - name: Probe B - the real poll over a seeded rejection wake, exact test shape
+          mkdir -p /tmp/pa
+          cat > /tmp/pa/p0.sh <<'SH'
+          printf 'w\n' >&1
+          SH
+          cat > /tmp/pa/p1.sh <<'SH'
+          [ 1 -ge 50 ] 2>/dev/null
+          [ 1 -le 2000 ] 2>/dev/null
+          [ 25 -ge 1 ] 2>/dev/null
+          printf 'w\n' >&1
+          SH
+          cat > /tmp/pa/p2.sh <<'SH'
+          printf 'sig\n' | cat >/dev/null
+          printf 'w\n' >&1
+          SH
+          cat > /tmp/pa/p3.sh <<'SH'
+          x=$(cat /etc/hostname 2>/dev/null)
+          printf 'w\n' >&1
+          SH
+          cat > /tmp/pa/p4.sh <<'SH'
+          printf '%s' 'a\nb\n' | LC_ALL=C sort | sha256sum >/dev/null
+          printf 'w\n' >&1
+          SH
+          cat > /tmp/pa/p5.sh <<'SH'
+          printf '%s\n' 'sig' | cat >/dev/null
+          printf 'w\n' >&1
+          SH
+          for n in p0 p1 p2 p3 p4 p5; do
+            rc=0
+            bash /tmp/pa/$n.sh >&- 2>/tmp/pa/err.txt || rc=$?
+            echo "$n rc=$rc stderr=[$(cat /tmp/pa/err.txt)]"
+          done
+      - name: Probe B - real poll with pending events + absent surfaced marker
         run: |
           set -u
           d=$(mktemp -d)
           home="$d/home"
-          mkdir -p "$home/state/public-followup/rejection-wakes" "$home/fakebin" "$home/data" "$home/config"
+          mkdir -p "$home/state/public-followup/events" \
+            "$home/state/public-followup/rejection-wakes" \
+            "$home/state/public-followup/registry" \
+            "$home/fakebin" "$home/data" "$home/config"
           cat > "$home/fakebin/curl" <<'SH'
           #!/usr/bin/env bash
           exit 0
           SH
           chmod +x "$home/fakebin/curl"
+          printf '{"id":"pf-probe","status":"report-ready"}\n' > "$home/state/public-followup/events/pf-probe.json"
           printf 'public-followup rejected pf-probe\n' > "$home/state/public-followup/rejection-wakes/pf-probe"
-          echo "wake seeded: $(cat "$home/state/public-followup/rejection-wakes/pf-probe")"
           PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$PWD" FM_HOME="$home" \
             FM_STATE_OVERRIDE="$home/state" bin/fm-x-poll.sh >&- 2>"$d/err.txt" || true
-          if [ -e "$home/state/public-followup/rejection-wakes/pf-probe" ]; then
-            echo "REPRO: no - wake survived (write refused)"
-          else
-            echo "REPRO: YES - wake vanished (write succeeded); stderr:"
-            cat "$d/err.txt"
-          fi
-          echo "--- same again under strace (fresh wake):"
-          printf 'public-followup rejected pf-probe2\n' > "$home/state/public-followup/rejection-wakes/pf-probe2"
-          PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$PWD" FM_HOME="$home" \
-            FM_STATE_OVERRIDE="$home/state" strace -f -e trace=openat,dup2,dup3,write -o "$d/strace.log" \
-            bash bin/fm-x-poll.sh >&- 2>/dev/null || true
-          [ -e "$home/state/public-followup/rejection-wakes/pf-probe2" ] \
-            && echo "strace run: wake survived" || echo "strace run: wake vanished"
-          echo "--- write(1,...) calls in the trace:"
-          grep -E ' write\(1, ' "$d/strace.log" | head -5 || echo "(none)"
-          echo "--- fds claimed onto 1 (dup2 X,1 / openat = 1):"
-          grep -E 'dup2?\([0-9]+, 1\)|openat.*= 1$' "$d/strace.log" | grep -v 'so\.|\.cache|locale' | head -10 || true
+          [ -e "$home/state/public-followup/rejection-wakes/pf-probe" ] \
+            && echo "wake survived" || echo "WAKE VANISHED (repro)"
+          echo "surfaced marker exists: $([ -e "$home/state/public-followup/surfaced" ] && echo yes || echo no)"
+          echo "poll stderr: [$(cat "$d/err.txt")]"
