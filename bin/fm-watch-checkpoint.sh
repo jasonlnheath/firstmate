@@ -112,7 +112,7 @@ run_with_perl_timeout() {  # <seconds> <signal> <kill-after-seconds> <command...
 }
 
 run_bounded() {  # <seconds> <signal> <kill-after-seconds> <command...>
-  local seconds=$1 signal=$2 kill_after=$3 cleanup_lock_bound
+  local seconds=$1 signal=$2 kill_after=$3 cleanup_lock_bound timeout_out
   shift 3
   if [ "$kill_after" -gt 0 ]; then
     cleanup_lock_bound=${FM_WATCHER_CLEANUP_LOCK_BOUND:-2}
@@ -124,13 +124,28 @@ run_bounded() {  # <seconds> <signal> <kill-after-seconds> <command...>
     [ "$cleanup_lock_bound" -gt "$kill_after" ] || cleanup_lock_bound=$kill_after
     kill_after=$cleanup_lock_bound
   fi
+  # Only a GNU timeout is trusted with the INT-then-kill-after shape: the
+  # uutils reimplementation (ubuntu-latest's /usr/bin/timeout since the
+  # coreutils-from-uutils transition) fires its KILL at the INT instant
+  # instead of after the kill-after window, so a watcher that is still
+  # inside its normal INT cleanup dies by SIGKILL and the checkpoint
+  # reports 137 instead of 124. Anything that does not identify as GNU
+  # coreutils falls through to the perl implementation below, which owns
+  # the same semantics itself.
   if command -v timeout >/dev/null 2>&1; then
-    if [ "$kill_after" -gt 0 ]; then
-      timeout --signal="$signal" --kill-after="${kill_after}s" "$seconds" "$@"
-    else
-      timeout --signal="$signal" "$seconds" "$@"
-    fi
-  elif command -v gtimeout >/dev/null 2>&1; then
+    timeout_out=$(timeout --version 2>/dev/null | head -1) || timeout_out=
+    case "$timeout_out" in
+      *"GNU coreutils"*)
+        if [ "$kill_after" -gt 0 ]; then
+          timeout --signal="$signal" --kill-after="${kill_after}s" "$seconds" "$@"
+        else
+          timeout --signal="$signal" "$seconds" "$@"
+        fi
+        return
+        ;;
+    esac
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
     if [ "$kill_after" -gt 0 ]; then
       gtimeout --signal="$signal" --kill-after="${kill_after}s" "$seconds" "$@"
     else
