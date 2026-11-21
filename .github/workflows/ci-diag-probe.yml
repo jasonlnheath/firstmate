@@ -19,7 +19,7 @@ jobs:
   probe:
     name: Hosted VM probes
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
         with:
@@ -30,52 +30,10 @@ jobs:
           export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
           echo "$NPM_CONFIG_PREFIX/bin" >> "$GITHUB_PATH"
           export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
-          npm install -g tasks-axi
+          npm install -g tasks-axi >/dev/null 2>&1
           tasks-axi --version
 
-      - name: Probe 1 - the full public-followup suite with tasks-axi present
-        run: |
-          set -u
-          rc=0; bash tests/fm-public-followup.test.sh > /tmp/pf-suite.log 2>&1 || rc=$?
-          echo "suite rc=$rc"
-          echo "--- not ok lines:"; grep -E '^not ok' /tmp/pf-suite.log || echo "(none)"
-          echo "--- skip lines:"; grep -E '^skip' /tmp/pf-suite.log || echo "(none)"
-          echo "--- wake-write test result:"; grep -n "could not be written" /tmp/pf-suite.log || echo "(test did not run)"
-          echo "--- tail:"; tail -3 /tmp/pf-suite.log
-
-      - name: Probe 2 - strace the exact failing invocation shape
-        run: |
-          set -u
-          rc=0; sudo apt-get install -y strace >/dev/null 2>&1 || rc=$?
-          [ "$rc" -eq 0 ] || { echo "strace unavailable; skipping"; exit 0; }
-          d=$(mktemp -d)
-          cat > "$d/poll.sh" <<SH
-          #!/usr/bin/env bash
-          set -u
-          exec 9>"$d/fd.txt"
-          ls -l /proc/self/fd >&9 2>&9
-          printf 'wake-line\n' >&1 && echo "WRITE-SUCCEEDED" >&9 || echo "WRITE-FAILED rc=\$?" >&9
-          SH
-          chmod +x "$d/poll.sh"
-          rc=0; strace -f -e trace=openat,dup2,dup3,fcntl,write -o "$d/strace.log" bash "$d/poll.sh" >&- 2>/dev/null || true
-          echo "replica rc=$rc"; echo "--- fd report:"; cat "$d/fd.txt"
-          echo "--- what claimed fd 1 (dup2/openat onto 1):"
-          grep -E 'openat.*= 1$|dup2?\(1, 2\)|dup2?\([0-9]+, 1\)' "$d/strace.log" | head -10 || true
-
-      - name: Probe 3 - the real quiet checkpoint pre-fix on this VM
-        run: |
-          set -u
-          d=$(mktemp -d)
-          home="$d/home"
-          mkdir -p "$home/state" "$home/data" "$home/config"
-          set +e
-          env FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 \
-            bash bin/fm-watch-checkpoint.sh --seconds 1 >"$d/out.txt" 2>"$d/err.txt"
-          rc=$?
-          set -e
-          echo "checkpoint rc=$rc (124 expected on GNU; 137 = the CI failure)"
-
-      - name: Probe 4 - start_shell_tree ps scan (backend-rex family)
+      - name: Probe A - process-tree visibility diagnosis (backend-rex family)
         run: |
           set -u
           d=$(mktemp -d)
@@ -89,24 +47,34 @@ jobs:
           chmod +x "$d/tree/wrapper"
           bash -c '"$1" "$2" "$3" & wait' root "$d/tree/wrapper" "$d/tree/claude" 120 >/dev/null 2>&1 &
           TREE_ROOT=$!
-          i=0; TREE_LEAF=
-          while [ -z "$TREE_LEAF" ] && [ "$i" -lt 50 ]; do
-            TREE_LEAF=$(ps -axo pid=,args= | awk -v p="$d/tree/claude" '$2 == p { print $1; exit }')
-            [ -n "$TREE_LEAF" ] || sleep 0.1
-            i=$((i + 1))
-          done
-          echo "TREE_LEAF=[$TREE_LEAF] after $i polls (nonempty expected)"
-          echo "--- ps sample of tree processes:"
+          sleep 1
+          echo "TREE_ROOT=$TREE_ROOT alive=$([ -d /proc/$TREE_ROOT ] && echo yes || echo no)"
+          if [ -d "/proc/$TREE_ROOT" ]; then
+            echo "root cmdline: $(tr '\0' ' ' < "/proc/$TREE_ROOT/cmdline" 2>/dev/null)"
+            for ch in $(pgrep -P "$TREE_ROOT" 2>/dev/null); do
+              echo "  child $ch: $(tr '\0' ' ' < "/proc/$ch/cmdline" 2>/dev/null) state=$(awk '{print $3}' "/proc/$ch/stat" 2>/dev/null)"
+              for gch in $(pgrep -P "$ch" 2>/dev/null); do
+                echo "    grandchild $gch: $(tr '\0' ' ' < "/proc/$gch/cmdline" 2>/dev/null) state=$(awk '{print $3}' "/proc/$gch/stat" 2>/dev/null)"
+              done
+            done
+          fi
+          echo "--- ps -axo pid=,args= head:"
+          ps -axo pid=,args= > /tmp/psout.txt 2>/tmp/pserr.txt; echo "ps rc=$?"
+          head -4 /tmp/psout.txt; echo "(ps stderr: $(cat /tmp/pserr.txt))"
+          echo "ps line count: $(wc -l < /tmp/psout.txt)"
+          echo "--- tree lines in ps output:"; grep -c "tree" /tmp/psout.txt || echo 0
           # shellcheck disable=SC2009
-          ps -axo pid=,args= | grep -F "$d/tree" || true
-          echo "--- ps ax command column widths (comm vs args):"
-          # shellcheck disable=SC2009
-          ps -axo pid=,comm= | grep -F claude || true
+          ps -e -o pid=,args= > /tmp/psout-e.txt 2>&1; echo "--- e option tree count: $(grep -c "tree" /tmp/psout-e.txt || echo 0)"
+          echo "--- direct scan result:"
+          ps -axo pid=,args= > /tmp/psout2.txt 2>&1
+          awk -v p="$d/tree/claude" '$2 == p { print "MATCH", $1; exit }' /tmp/psout2.txt
           kill -KILL -- "-$TREE_ROOT" 2>/dev/null || true
 
-      - name: Probe 5 - Pi package version resolved by latest
+      - name: Probe B - the real public-followup suite with tasks-axi present
         run: |
           set -u
-          rc=0; npm install -g @earendil-works/pi-coding-agent >/dev/null 2>&1 || rc=$?
-          echo "npm install rc=$rc"
-          npm ls -g --depth 0 @earendil-works/pi-coding-agent || true
+          rc=0; bash tests/fm-public-followup.test.sh > /tmp/pf-suite.log 2>&1 || rc=$?
+          echo "suite rc=$rc"
+          echo "--- not ok lines:"; grep -E '^not ok' /tmp/pf-suite.log || echo "(none)"
+          echo "--- wake-write test:"; grep -n "could not be written" /tmp/pf-suite.log || echo "(did not run)"
+          echo "--- test count:"; grep -cE '^(ok|not ok)' /tmp/pf-suite.log || true
