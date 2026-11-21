@@ -1,0 +1,28 @@
+===== captain approves the exact bytes =====
+  approved text: Ship report: all 3 gates green, nothing posted without you.
+  approved sha256: 24ae7a6fec697cd8188db022aadaf98bdd7c30f6a07e78865d34730751992009
+
+===== 1. posting the approved bytes proceeds =====
+CHECK PASS: approved bytes post (dry-run) (exit 0)
+CHECK PASS: the reply surfaced for the request
+
+===== 2. posting CHANGED bytes refuses =====
+CHECK PASS: changed bytes refuse with exit 2 (exit 2)
+CHECK PASS: refusal names the consent gate
+CHECK PASS: refusal names the hash mismatch
+CHECK PASS: nothing was posted
+  | fm-x-reply: exact-text consent gate: the reply text hash (09f64372dc0e9d03ec356c47c44e3b3106fb02081b1d5965d39d49d376d37126) does not match the approved hash (24ae7a6fec697cd8188db022aadaf98bdd7c30f6a07e78865d34730751992009) for request req-77; the text has changed since approval. Record the approved hash in /tmp/fm-consent-drive.Y2MI5X/state/fm-public-followup-consent/req-77.hash before retrying.
+
+===== 3. no consent recorded stays backward compatible =====
+CHECK PASS: unarmed request still posts (dry-run) (exit 0)
+
+===== 4. an empty hash file is a disarmed gate and refuses =====
+CHECK PASS: empty hash file refuses (exit 2)
+CHECK PASS: refusal names the disarmed gate
+
+===== 5. hostile request_id never reaches a path =====
+CHECK PASS: unsafe request id refused (exit 2)
+CHECK PASS: refusal names the unsafe id
+  | fm-x-reply: unsafe request_id: ../../etc/passwd
+
+drive complete; workdir /tmp/fm-consent-drive.Y2MI5X

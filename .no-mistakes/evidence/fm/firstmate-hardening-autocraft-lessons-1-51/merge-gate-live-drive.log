@@ -1,0 +1,82 @@
+
+===== 1. yolo GitLab merge touching .gitlab-ci.yml, no second-look verdict =====
+CHECK PASS: merge refused without a verdict (exit 1)
+CHECK PASS: refusal names the merge-content gate
+CHECK PASS: refusal names the missing verdict
+CHECK PASS: no forge merge command ran
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | error: merge-content gate: yolo is on and protected paths are touched, but no second-look verdict exists for PR 7; refusing to merge
+  | protected paths: .gitlab-ci.yml
+  | error: merge-content gate blocked the merge for https://gitlab.example/group/subgroup/project/-/merge_requests/7
+
+===== 2. fm-second-look.sh with no verdict escalates as unsure =====
+CHECK PASS: runner exits 1 on no verdict (exit 1)
+CHECK PASS: runner prints unsure
+  runner stdout: unsure
+
+===== 3. reviewer records a clean verdict bound to head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa =====
+  | verdict=clean
+  | head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  | time=1795292850
+  | defect_reason=second look found no defects
+
+===== 4. fm-second-look.sh reads the verdict back =====
+CHECK PASS: runner exits 0 on a clean same-head verdict (exit 0)
+CHECK PASS: runner prints clean
+  runner stdout: clean
+
+===== 5. same merge now runs; gate releases on the clean same-head verdict =====
+CHECK PASS: merge succeeds once the verdict is clean for the head (exit 0)
+CHECK PASS: gate names the clean verdict
+CHECK PASS: the forge merge command ran
+  | glab: mr merge 7 -R https://gitlab.example/group/subgroup/project --sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --yes
+  | WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+  | merge-content gate: yolo on, protected paths touched, second-look verdict is clean for PR 7
+  | verified: https://gitlab.example/group/subgroup/project/-/merge_requests/7 is open and mergeable, with a successful pipeline at head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+===== 6. adversarial: clean verdict bound to a stale head (bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) must not release =====
+CHECK PASS: merge refused on a stale-head verdict (exit 1)
+CHECK PASS: refusal names both heads
+CHECK PASS: no forge merge command ran
+  | error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, not the current head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; refusing to merge
+
+===== 7. adversarial: glab diff read fails outright (expired token shape) =====
+CHECK PASS: merge refused when the provider diff read fails (exit 1)
+CHECK PASS: refusal names the merge-content gate
+CHECK PASS: no forge merge command ran on an unreadable diff
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | error: merge-content gate blocked the merge for https://gitlab.example/group/subgroup/project/-/merge_requests/7
+
+===== 8. adversarial: glab diff answers empty body with exit 0 =====
+CHECK PASS: merge refused on an empty diff body (exit 1)
+CHECK PASS: no forge merge command ran on an empty diff body
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | error: merge-content gate blocked the merge for https://gitlab.example/group/subgroup/project/-/merge_requests/7
+
+===== 9. defect verdict names its reason and blocks the merge =====
+CHECK PASS: merge refused on a defect verdict (exit 1)
+CHECK PASS: refusal names the defect verdict
+CHECK PASS: refusal carries the reviewer's reason
+  | error: merge-content gate: yolo is on and protected paths are touched, but second-look verdict is 'defect' for PR 7; refusing to merge
+  | reason: a second-look defect verdict is still active: workflow exfiltrates secrets to a third-party host
+
+===== drive complete =====
+workdir: /tmp/fm-gate-drive.wYV8eE

@@ -1,0 +1,31 @@
+branch head: 33749345a269d3db735a1590f4d56a76653c4366 ; main before: 756e813
+
+===== 1. local yolo merge touching .github/workflows/ci.yml, no verdict =====
+CHECK PASS: local merge refused without a verdict (exit 1)
+CHECK PASS: refusal names the merge-content gate
+CHECK PASS: refusal names the missing verdict
+CHECK PASS: main not moved
+  | ●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  | ●  WATCHER DOWN - SUPERVISION IS OFF
+  | ●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+  | ●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+  | ●  This is a supervision warning only; the guarded operation WILL still run.
+  | ●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+
+===== 2. reviewer records clean verdict bound to the branch head =====
+  | verdict=clean
+  | head=33749345a269d3db735a1590f4d56a76653c4366
+  | time=1795293806
+
+===== 3. same local merge now fast-forwards main =====
+CHECK PASS: local merge succeeds on the clean same-head verdict (exit 0)
+CHECK PASS: gate names the clean verdict
+CHECK PASS: main fast-forwarded to 3374934
+  | merged fm/task-loc1 into local main (756e813 -> 3374934) in /tmp/fm-local-drive.XdUdeH/project
+
+drive complete; workdir /tmp/fm-local-drive.XdUdeH
+
+===== 4. adversarial: a present-but-EMPTY project config/protected-paths disarms the gate and must fail closed =====
+fixture: project commits an empty config/protected-paths (replaces the tracked default list), ship branch touches .gitlab-ci.yml, yolo=on, no verdict
+bin/fm-merge-local.sh task-d1 -> exit 1; main not moved; the rc=3 disarmed-list branch refuses without a verdict ever being consulted
+main still at: 78799f2
