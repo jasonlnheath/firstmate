@@ -58,8 +58,8 @@ concurrency:
 # that need no history - fetches with fetch-depth: 0. A depth-1 fetch from one
 # job would leave that workspace shallow and silently break the next test
 # job's spawn lineage gate (bin/fm-role-lib.sh), which needs the checkout's
-# real root commits. The behavior lanes carry a tripwire asserting the
-# checkout is full-depth before their suites run.
+# real root commits. Behavior parallel shard 1 carries a tripwire asserting
+# the checkout is full-depth before its suites run.
 jobs:
   lint:
     name: Lint ${{ matrix.partition }}
