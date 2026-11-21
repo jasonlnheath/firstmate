@@ -464,6 +464,81 @@ test_failed_work_on_pr_merged_promise_delivers_honest_outcome() {
   pass "failed work on a pr-merged promise delivers its honest outcome exactly once"
 }
 
+# --- 1b. exact-text consent reaches the posting surface -------------------------
+
+# Lesson 3 must bind at the surface that actually posts: deliver verifies the
+# captain's approved hash for the obligation, then propagates it to the relay
+# request id, so bin/fm-x-reply.sh - which every post for that request goes
+# through, including a direct call or a later follow-up reuse - refuses
+# changed bytes on the captain's behalf.
+test_deliver_propagates_approved_hash_to_the_posting_surface() {
+  local home log out rc approved tampered
+  approved='Approved: the placement fix landed and both spaces keep their workers.'
+  tampered='Approved: the placement fix landed and the thread is closed.'
+  home=$(make_home consent-propagate)
+  log="$home/curl.log"; : > "$log"
+  seed_commitment "$home" pf-consent req-consent discord main work-consent
+  "$EMIT" --home "$home" --obligation pf-consent --relation rel-code --source-home main \
+    --work-id work-consent --generation 1 --outcome pr-merged \
+    --deliverable pr_url=https://github.com/example/repo/pull/9 \
+    --outcome-text "$approved" >/dev/null || fail "emit failed"
+  run_pf "$home" consume >/dev/null || fail "reconciliation failed"
+  [ "$(delivery_state "$home" pf-consent)" = ready ] \
+    || fail "the obligation must be delivery-ready"
+
+  mkdir -p "$home/state/fm-public-followup-consent"
+  printf '%s\n' "$(printf '%s' "$approved" | sha256sum | cut -d' ' -f1)" \
+    > "$home/state/fm-public-followup-consent/pf-consent.hash"
+
+  out=$(FAKE_CURL_LOG="$log" run_pf "$home" deliver pf-consent) \
+    || fail "delivery failed: $out"
+  [ "$(followup_posts "$log")" -eq 1 ] || fail "the approved reply must post exactly once"
+  assert_grep "$approved" "$log" "the posted bytes must be the approved bytes"
+  [ -s "$home/state/fm-public-followup-consent/req-consent.hash" ] \
+    || fail "deliver must arm the request-level consent key"
+
+  # A direct fm-x-reply invocation with changed bytes must refuse and post
+  # nothing, even though the deliver flow that armed the gate has finished.
+  # FAKE_CURL_LOG keeps the relay counting, so a broken gate that posts would
+  # be caught by the post count, not just the exit code.
+  rc=0
+  out=$(PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FAKE_CURL_LOG="$log" \
+    FMX_NOW_OVERRIDE="$PF_TEST_NOW" \
+    "$ROOT/bin/fm-x-reply.sh" req-consent --followup "$tampered" 2>&1) || rc=$?
+  [ "$rc" -eq 2 ] || fail "changed bytes on a direct fm-x-reply call must refuse with exit 2, got $rc: $out"
+  assert_contains "$out" "exact-text consent gate" \
+    "the refusal must name the consent gate"
+  [ "$(followup_posts "$log")" -eq 1 ] \
+    || fail "changed bytes must not post on the captain's behalf"
+
+  # The same approved bytes still post through a direct invocation, so the
+  # armed gate verifies rather than blanket-blocking the request.
+  rc=0
+  out=$(PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FAKE_CURL_LOG="$log" \
+    FMX_NOW_OVERRIDE="$PF_TEST_NOW" \
+    "$ROOT/bin/fm-x-reply.sh" req-consent --followup "$approved" 2>&1) || rc=$?
+  [ "$rc" -eq 0 ] || fail "the approved bytes must still post directly, got $rc: $out"
+  [ "$(followup_posts "$log")" -eq 2 ] \
+    || fail "the approved bytes must post exactly once more"
+
+  # Without an approval, deliver stays backward compatible and arms nothing.
+  home=$(make_home consent-unarmed)
+  log="$home/curl.log"; : > "$log"
+  seed_commitment "$home" pf-unarmed req-unarmed discord main work-unarmed
+  "$EMIT" --home "$home" --obligation pf-unarmed --relation rel-code --source-home main \
+    --work-id work-unarmed --generation 1 --outcome pr-merged \
+    --deliverable pr_url=https://github.com/example/repo/pull/9 \
+    --outcome-text "$approved" >/dev/null || fail "emit failed"
+  run_pf "$home" consume >/dev/null || fail "reconciliation failed"
+  out=$(FAKE_CURL_LOG="$log" run_pf "$home" deliver pf-unarmed) \
+    || fail "delivery without a consent hash must stay backward compatible"
+  [ ! -e "$home/state/fm-public-followup-consent/req-unarmed.hash" ] \
+    || fail "deliver must not arm the request key when nothing was approved"
+  pass "deliver propagates the approved hash to the request the post targets, and changed bytes refuse to post"
+}
+
 # --- 2. idempotency ------------------------------------------------------------
 
 test_duplicate_event_and_replay_are_noops() {
@@ -3998,6 +4073,7 @@ test_ambient_tasks_axi_env_never_reaches_a_real_backlog
 test_outcome_text_is_bounded_without_corrupting_characters
 test_restart_e2e_delivers_exactly_once
 test_failed_work_on_pr_merged_promise_delivers_honest_outcome
+test_deliver_propagates_approved_hash_to_the_posting_surface
 test_duplicate_event_and_replay_are_noops
 test_invalid_events_are_refused_and_quarantined
 test_relay_failure_holds_without_false_completion

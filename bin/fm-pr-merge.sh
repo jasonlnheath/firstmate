@@ -1679,6 +1679,12 @@ require_released_captain_hold || exit 1
 # shellcheck source=bin/fm-protected-paths-lib.sh
 . "$SCRIPT_DIR/fm-protected-paths-lib.sh"
 
+# The head a consumed second-look verdict was bound to, set by
+# fm_pr_merge_content_gate when it releases a protected-path merge on a clean
+# verdict. The provider verify steps read the live head again before merging;
+# a mismatch means a push landed after the gate's read and the newer head
+# never inherited that verdict.
+FM_PR_MERGE_GATE_VERDICT_HEAD=
 # fm_pr_merge_content_gate:
 #   Returns 0 if the merge-content gate is passed (no protected paths
 #   touched, or second-look verdict is clean). Returns 1 if blocked.
@@ -1771,37 +1777,42 @@ fm_pr_merge_content_gate() {
       # the URL-encoded project path (owner%2Frepo); it returns a JSON array of
       # diff records. No form flags: any -f/-F field switches glab's request
       # method to POST, and this read must stay a GET.
-      local encoded_path
+      local encoded_path _glab_tmp
       encoded_path=$(printf '%s' "$FM_PR_PATH" | sed 's|/|%2F|g')
-      GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" 2>/dev/null \
-        | jq -r '.[] | (.new_path // empty)' 2>/dev/null > "$diff_file" || {
+      _glab_tmp=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-glab.XXXXXX") || {
         rm -f "$diff_file"
         return 1
       }
+      if ! GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" \
+        > "$_glab_tmp" 2>/dev/null || [ ! -s "$_glab_tmp" ]; then
+        rm -f "$diff_file" "$_glab_tmp"
+        return 1
+      fi
+      jq -r '.[] | (.new_path // empty)' 2>/dev/null < "$_glab_tmp" > "$diff_file" || {
+        rm -f "$diff_file" "$_glab_tmp"
+        return 1
+      }
+      rm -f "$_glab_tmp"
       ;;
     forgejo)
-      # Use a subshell to capture tea's exit status; jq on empty input
-      # exits 0, so we must not let it mask a tea failure.
+      local _forgejo_tmp
+      _forgejo_tmp=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-forgejo.XXXXXX") || {
+        rm -f "$diff_file"
+        return 1
+      }
+      # "tea api" reports an HTTP-level failure with exit status 0 (see the
+      # merge step below), so an empty body refuses as well.
       if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
-        "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" 2>/dev/null \
-        | jq -r '.[].filename // empty' 2>/dev/null > "$diff_file"; then
-        # Check if the pipe failed (tea failure) vs jq failure
-        # In a pipe, the last command's status is the pipe's status.
-        # If jq succeeded but tea failed, diff_file may be empty.
-        # Use a temp file to capture tea output and check its exit.
-        local _forgejo_tmp
-        _forgejo_tmp=$(mktemp 2>/dev/null || echo /dev/null)
-        if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
-          "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" > "$_forgejo_tmp" 2>/dev/null; then
-          rm -f "$diff_file" "$_forgejo_tmp"
-          return 1
-        fi
-        jq -r '.[].filename // empty' 2>/dev/null < "$_forgejo_tmp" > "$diff_file" || {
-          rm -f "$diff_file" "$_forgejo_tmp"
-          return 1
-        }
-        rm -f "$_forgejo_tmp"
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" > "$_forgejo_tmp" 2>/dev/null \
+        || [ ! -s "$_forgejo_tmp" ]; then
+        rm -f "$diff_file" "$_forgejo_tmp"
+        return 1
       fi
+      jq -r '.[].filename // empty' 2>/dev/null < "$_forgejo_tmp" > "$diff_file" || {
+        rm -f "$diff_file" "$_forgejo_tmp"
+        return 1
+      }
+      rm -f "$_forgejo_tmp"
       ;;
     *)
       rm -f "$diff_file"
@@ -1878,6 +1889,7 @@ fm_pr_merge_content_gate() {
 
   case "$verdict" in
     clean)
+      FM_PR_MERGE_GATE_VERDICT_HEAD=$head_commit
       printf 'merge-content gate: yolo on, protected paths touched, second-look verdict is clean for PR %s\n' "$pr_number" >&2
       return 0
       ;;
@@ -1894,6 +1906,19 @@ fm_pr_merge_content_gate() {
       return 1
       ;;
   esac
+}
+
+# fm_pr_merge_verdict_head_recheck: the merge-content gate consumed a
+# second-look verdict bound to the head it fetched; each provider's verify step
+# re-reads the live head before issuing the forge command, and a push landing
+# between the two reads would merge a head whose protected-path content was
+# never reviewed. Refuse unless the verdict's head is the head being merged.
+fm_pr_merge_verdict_head_recheck() {
+  [ -n "$FM_PR_MERGE_GATE_VERDICT_HEAD" ] || return 0
+  if [ "$FM_PR_MERGE_HEAD" != "$FM_PR_MERGE_GATE_VERDICT_HEAD" ]; then
+    echo "error: merge-content gate: the head moved to $FM_PR_MERGE_HEAD after a clean second-look verdict was bound to $FM_PR_MERGE_GATE_VERDICT_HEAD; refusing to merge an unreviewed head" >&2
+    return 1
+  fi
 }
 
 # Run the merge-content gate before any forge command
@@ -1945,6 +1970,7 @@ case "$PROVIDER" in
       fi
       exit 1
     fi
+    fm_pr_merge_verdict_head_recheck || exit 1
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
@@ -2000,6 +2026,7 @@ case "$PROVIDER" in
     # in between is refused by GitLab instead of merged unverified. --yes only
     # skips the interactive confirmation, which no supervised run can answer;
     # the conditions above are what authorize the merge.
+    fm_pr_merge_verdict_head_recheck || exit 1
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
@@ -2032,6 +2059,7 @@ case "$PROVIDER" in
     forgejo_method=$(caller_merge_method "$@")
     [ -n "$forgejo_method" ] || forgejo_method=$(forgejo_default_merge_style) || exit 1
     forgejo_verify_mergeable || exit 1
+    fm_pr_merge_verdict_head_recheck || exit 1
     # The away record is locked first, so this last presence and authority
     # read and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1

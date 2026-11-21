@@ -3231,19 +3231,21 @@ Before posting any public reply through the relay (X or Discord), firstmate veri
 1. The captain approves the exact bytes by recording their SHA-256 hash in `state/fm-public-followup-consent/<obligation-id>.hash`.
 2. When `bin/fm-public-followup.sh deliver` is called, it computes the hash of the reply text.
 3. If a consent hash exists and the computed hash does not match, the deliver command refuses with a clear error.
-4. If no consent hash exists, the gate is skipped (backward compatible).
+4. If a consent hash exists and matches, deliver records the same approved hash under the relay request ID (`state/fm-public-followup-consent/<request-id>.hash`), arming the request-level gate below.
+5. If no consent hash exists, the gate is skipped (backward compatible) and no request-level key is armed.
 
 **Consent hash storage:**
 
-- Hashes are stored in `state/fm-public-followup-consent/<id>.hash`.
+- Hashes are stored in `state/fm-public-followup-consent/<id>.hash`, keyed by obligation ID (what the captain approves) and by relay request ID (what the posting surface verifies).
 - The hash is the SHA-256 of the exact bytes being posted.
 - If the file is a symlink, it is ignored (safety check).
 
 **Defense in depth:**
 
 - The gate runs in `bin/fm-public-followup.sh deliver` (before `begin-delivery`), keyed by obligation ID.
-- The gate also runs in `bin/fm-x-reply.sh` (before the actual POST to the relay), keyed by relay request ID.
-- Both gates independently verify the reply text before posting, providing layered protection.
+- When that gate passes, deliver propagates the approved hash to the relay request ID, arming the second gate in `bin/fm-x-reply.sh` (before the actual POST to the relay).
+- The request-level gate verifies the same approved bytes on every invocation surface for that request: the deliver flow itself, a direct `fm-x-reply.sh` call, and `bin/fm-x-followup.sh` reuse of the same thread binding. Changed bytes refuse to post.
+- Both gates verify the same approved bytes before posting, providing layered protection.
 - A present-but-empty or unreadable consent hash file is treated as a refusal (fail-closed), not as a skip.
 
 **Captain workflow for approving text:**

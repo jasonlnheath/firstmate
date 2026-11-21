@@ -117,6 +117,7 @@ fi
 # Build the adversarial brief for the reviewer agent
 # This is the "independent agent whose only job is to find a reason this
 # change should NOT land"
+# shellcheck disable=SC2034 # The brief is the reviewer contract the operator hands to the spawned agent; no code consumes it.
 BRIEF="## Adversarial second-look review
 
 You are an independent code reviewer with an adversarial posture. Your ONLY
@@ -163,10 +164,6 @@ Remember: your job is to find reasons NOT to land. If you find nothing,
 that is a valid finding - report it as clean.
 "
 
-# Write the brief to a temp file
-BRIEF_FILE=$(mktemp "${TMPDIR:-/tmp}/fm-second-look-brief.XXXXXX")
-printf '%s' "$BRIEF" > "$BRIEF_FILE"
-
 # The second-look runner needs to spawn an independent agent.
 # The harness dispatch is handled by firstmate - this script is designed
 # to be called by firstmate's supervision loop, which spawns the reviewer
@@ -203,7 +200,6 @@ if [ -f "$VERDICT_DIR/current.verdict" ]; then
     fi
     if [ -n "$VERDICT" ]; then
       echo "$VERDICT"
-      rm -f "$BRIEF_FILE"
       case "$VERDICT" in
         clean) exit 0 ;;
         *) exit 1 ;;
@@ -223,6 +219,5 @@ fi
 # The actual adversarial review is performed by firstmate spawning a crewmate.
 # The merge gate (fm-pr-merge.sh) checks for the verdict before proceeding.
 
-rm -f "$BRIEF_FILE"
 echo "unsure"
 exit 1

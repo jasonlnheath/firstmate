@@ -1176,7 +1176,7 @@ cmd_deliver() {
     || die "this home has not opted into the myfirstmate relay, so it cannot post a public reply" 1
   require_tools
 
-  local payload delivery attempt request platform text tmp_text hash chunks rc receipt receipt_fields receipt_dry_run link_status link_rc
+  local payload delivery attempt request platform text tmp_text hash chunks rc receipt receipt_fields receipt_dry_run link_status link_rc request_consent_file
   local loop_retained=0
   payload=$(obligation_json "$id") || die "could not read the backlog through tasks-axi" 1
   [ -n "$payload" ] || die "no public-followup obligation '$id' in this home's backlog" 1
@@ -1274,6 +1274,18 @@ cmd_deliver() {
     if [ "$stored_hash" != "$hash" ]; then
       die "exact-text consent gate: the reply text hash ($hash) does not match the approved hash ($stored_hash) for obligation '$id'; the text has changed since approval. Record the approved hash in $consent_file before retrying."
     fi
+    # The post leaves through bin/fm-x-reply.sh keyed by relay request id, so
+    # the approved hash must also arm that surface: deliver propagates it to
+    # <request-id>.hash, where the x-reply gate verifies it on this post and
+    # on any later direct invocation or follow-up reuse of the same request.
+    fm_pf_slug_valid "$request" \
+      || die "exact-text consent gate: obligation '$id' carries an unsafe relay request id '$request'; the request-level gate cannot be armed" 1
+    request_consent_file="$consent_dir/$request.hash"
+    if [ -L "$request_consent_file" ]; then
+      die "exact-text consent gate: the consent hash file for request '$request' is a symlink; the request-level gate cannot be armed. Remove $request_consent_file before retrying." 1
+    fi
+    printf '%s\n' "$stored_hash" > "$request_consent_file" \
+      || die "exact-text consent gate: could not record the approved hash for request '$request'; the request-level gate cannot be armed" 1
   fi
 
   # begin-delivery is what makes a retry safe: it pins the attempt and the exact
