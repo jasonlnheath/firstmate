@@ -42,8 +42,8 @@ usage() {
   cat >&2 <<'EOF'
 usage: fm-second-look.sh --task-id <id> --pr-url <url> --head <sha> [--project <dir>]
 
-Adversarial second-look reviewer. Spawns an independent agent to review
-the merge head and produce a verdict (clean/defect/unsure).
+Adversarial second-look verdict runner. Reads the recorded verdict for the
+requested head and prints it (or 'unsure'); it does not spawn the reviewer.
 EOF
 }
 
