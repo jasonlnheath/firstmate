@@ -3178,7 +3178,7 @@ Verdicts are matched by head: a verdict recorded for head A does not satisfy a m
 
 **Integration points:**
 
-- `bin/fm-pr-merge.sh`: the merge-content gate runs before the forge command (it self-fetches the head from the PR, so it does not depend on mergeability verification). It is implemented in `bin/fm-protected-paths-lib.sh` and called from the GitHub, GitLab, and Forgejo merge paths.
+- `bin/fm-pr-merge.sh`: the merge-content gate runs before the forge command (it self-fetches the head from the PR, so it does not depend on mergeability verification), and after each provider's verification step it re-checks the verdict's head against the head the forge command will actually merge - a push landing between the two reads refuses the merge rather than letting an unreviewed head inherit the verdict. The gate is implemented in `bin/fm-pr-merge.sh` on top of the list-check and verdict helpers in `bin/fm-protected-paths-lib.sh`, and covers the GitHub, GitLab, and Forgejo merge paths.
 - `bin/fm-merge-local.sh`: the same gate runs for local-only fast-forward merges.
 - `bin/fm-second-look.sh`: the adversarial second-look runner that reads existing verdicts or prints 'unsure' if none exists; it does not spawn reviewers itself, and no firstmate code does either - spawning the reviewer is an operator action for now (see Lesson 2).
 

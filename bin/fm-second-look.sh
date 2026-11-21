@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# fm-second-look.sh - adversarial second-look reviewer (Lesson 2 from AutoCraft)
+# fm-second-look.sh - second-look verdict runner (Lesson 2 from AutoCraft)
 #
-# Spawns an independent reviewer agent to re-review a merge head with an
-# adversarial posture: find reasons NOT to land the change.
+# Reads an existing second-look verdict for the requested head and prints it,
+# or prints 'unsure' and exits 1 when no verdict for that head exists. It does
+# not spawn the reviewer itself and no firstmate code does either: spawning
+# the independent adversarial agent - whose only job is to find a reason this
+# change should NOT land - is an operator action pending firstmate wiring
+# (docs/configuration.md "AutoCraft Hardening Lessons" owns the loop).
 #
 # Verdicts:
 #   clean   - no defects found; auto-merge may proceed
@@ -15,12 +19,12 @@
 # Usage:
 #   fm-second-look.sh --task-id <id> --pr-url <url> --head <sha> [--project <dir>]
 #
-# Outputs the verdict to stdout (clean/defect/unsure) and writes the verdict
-# file. On defect or unsure, also writes defect_reason=<text>.
-#
-# The spawn uses the standard harness dispatch (via fm-spawn.sh) to ensure
-# consistent model selection and quota routing. The reviewer brief is built
-# here and passed as a steer.
+# Prints the stored verdict to stdout (exiting 0 only for clean). This script
+# never writes the verdict file; the operator records the reviewer's verdict
+# at state/<task-id>/.second-look/<pr-number>/current.verdict (with
+# defect_reason=<text> for defect verdicts). The brief built below is the
+# reviewer contract the operator hands to the spawned agent; no code
+# consumes it.
 
 set -u
 
@@ -164,29 +168,12 @@ Remember: your job is to find reasons NOT to land. If you find nothing,
 that is a valid finding - report it as clean.
 "
 
-# The second-look runner needs to spawn an independent agent.
-# The harness dispatch is handled by firstmate - this script is designed
-# to be called by firstmate's supervision loop, which spawns the reviewer
-# as a separate crewmate with this brief.
-#
-# For now, output the verdict as a no-op pending firstmate integration.
-# The actual spawn happens through firstmate's dispatch.
+# The spawn is operator-driven for now: nothing in firstmate dispatches a
+# reviewer or calls this script. The merge gates read the verdict file
+# directly through fm-protected-paths-lib.sh; this runner exists so the
+# operator can query the recorded verdict for a head.
 
-# In the full implementation, firstmate would:
-# 1. Spawn a crewmate with this brief
-# 2. Wait for the crewmate to produce a verdict file
-# 3. Read the verdict and apply the gate logic
-
-# For the merge gate integration, this script is called from
-# fm-pr-merge.sh and fm-merge-local.sh. The verdict is checked before
-# the merge proceeds.
-
-# Since this is a library-style script called by merge scripts,
-# and the actual agent spawn is orchestrated by firstmate,
-# we need to handle the case where firstmate provides the verdict
-# via the verdict file (written by a spawned crewmate).
-
-# Check if a verdict file was written by a spawned reviewer
+# Check if a verdict file has been recorded by the reviewer
 if [ -f "$VERDICT_DIR/current.verdict" ]; then
   VERDICT=$(fm_second_look_read_verdict "$VERDICT_DIR")
   if [ -n "$VERDICT" ]; then
@@ -208,16 +195,12 @@ if [ -f "$VERDICT_DIR/current.verdict" ]; then
   fi
 fi
 
-# No verdict exists yet - this is called by the merge gate which needs
-# to decide whether to proceed. The verdict must be produced by firstmate
-# spawning a reviewer. Without a verdict:
-# - If yolo is on AND no second-look verdict exists, the merge gate
-#   checks if protected paths are touched. If yes, it refuses.
+# No verdict for this head exists yet. Without one:
+# - If yolo is on and protected paths are touched, the merge gate refuses.
 # - If yolo is off, the merge always escalates to the captain.
-
-# This script is primarily a specification and library for the gate logic.
-# The actual adversarial review is performed by firstmate spawning a crewmate.
-# The merge gate (fm-pr-merge.sh) checks for the verdict before proceeding.
+# The verdict must be recorded by the operator's reviewer; the merge gates
+# (fm-pr-merge.sh, fm-merge-local.sh) check for it via
+# fm-protected-paths-lib.sh before proceeding.
 
 echo "unsure"
 exit 1
