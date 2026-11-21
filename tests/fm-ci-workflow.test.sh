@@ -471,7 +471,7 @@ RUBY
 # real root commits). The contract: every actions/checkout step of a
 # self-hosted job fetches full history.
 test_self_hosted_checkouts_fetch_full_history() {
-  local reported
+  local reported shallow
   reported=$(ruby -ryaml -e '
 YAML.load_file(ARGV[0]).fetch("jobs").each do |name, job|
   next unless Array(job["runs-on"]).include?("self-hosted")
@@ -483,8 +483,9 @@ YAML.load_file(ARGV[0]).fetch("jobs").each do |name, job|
 end
 ' "$CI_WORKFLOW") || fail "could not read the self-hosted checkout steps from ci.yml"
   [ -n "$reported" ] || fail "ci.yml has no self-hosted checkout steps to hold the shared-workspace invariant on"
-  [ -z "$(printf '%s\n' "$reported" | grep -v 'fetch-depth=0$')" ] \
-    || fail "these self-hosted checkout steps would leave the shared rig workspace shallow:"$'\n'"$(printf '%s\n' "$reported" | grep -v 'fetch-depth=0$')"
+  shallow=$(printf '%s\n' "$reported" | grep -v 'fetch-depth=0$' || true)
+  [ -z "$shallow" ] \
+    || fail "these self-hosted checkout steps would leave the shared rig workspace shallow:"$'\n'"$shallow"
   pass "every self-hosted checkout step fetches full history for the shared rig workspace"
 }
 
@@ -492,7 +493,7 @@ end
 # install step proves the installed version equals its pin before any suite
 # runs, so a fresh Pi release cannot silently change CI behavior.
 test_pi_installs_share_one_pinned_and_verified_version() {
-  local reported pins
+  local reported pins unverified
   reported=$(ruby -ryaml -e '
 YAML.load_file(ARGV[0]).fetch("jobs").each do |name, job|
   Array(job["steps"]).each do |step|
@@ -505,8 +506,9 @@ YAML.load_file(ARGV[0]).fetch("jobs").each do |name, job|
 end
 ' "$CI_WORKFLOW") || fail "could not read the Pi install steps from ci.yml"
   [ -n "$reported" ] || fail "ci.yml no longer installs the Pi package; replace this contract with the successor's"
-  [ -z "$(printf '%s\n' "$reported" | grep -v $'\tverified$')" ] \
-    || fail "these Pi install steps do not verify their installed version:"$'\n'"$(printf '%s\n' "$reported" | grep -v $'\tverified$')"
+  unverified=$(printf '%s\n' "$reported" | grep -v $'\tverified$' || true)
+  [ -z "$unverified" ] \
+    || fail "these Pi install steps do not verify their installed version:"$'\n'"$unverified"
   pins=$(printf '%s\n' "$reported" | cut -f2 | LC_ALL=C sort -u)
   [ "$(printf '%s\n' "$pins" | wc -l | tr -d ' ')" = 1 ] \
     || fail "the Pi install steps must share one pin, got:"$'\n'"$pins"
