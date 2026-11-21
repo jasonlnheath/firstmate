@@ -24,57 +24,57 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install tasks-axi the lane way
+      - name: Install strace
         run: |
           set -eu
-          export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
-          echo "$NPM_CONFIG_PREFIX/bin" >> "$GITHUB_PATH"
-          export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
-          npm install -g tasks-axi >/dev/null 2>&1
-          tasks-axi --version
+          sudo apt-get install -y strace >/dev/null
 
-      - name: Probe A - process-tree visibility diagnosis (backend-rex family)
+      - name: Probe A - bash fd1 state under the closed-stdout shapes
+        run: |
+          set -u
+          echo "bash: $BASH_VERSION"
+          echo "--- shape 1: >&- 2>/dev/null, report fd1 from inside:"
+          bash -c 'ls -l /proc/self/fd >&2' >&- 2>/tmp/fd1a.txt; true
+          grep -E ' -> ' /tmp/fd1a.txt | head -8
+          echo "--- shape 2: >&- 2>/dev/null then exec 9>file, report:"
+          bash -c 'exec 9>/tmp/fd1b.txt; ls -l /proc/self/fd >&9 2>&9' >&- 2>/dev/null; true
+          grep -E ' -> ' /tmp/fd1b.txt | head -8
+          echo "--- shape 3: printf >&1 under >&- 2>/dev/null:"
+          rc=0; bash -c 'printf "wake-line\n" >&1' >&- 2>/tmp/fd1c.txt || rc=$?
+          echo "printf rc=$rc (1 = write refused)"; cat /tmp/fd1c.txt
+          echo "--- shape 4: printf >&1 under 1</dev/null (read-only stdout):"
+          rc=0; bash -c 'printf "wake-line\n" >&1' 1</dev/null 2>/tmp/fd1d.txt || rc=$?
+          echo "printf rc=$rc (1 = write refused)"; cat /tmp/fd1d.txt
+
+      - name: Probe B - the real poll over a seeded rejection wake, exact test shape
         run: |
           set -u
           d=$(mktemp -d)
-          mkdir -p "$d/tree"
-          ln -sf "$(command -v sleep)" "$d/tree/claude"
-          cat > "$d/tree/wrapper" <<'SH'
+          home="$d/home"
+          mkdir -p "$home/state/public-followup/rejection-wakes" "$home/fakebin" "$home/data" "$home/config"
+          cat > "$home/fakebin/curl" <<'SH'
           #!/usr/bin/env bash
-          "$1" "$2"
-          exit $?
+          exit 0
           SH
-          chmod +x "$d/tree/wrapper"
-          bash -c '"$1" "$2" "$3" & wait' root "$d/tree/wrapper" "$d/tree/claude" 120 >/dev/null 2>&1 &
-          TREE_ROOT=$!
-          sleep 1
-          echo "TREE_ROOT=$TREE_ROOT alive=$([ -d /proc/$TREE_ROOT ] && echo yes || echo no)"
-          if [ -d "/proc/$TREE_ROOT" ]; then
-            echo "root cmdline: $(tr '\0' ' ' < "/proc/$TREE_ROOT/cmdline" 2>/dev/null)"
-            for ch in $(pgrep -P "$TREE_ROOT" 2>/dev/null); do
-              echo "  child $ch: $(tr '\0' ' ' < "/proc/$ch/cmdline" 2>/dev/null) state=$(awk '{print $3}' "/proc/$ch/stat" 2>/dev/null)"
-              for gch in $(pgrep -P "$ch" 2>/dev/null); do
-                echo "    grandchild $gch: $(tr '\0' ' ' < "/proc/$gch/cmdline" 2>/dev/null) state=$(awk '{print $3}' "/proc/$gch/stat" 2>/dev/null)"
-              done
-            done
+          chmod +x "$home/fakebin/curl"
+          printf 'public-followup rejected pf-probe\n' > "$home/state/public-followup/rejection-wakes/pf-probe"
+          echo "wake seeded: $(cat "$home/state/public-followup/rejection-wakes/pf-probe")"
+          PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$PWD" FM_HOME="$home" \
+            FM_STATE_OVERRIDE="$home/state" bin/fm-x-poll.sh >&- 2>"$d/err.txt" || true
+          if [ -e "$home/state/public-followup/rejection-wakes/pf-probe" ]; then
+            echo "REPRO: no - wake survived (write refused)"
+          else
+            echo "REPRO: YES - wake vanished (write succeeded); stderr:"
+            cat "$d/err.txt"
           fi
-          echo "--- ps -axo pid=,args= head:"
-          ps -axo pid=,args= > /tmp/psout.txt 2>/tmp/pserr.txt; echo "ps rc=$?"
-          head -4 /tmp/psout.txt; echo "(ps stderr: $(cat /tmp/pserr.txt))"
-          echo "ps line count: $(wc -l < /tmp/psout.txt)"
-          echo "--- tree lines in ps output:"; grep -c "tree" /tmp/psout.txt || echo 0
-          # shellcheck disable=SC2009
-          ps -e -o pid=,args= > /tmp/psout-e.txt 2>&1; echo "--- e option tree count: $(grep -c "tree" /tmp/psout-e.txt || echo 0)"
-          echo "--- direct scan result:"
-          ps -axo pid=,args= > /tmp/psout2.txt 2>&1
-          awk -v p="$d/tree/claude" '$2 == p { print "MATCH", $1; exit }' /tmp/psout2.txt
-          kill -KILL -- "-$TREE_ROOT" 2>/dev/null || true
-
-      - name: Probe B - the real public-followup suite with tasks-axi present
-        run: |
-          set -u
-          rc=0; bash tests/fm-public-followup.test.sh > /tmp/pf-suite.log 2>&1 || rc=$?
-          echo "suite rc=$rc"
-          echo "--- not ok lines:"; grep -E '^not ok' /tmp/pf-suite.log || echo "(none)"
-          echo "--- wake-write test:"; grep -n "could not be written" /tmp/pf-suite.log || echo "(did not run)"
-          echo "--- test count:"; grep -cE '^(ok|not ok)' /tmp/pf-suite.log || true
+          echo "--- same again under strace (fresh wake):"
+          printf 'public-followup rejected pf-probe2\n' > "$home/state/public-followup/rejection-wakes/pf-probe2"
+          PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$PWD" FM_HOME="$home" \
+            FM_STATE_OVERRIDE="$home/state" strace -f -e trace=openat,dup2,dup3,write -o "$d/strace.log" \
+            bash bin/fm-x-poll.sh >&- 2>/dev/null || true
+          [ -e "$home/state/public-followup/rejection-wakes/pf-probe2" ] \
+            && echo "strace run: wake survived" || echo "strace run: wake vanished"
+          echo "--- write(1,...) calls in the trace:"
+          grep -E ' write\(1, ' "$d/strace.log" | head -5 || echo "(none)"
+          echo "--- fds claimed onto 1 (dup2 X,1 / openat = 1):"
+          grep -E 'dup2?\([0-9]+, 1\)|openat.*= 1$' "$d/strace.log" | grep -v 'so\.|\.cache|locale' | head -10 || true
