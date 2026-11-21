@@ -463,6 +463,84 @@ RUBY
   pass "CI matrices cover every executable serial lane and canonical lint root exactly once"
 }
 
+# --- shared rig workspace -----------------------------------------------
+#
+# Every job on the rig runner checks out the same persistent workspace
+# directory, so a checkout that leaves that workspace shallow silently breaks
+# the next job's spawn lineage gate (bin/fm-role-lib.sh needs the checkout's
+# real root commits). The contract: every actions/checkout step of a
+# self-hosted job fetches full history.
+test_self_hosted_checkouts_fetch_full_history() {
+  local reported
+  reported=$(ruby -ryaml -e '
+YAML.load_file(ARGV[0]).fetch("jobs").each do |name, job|
+  next unless Array(job["runs-on"]).include?("self-hosted")
+  Array(job["steps"]).each do |step|
+    next unless step["uses"].to_s.start_with?("actions/checkout")
+    depth = (step["with"] || {})["fetch-depth"]
+    puts "#{name}: #{step["name"] || "(unnamed checkout)"} fetch-depth=#{depth.inspect}"
+  end
+end
+' "$CI_WORKFLOW") || fail "could not read the self-hosted checkout steps from ci.yml"
+  [ -n "$reported" ] || fail "ci.yml has no self-hosted checkout steps to hold the shared-workspace invariant on"
+  [ -z "$(printf '%s\n' "$reported" | grep -v 'fetch-depth=0$')" ] \
+    || fail "these self-hosted checkout steps would leave the shared rig workspace shallow:"$'\n'"$(printf '%s\n' "$reported" | grep -v 'fetch-depth=0$')"
+  pass "every self-hosted checkout step fetches full history for the shared rig workspace"
+}
+
+# The Pi extension lanes grade the tree against one pinned Pi release and each
+# install step proves the installed version equals its pin before any suite
+# runs, so a fresh Pi release cannot silently change CI behavior.
+test_pi_installs_share_one_pinned_and_verified_version() {
+  local reported pins
+  reported=$(ruby -ryaml -e '
+YAML.load_file(ARGV[0]).fetch("jobs").each do |name, job|
+  Array(job["steps"]).each do |step|
+    run = step["run"].to_s
+    next unless run.include?("@earendil-works/pi-coding-agent")
+    pin = run[%r{@earendil-works/pi-coding-agent@(\d+\.\d+\.\d+)}, 1] || "unpinned"
+    verified = run.include?("npm ls -g") && run.include?(".dependencies[].version") ? "verified" : "unverified"
+    puts [name, pin, verified].join("\t")
+  end
+end
+' "$CI_WORKFLOW") || fail "could not read the Pi install steps from ci.yml"
+  [ -n "$reported" ] || fail "ci.yml no longer installs the Pi package; replace this contract with the successor's"
+  [ -z "$(printf '%s\n' "$reported" | grep -v $'\tverified$')" ] \
+    || fail "these Pi install steps do not verify their installed version:"$'\n'"$(printf '%s\n' "$reported" | grep -v $'\tverified$')"
+  pins=$(printf '%s\n' "$reported" | cut -f2 | LC_ALL=C sort -u)
+  [ "$(printf '%s\n' "$pins" | wc -l | tr -d ' ')" = 1 ] \
+    || fail "the Pi install steps must share one pin, got:"$'\n'"$pins"
+  case $pins in
+    [0-9]*.[0-9]*.[0-9]*) ;;
+    *) fail "the Pi install steps must pin a released version, got: $pins" ;;
+  esac
+  pass "the Pi install steps share one pinned version and verify what they installed"
+}
+
+# The lane that runs the spawn-gated suites owns the tripwire for the shared
+# workspace: it must assert the checkout is full-depth before its suites, so a
+# shallow workspace fails loudly in the lane rather than deep inside
+# spawn-based suites.
+test_the_spawn_lineage_lane_asserts_full_history_before_its_suites() {
+  local report assert_pos suites_pos
+  report=$(ruby -ryaml -e '
+steps = YAML.load_file(ARGV[0]).fetch("jobs").fetch("tests-portable-parallel-1").fetch("steps")
+names = steps.map { |s| s["name"].to_s }
+assert_step = steps.detect { |s| s["name"].to_s == "Assert full history for the spawn lineage gate" }
+suites_step = steps.detect { |s| s["name"].to_s == "Run portable parallel shard 1" }
+abort "no full-history assert step in tests-portable-parallel-1" unless assert_step
+abort "no shard 1 run step in tests-portable-parallel-1" unless suites_step
+abort "the assert step does not check shallowness" unless assert_step["run"].to_s.include?("--is-shallow-repository")
+puts [names.index("Assert full history for the spawn lineage gate"),
+      names.index("Run portable parallel shard 1")].join("\t")
+' "$CI_WORKFLOW" 2>&1) || fail "ci.yml's shard-1 lane lost its full-history tripwire: $report"
+  assert_pos=$(printf '%s\n' "$report" | head -1 | cut -f1)
+  suites_pos=$(printf '%s\n' "$report" | head -1 | cut -f2)
+  [ "$assert_pos" -lt "$suites_pos" ] 2>/dev/null \
+    || fail "the full-history assert must run before the shard 1 suites (step positions: assert=$assert_pos suites=$suites_pos)"
+  pass "the spawn-lineage lane asserts a full-depth checkout before its suites"
+}
+
 test_ci_matrices_match_executable_partitions
 test_pr_pushes_supersede_within_one_pr
 test_separate_prs_do_not_cancel_each_other
@@ -475,3 +553,6 @@ test_fast_tier_shares_one_short_tripwire
 test_normal_tier_shares_one_budget
 test_serial_tier_shares_one_budget_between_normal_and_heavy
 test_heavy_tier_keeps_a_step_tripwire_under_a_job_backstop
+test_self_hosted_checkouts_fetch_full_history
+test_pi_installs_share_one_pinned_and_verified_version
+test_the_spawn_lineage_lane_asserts_full_history_before_its_suites
