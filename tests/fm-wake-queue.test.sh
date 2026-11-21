@@ -32,8 +32,13 @@ test_concurrent_append_and_drain() {
     pids="$pids $!"
     i=$((i + 1))
   done
-  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out1" &
-  pids="$pids $!"
+  # A loaded CI runner can leave the concurrent drain's lock helper far behind
+  # the 40 appends; the default 10s presentation-lock budget is an
+  # idle-workstation number. Give the concurrent drain a loaded-runner budget;
+  # refusal on a live holder is unchanged (the 124/exit-0 skip path).
+  FM_STATE_OVERRIDE="$state" FM_STATUS_PRESENTATION_LOCK_TIMEOUT=60 "$DRAIN" > "$out1" &
+  drain1=$!
+  pids="$pids $drain1"
   for pid in $pids; do
     wait "$pid" || fail "concurrent append/drain subprocess failed"
   done

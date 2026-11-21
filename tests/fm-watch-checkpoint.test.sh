@@ -90,6 +90,90 @@ PL
   pass "Perl fallback honors the cleanup bound before escalating an INT-ignoring direct watcher"
 }
 
+# A `timeout` that does not identify as GNU coreutils must not be trusted with
+# the INT-then-kill-after shape: the uutils reimplementation fires its KILL at
+# the INT instant instead of after the kill-after window, so a watcher still
+# inside its normal INT cleanup dies by SIGKILL and the checkpoint reports 137
+# instead of 124. The fixture's timeout answers --version without the GNU
+# marker and carries exactly that bug; the checkpoint must refuse it and let
+# the Perl implementation own the bound.
+test_non_gnu_timeout_is_refused_the_kill_after_bound() {
+  local home fallback_bin tool tool_path status watcher_pid
+  home=$(make_home uutils-timeout)
+  fallback_bin="$home/fallback-bin"
+  mkdir -p "$home/root/bin" "$fallback_bin"
+  cp "$CHECKPOINT" "$home/root/bin/fm-watch-checkpoint.sh"
+  cp "$ROOT/bin/fm-supervision-engine-lib.sh" "$home/root/bin/fm-supervision-engine-lib.sh"
+  for tool in bash dirname mktemp rm perl grep cat head sleep; do
+    tool_path=$(command -v "$tool") || fail "could not locate $tool for the non-GNU timeout fixture"
+    ln -s "$tool_path" "$fallback_bin/$tool"
+  done
+  cat > "$fallback_bin/timeout" <<'SH'
+#!/usr/bin/env bash
+# uutils-shaped timeout: identifies as uutils coreutils and fires its KILL at
+# the INT instant instead of after the --kill-after window.
+if [ "${1-}" = --version ]; then
+  printf 'timeout (uutils coreutils) 0.0.30\n'
+  exit 0
+fi
+sig=INT
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --signal=*) sig=${1#--signal=} ;;
+    --kill-after=*) ;;
+    *) break ;;
+  esac
+  shift
+done
+secs=$1
+shift
+"$@" &
+pid=$!
+sleep "$secs"
+kill -"$sig" "$pid" 2>/dev/null || :
+kill -KILL "$pid" 2>/dev/null || :
+wait "$pid" 2>/dev/null
+exit 137
+SH
+  chmod +x "$fallback_bin/timeout"
+  cat > "$home/root/bin/fm-watch.sh" <<'PL'
+#!/usr/bin/env perl
+use strict;
+use warnings;
+$SIG{INT} = 'IGNORE';
+open my $pid_file, '>', "$ENV{FM_HOME}/watcher.pid" or die "open pid file: $!";
+printf {$pid_file} "%s\n", $$;
+close $pid_file;
+sleep 7;
+open my $cleanup_file, '>', "$ENV{FM_HOME}/cleanup-reached" or die "open cleanup marker: $!";
+print {$cleanup_file} "reached\n";
+close $cleanup_file;
+END {
+  if (open my $exit_file, '>', "$ENV{FM_HOME}/natural-exit") {
+    print {$exit_file} "natural\n";
+  }
+}
+sleep 20;
+PL
+  chmod +x "$home/root/bin/fm-watch-checkpoint.sh" "$home/root/bin/fm-watch.sh"
+
+  status=0
+  PATH="$fallback_bin" FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_WATCHER_CLEANUP_LOCK_BOUND=8 \
+    "$home/root/bin/fm-watch-checkpoint.sh" --seconds 1 >"$home/out.txt" 2>"$home/err.txt" || status=$?
+
+  expect_code 124 "$status" "non-GNU timeout checkpoint exit (137 means its KILL-at-INT bug ran the bound)"
+  assert_contains "$(cat "$home/out.txt")" "checkpoint: no actionable wake within 1s" \
+    "the checkpoint that refused the non-GNU timeout did not return a quiet checkpoint"
+  [ -e "$home/cleanup-reached" ] || fail "the bound killed the watcher before its 8-second cleanup window elapsed"
+  [ ! -e "$home/natural-exit" ] || fail "the INT-ignoring watcher exited naturally instead of being killed"
+  [ -s "$home/watcher.pid" ] || fail "the INT-ignoring watcher did not start"
+  watcher_pid=$(cat "$home/watcher.pid")
+  if kill -0 "$watcher_pid" 2>/dev/null; then
+    fail "the INT-ignoring watcher survived the fallback escalation"
+  fi
+  pass "a non-GNU timeout is refused the kill-after bound and the Perl fallback owns the checkpoint"
+}
+
 test_announced_recovery_is_not_reannounced_by_next_checkpoint() {
   local home out err status marker
   home=$(make_home announced-recovery)
@@ -346,6 +430,7 @@ test_real_host_checkpoint_ends_quietly_at_its_bound() {
 
 test_quiet_checkpoint_exits_124_cleanly
 test_perl_timeout_fallback_honors_cleanup_bound_before_escalating
+test_non_gnu_timeout_is_refused_the_kill_after_bound
 test_announced_recovery_is_not_reannounced_by_next_checkpoint
 test_never_announced_recovery_is_announced_once
 test_queue_append_during_checkpoint_still_resurfaces
