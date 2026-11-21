@@ -60,7 +60,7 @@ jobs:
             bash /tmp/pa/$n.sh >&- 2>/tmp/pa/err.txt || rc=$?
             echo "$n rc=$rc stderr=[$(cat /tmp/pa/err.txt)]"
           done
-      - name: Probe B - real poll with pending events + absent surfaced marker
+      - name: Probe B - real poll with token, pending events + absent surfaced marker
         run: |
           set -u
           d=$(mktemp -d)
@@ -74,6 +74,7 @@ jobs:
           exit 0
           SH
           chmod +x "$home/fakebin/curl"
+          printf 'FMX_PAIRING_TOKEN=probe-token\n' > "$home/.env"
           printf '{"id":"pf-probe","status":"report-ready"}\n' > "$home/state/public-followup/events/pf-probe.json"
           printf 'public-followup rejected pf-probe\n' > "$home/state/public-followup/rejection-wakes/pf-probe"
           PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$PWD" FM_HOME="$home" \
