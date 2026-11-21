@@ -19,99 +19,50 @@ jobs:
   probe:
     name: Hosted VM probes
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Environment fingerprint
+      - name: Install tasks-axi the lane way
         run: |
-          set -u
-          echo "bash: $BASH_VERSION"
-          echo "timeout: $(timeout --version 2>&1 | head -1)"
-          echo "gnu timeout candidates:"; dpkg -L gnu-coreutils 2>/dev/null | grep -m3 'bin/timeout' || true
-          echo "ps: $(ps --version 2>&1 | head -1)"
-          echo "head: $(head --version 2>&1 | head -1)"
-          echo "sed: $(sed --version 2>&1 | head -1)"
-          echo "mktemp: $(mktemp --version 2>&1 | head -1)"
-          echo "rm: $(rm --version 2>&1 | head -1)"
+          set -eu
+          export NPM_CONFIG_PREFIX="$RUNNER_TEMP/npm-global"
+          echo "$NPM_CONFIG_PREFIX/bin" >> "$GITHUB_PATH"
+          export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+          npm install -g tasks-axi
+          tasks-axi --version
 
-      - name: Probe 1 - exact-shape closed-stdout replica with fd inspection
-        run: |
-          set -u
-          d=$(mktemp -d)
-          # The poll's own view of fd 1 under the test's exact redirection
-          # shape, written to an explicitly opened fd so the report survives
-          # the closed stdout.
-          cat > "$d/poll.sh" <<SH
-          #!/usr/bin/env bash
-          set -u
-          exec 9>"$d/fdreport.txt"
-          echo "--- /proc/self/fd before write:" >&9
-          ls -l /proc/self/fd >&9 2>&9
-          printf 'wake-line\n' >&1 && echo "WRITE-SUCCEEDED" >&9 || echo "WRITE-FAILED rc=\$?" >&9
-          SH
-          chmod +x "$d/poll.sh"
-          rc=0; bash "$d/poll.sh" >&- 2>/dev/null || rc=$?
-          echo "exact-shape replica rc=$rc (3 = write failed, 0 = write succeeded)"
-          echo "--- fd report:"; cat "$d/fdreport.txt"
-
-      - name: Probe 2 - the real public-followup suite on this VM
+      - name: Probe 1 - the full public-followup suite with tasks-axi present
         run: |
           set -u
           rc=0; bash tests/fm-public-followup.test.sh > /tmp/pf-suite.log 2>&1 || rc=$?
           echo "suite rc=$rc"
-          echo "--- failures (if any):"
-          grep -E '^(not ok|FAIL|# fail)' /tmp/pf-suite.log || echo "(none - all ok)"
-          echo "--- the wake-write test line:"
-          grep -n "could not be written" /tmp/pf-suite.log || true
-          echo "--- tail:"; tail -4 /tmp/pf-suite.log
+          echo "--- not ok lines:"; grep -E '^not ok' /tmp/pf-suite.log || echo "(none)"
+          echo "--- skip lines:"; grep -E '^skip' /tmp/pf-suite.log || echo "(none)"
+          echo "--- wake-write test result:"; grep -n "could not be written" /tmp/pf-suite.log || echo "(test did not run)"
+          echo "--- tail:"; tail -3 /tmp/pf-suite.log
 
-      - name: Probe 3 - strace of the closed-stdout write (if installable)
+      - name: Probe 2 - strace the exact failing invocation shape
         run: |
           set -u
           rc=0; sudo apt-get install -y strace >/dev/null 2>&1 || rc=$?
-          if [ "$rc" -ne 0 ]; then echo "strace unavailable; skipping"; exit 0; fi
+          [ "$rc" -eq 0 ] || { echo "strace unavailable; skipping"; exit 0; }
           d=$(mktemp -d)
           cat > "$d/poll.sh" <<SH
           #!/usr/bin/env bash
           set -u
-          printf 'wake-line\n' >&1 && echo "W" > "$d/result" || { echo "F\$?" > "$d/result"; }
+          exec 9>"$d/fd.txt"
+          ls -l /proc/self/fd >&9 2>&9
+          printf 'wake-line\n' >&1 && echo "WRITE-SUCCEEDED" >&9 || echo "WRITE-FAILED rc=\$?" >&9
           SH
           chmod +x "$d/poll.sh"
-          rc=0; strace -f -e trace=openat,dup2,dup3,write,close -o "$d/strace.log" bash "$d/poll.sh" >&- 2>/dev/null || true
-          echo "result: $(cat "$d/result" 2>/dev/null)"
-          echo "--- fd1-related trace lines:"
-          grep -E 'openat|dup' "$d/strace.log" | head -20
+          rc=0; strace -f -e trace=openat,dup2,dup3,fcntl,write -o "$d/strace.log" bash "$d/poll.sh" >&- 2>/dev/null || true
+          echo "replica rc=$rc"; echo "--- fd report:"; cat "$d/fd.txt"
+          echo "--- what claimed fd 1 (dup2/openat onto 1):"
+          grep -E 'openat.*= 1$|dup2?\(1, 2\)|dup2?\([0-9]+, 1\)' "$d/strace.log" | head -10 || true
 
-      - name: Probe 4 - uutils timeout signal semantics (watch-checkpoint family)
-        run: |
-          set -u
-          set +e
-          echo "shape A - plain sleep, INT at 1s:"
-          timeout --signal=INT 1s sleep 30; echo "  rc=$? (124 expected)"
-          echo "shape B - child traps INT and cleans up ~2s (GNU waits -> 124):"
-          timeout --signal=INT 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "  rc=$? (137 = the CI failure)"
-          echo "shape C - same, kill-after 5s explicit:"
-          timeout --signal=INT --kill-after=5s 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "  rc=$?"
-          echo "shape D - GNU timeout if present:"
-          GNU_T=$(dpkg -L gnu-coreutils 2>/dev/null | grep -m1 'bin/timeout' || true)
-          if [ -n "$GNU_T" ] && [ -x "$GNU_T" ]; then
-            "$GNU_T" --signal=INT 1s bash -c 'trap "sleep 2; exit 0" INT; while :; do sleep 0.1; done'; echo "  rc=$? (GNU reference)"
-          else
-            echo "  no gnu-coreutils timeout binary found"
-          fi
-          echo "shape E - does uutils put the child in a new process group?"
-          timeout --signal=INT 1s bash -c 'while :; do sleep 0.1; done' & TPID=$!
-          sleep 0.4
-          CH=$(pgrep -P "$TPID" | head -1)
-          if [ -n "$CH" ]; then
-            echo "  timeout pgid: $(ps -o pgid= -p "$TPID" | tr -d ' ')"
-            echo "  child  pgid: $(ps -o pgid= -p "$CH" | tr -d ' ')"
-          fi
-          wait "$TPID" 2>/dev/null || true
-
-      - name: Probe 5 - the real quiet checkpoint on this VM
+      - name: Probe 3 - the real quiet checkpoint pre-fix on this VM
         run: |
           set -u
           d=$(mktemp -d)
@@ -122,11 +73,9 @@ jobs:
             bash bin/fm-watch-checkpoint.sh --seconds 1 >"$d/out.txt" 2>"$d/err.txt"
           rc=$?
           set -e
-          echo "checkpoint rc=$rc (124 expected, 137 = the CI failure)"
-          echo "--- out:"; cat "$d/out.txt"
-          echo "--- err:"; cat "$d/err.txt"
+          echo "checkpoint rc=$rc (124 expected on GNU; 137 = the CI failure)"
 
-      - name: Probe 6 - start_shell_tree ps scan (backend-rex family)
+      - name: Probe 4 - start_shell_tree ps scan (backend-rex family)
         run: |
           set -u
           d=$(mktemp -d)
@@ -155,7 +104,7 @@ jobs:
           ps -axo pid=,comm= | grep -F claude || true
           kill -KILL -- "-$TREE_ROOT" 2>/dev/null || true
 
-      - name: Probe 7 - Pi package version resolved by latest
+      - name: Probe 5 - Pi package version resolved by latest
         run: |
           set -u
           rc=0; npm install -g @earendil-works/pi-coding-agent >/dev/null 2>&1 || rc=$?
