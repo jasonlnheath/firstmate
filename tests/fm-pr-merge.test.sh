@@ -13,6 +13,9 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 fm_git_identity fmtest fmtest@example.invalid
 
+# shellcheck source=bin/fm-protected-paths-lib.sh
+. "$ROOT/bin/fm-protected-paths-lib.sh"
+
 PR_MERGE="$ROOT/bin/fm-pr-merge.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pr-merge-tests)
 BASE_PATH=$PATH
@@ -208,7 +211,15 @@ case "${1:-} ${2:-}" in
         exit 0
         ;;
       *headRefOid*)
-        cat "$FM_TEST_GH_HEAD"
+        # The merge-content gate reads the head as one JSON record; a
+        # caller passing -q (bin/fm-pr-check.sh) consumes the bare SHA, exactly
+        # as real gh applies the filter before printing.
+        if echo " $* " | grep -q -- '--json' && ! echo " $* " | grep -q -- ' -q '; then
+          head_sha=$(cat "$FM_TEST_GH_HEAD")
+          printf '{"headRefOid":"%s"}\n' "$head_sha"
+        else
+          cat "$FM_TEST_GH_HEAD"
+        fi
         exit 0
         ;;
       *isDraft*)
@@ -249,6 +260,14 @@ case "${1:-} ${2:-}" in
       exit 1
     fi
     cat "$FM_TEST_GH_OUTCOME"
+    exit 0
+    ;;
+  "pr diff")
+    # The merge-content gate reads the changed-path list; the fixture PR
+    # touches no protected path unless a case writes github-diff-paths.
+    if [ -s "${FM_TEST_GH_DIFF_PATHS:-}" ]; then
+      cat "$FM_TEST_GH_DIFF_PATHS"
+    fi
     exit 0
     ;;
   api\ *)
@@ -369,6 +388,37 @@ case "${1:-} ${2:-}" in
     : > "$case_dir/glab-merge-called"
     exit 0
     ;;
+  "api"*)
+    # glab api for merge request diffs - the changed-file list the
+    # merge-content gate reads; a case puts a protected path in it by writing
+    # glab-diff.json, and the fixture default touches none. glab-diff-fails
+    # makes the provider read itself fail; glab-diff-empty answers an empty
+    # body with exit 0, the transport-failure shape the gate must not read
+    # as "no changed paths". The gate probes a second page, so page 2
+    # answers from glab-diff-page2.json (a case writes it to put changed
+    # paths past page one) or an empty array; glab-diff-page2-fails breaks
+    # the probe read itself.
+    [ ! -e "$case_dir/glab-diff-fails" ] || exit 1
+    [ ! -e "$case_dir/glab-diff-empty" ] || exit 0
+    case "$*" in
+      *page=2*)
+        [ ! -e "$case_dir/glab-diff-page2-fails" ] || exit 1
+        if [ -e "$case_dir/glab-diff-page2.json" ]; then
+          cat "$case_dir/glab-diff-page2.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+      *)
+        if [ -e "$case_dir/glab-diff.json" ]; then
+          cat "$case_dir/glab-diff.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+    esac
+    exit 0
+    ;;
 esac
 exit 0
 SH
@@ -384,7 +434,7 @@ write_mr_json() {
   local file=$1 kv key value
   local state=opened detail=mergeable conflicts=false discussions=true
   local head=$MR_HEAD pipeline_sha=$MR_HEAD pipeline_status=success pipeline=present
-  local merge_when_pipeline_succeeds=false merge_after=null
+  local merge_when_pipeline_succeeds=false merge_after=null target_branch=main
   shift
   for kv in "$@"; do
     key=${kv%%=*}
@@ -400,6 +450,7 @@ write_mr_json() {
       pipeline) pipeline=$value ;;
       merge_when_pipeline_succeeds) merge_when_pipeline_succeeds=$value ;;
       merge_after) merge_after=$value ;;
+      target_branch) target_branch=$value ;;
       *) fail "write_mr_json: unknown field '$key'" ;;
     esac
   done
@@ -410,8 +461,8 @@ write_mr_json() {
     "$state" "$detail" "$conflicts" > "$file"
   printf '"blocking_discussions_resolved":%s,"sha":"%s","head_pipeline":%s,' \
     "$discussions" "$head" "$pipeline" >> "$file"
-  printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s}\n' \
-    "$merge_when_pipeline_succeeds" "$merge_after" >> "$file"
+  printf '"merge_when_pipeline_succeeds":%s,"merge_after":%s,"target_branch":"%s"}\n' \
+    "$merge_when_pipeline_succeeds" "$merge_after" "$target_branch" >> "$file"
 }
 
 # tea mock recording every invocation, so a test can prove the login and
@@ -497,6 +548,35 @@ case "$endpoint" in
       printf '{}\n'
     fi
     ;;
+  */files|*/files\?*)
+    # The merge-content gate's changed-path read; the fixture pull request
+    # touches no protected path unless a case writes tea-files.json.
+    # tea-files-fails fails the read outright; tea-files-empty answers an
+    # empty body with exit 0, the tea HTTP-failure shape the gate must not
+    # read as "no changed paths". The gate probes a second page, so page 2
+    # answers from tea-files-page2.json (a case writes it to put changed
+    # paths past page one) or an empty array; tea-files-page2-fails breaks
+    # the probe read itself.
+    [ ! -e "$log_dir/tea-files-fails" ] || exit 1
+    [ ! -e "$log_dir/tea-files-empty" ] || exit 0
+    case "$endpoint" in
+      *page=2*)
+        [ ! -e "$log_dir/tea-files-page2-fails" ] || exit 1
+        if [ -e "$log_dir/tea-files-page2.json" ]; then
+          cat "$log_dir/tea-files-page2.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+      *)
+        if [ -e "$log_dir/tea-files.json" ]; then
+          cat "$log_dir/tea-files.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+    esac
+    ;;
   *)
     [ ! -e "$log_dir/tea-view-fails" ] || exit 1
     if [ -e "$log_dir/tea-merged" ] && [ -s "$log_dir/tea-post-merge-view-failures" ]; then
@@ -524,7 +604,7 @@ SH
 # with named fields overridden so one case drives exactly one condition.
 write_forgejo_pr_json() {
   local file=$1 kv key value
-  local state=open mergeable=true merged=false draft=false head=$FJ_HEAD
+  local state=open mergeable=true merged=false draft=false head=$FJ_HEAD base_ref=main
   shift
   for kv in "$@"; do
     key=${kv%%=*}
@@ -535,11 +615,12 @@ write_forgejo_pr_json() {
       merged) merged=$value ;;
       draft) draft=$value ;;
       head) head=$value ;;
+      base_ref) base_ref=$value ;;
       *) fail "write_forgejo_pr_json: unknown field '$key'" ;;
     esac
   done
-  printf '{"state":"%s","mergeable":%s,"merged":%s,"draft":%s,"head":{"sha":"%s"}}\n' \
-    "$state" "$mergeable" "$merged" "$draft" "$head" > "$file"
+  printf '{"state":"%s","mergeable":%s,"merged":%s,"draft":%s,"head":{"sha":"%s"},"base":{"ref":"%s"}}\n' \
+    "$state" "$mergeable" "$merged" "$draft" "$head" "$base_ref" > "$file"
 }
 
 # write_forgejo_status_json <file> [state=<value>] [total_count=<n>]
@@ -670,6 +751,7 @@ run_pr_merge() {
   FM_TEST_GH_MERGEABLE_SEQUENCE="${FM_TEST_GH_MERGEABLE_SEQUENCE:-}" \
   FM_TEST_GH_MERGEABLE_CALLS="$case_dir/mergeable-calls" \
   FM_TEST_GH_HEAD="$case_dir/github-head" \
+  FM_TEST_GH_DIFF_PATHS="$case_dir/github-diff-paths" \
   FM_TEST_GH_RUNS="$case_dir/github-runs.json" \
   FM_TEST_GH_MERGE_RC_FILE="$case_dir/github-merge-rc" \
   FM_TEST_GH_MERGE_OUTPUT="$(cat "$case_dir/github-merge-output" 2>/dev/null || true)" \
@@ -781,6 +863,281 @@ test_merge_failure_propagates_after_recording() {
   assert_grep 'pr=https://github.com/example/repo/pull/13' "$case_dir/state/task-x1.meta" \
     "merge-fails: pr= should already be recorded even though the merge itself failed"
   pass "fm-pr-merge propagates a real merge failure without silently succeeding"
+}
+
+# The merge-content gate (Lesson 1): a protected-path touch never auto-merges
+# on green checks alone. Every other case feeds the gate an empty changed-path
+# list; these drive the gate's blocking and its clean-verdict release end to
+# end through fm-pr-merge.sh itself, with each forge's diff seam answering a
+# protected path.
+test_merge_content_gate_refuses_protected_path_without_verdict() {
+  local case_dir rc head url
+
+  head=1212121212121212121212121212121212121212
+  url=https://github.com/example/repo/pull/33
+  case_dir=$(make_case gate-protected-no-verdict)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '.github/workflows/ci.yml\n' > "$case_dir/github-diff-paths"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$url" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-protected-no-verdict: a yolo merge touching a protected path must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-protected-no-verdict: the refusal did not name the merge-content gate"
+  assert_grep 'no second-look verdict exists for PR 33' "$case_dir/stderr" \
+    "gate-protected-no-verdict: the refusal did not name the missing second-look verdict"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "gate-protected-no-verdict: the forge merge ran despite the gate's refusal"
+  pass "the merge-content gate refuses a yolo GitHub merge whose diff touches a protected path with no verdict"
+
+  case_dir=$(make_gitlab_case gate-protected-no-verdict-gitlab)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"new_path":".gitlab-ci.yml"}]\n' > "$case_dir/glab-diff.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-protected-no-verdict-gitlab: a yolo merge touching a protected path must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-protected-no-verdict-gitlab: the refusal did not name the merge-content gate"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-protected-no-verdict-gitlab: glab mr merge ran despite the gate's refusal"
+  pass "the merge-content gate refuses a yolo GitLab merge whose diff touches a protected path"
+
+  case_dir=$(make_forgejo_case gate-protected-no-verdict-forgejo)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"filename":"package-lock.json"}]\n' > "$case_dir/tea-files.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-protected-no-verdict-forgejo: a yolo merge touching a protected path must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-protected-no-verdict-forgejo: the refusal did not name the merge-content gate"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-protected-no-verdict-forgejo: the tea merge POST ran despite the gate's refusal"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose diff touches a protected path"
+}
+
+test_merge_content_gate_clean_verdict_releases_protected_merge() {
+  local case_dir rc head url verdict_dir
+
+  head=1313131313131313131313131313131313131313
+  url=https://github.com/example/repo/pull/34
+  case_dir=$(make_case gate-clean-verdict)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$head"
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '.github/workflows/ci.yml\n' > "$case_dir/github-diff-paths"
+  : > "$case_dir/gh-axi.log"
+
+  verdict_dir=$(fm_second_look_verdict_dir "$case_dir/state" task-x1 34)
+  fm_second_look_write_verdict "$verdict_dir" clean "$head"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$url" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "gate-clean-verdict: a clean same-head verdict must release the protected merge"
+  assert_grep 'second-look verdict is clean for PR 34' "$case_dir/stderr" \
+    "gate-clean-verdict: the merge passed without the gate evaluating the clean verdict"
+  assert_logged_gh_merge "$case_dir" 34 example/repo --squash
+  pass "the merge-content gate releases a protected-path merge once the second look is clean for the same head"
+}
+
+# A clean verdict releases a protected-path merge only for the head it was
+# recorded for. The gate reads the head before the provider verify step does;
+# if a push lands between the two reads, the verified merge head is newer than
+# the reviewed head and the merge must refuse rather than let the new head
+# inherit the old verdict.
+test_merge_content_gate_refuses_when_head_moves_after_verdict() {
+  local case_dir rc verdict_head merge_head verdict_dir url
+
+  verdict_head=1414141414141414141414141414141414141414
+  merge_head=1515151515151515151515151515151515151515
+  url=https://github.com/example/repo/pull/35
+  case_dir=$(make_case gate-verdict-head-moved)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" "$merge_head"
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '.github/workflows/ci.yml\n' > "$case_dir/github-diff-paths"
+  # The gate's head read answers the gate's own --json headRefOid view; give it
+  # the reviewed head while the verify read's statusCheckRollup view carries
+  # the pushed head.
+  printf '%s\n' "$verdict_head" > "$case_dir/github-head"
+  : > "$case_dir/gh-axi.log"
+
+  verdict_dir=$(fm_second_look_verdict_dir "$case_dir/state" task-x1 35)
+  fm_second_look_write_verdict "$verdict_dir" clean "$verdict_head"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$url" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-verdict-head-moved: a head push after the clean verdict must refuse"
+  assert_grep "head moved to $merge_head" "$case_dir/stderr" \
+    "gate-verdict-head-moved: the refusal did not name the pushed head"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "gate-verdict-head-moved: the forge merge ran on an unreviewed head"
+  pass "the merge refuses when the head moves between the second-look verdict and the verified merge head"
+}
+
+# The gate's changed-path read may not fail open: a provider diff read that
+# fails, or answers an empty body with a success-looking exit, must refuse the
+# yolo merge rather than read as "no protected paths touched".
+test_merge_content_gate_refuses_unreadable_provider_diff() {
+  local case_dir rc
+
+  case_dir=$(make_gitlab_case gate-glab-diff-fails)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/glab-diff-fails"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-glab-diff-fails: a failed glab diff read must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-glab-diff-fails: the refusal did not name the merge-content gate"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-glab-diff-fails: glab mr merge ran on an unreadable diff"
+  pass "the merge-content gate refuses a yolo GitLab merge whose diff read fails"
+
+  case_dir=$(make_gitlab_case gate-glab-diff-empty)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/glab-diff-empty"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-glab-diff-empty: an empty glab diff body must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-glab-diff-empty: the refusal did not name the merge-content gate"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-glab-diff-empty: glab mr merge ran on an empty diff body"
+  pass "the merge-content gate refuses a yolo GitLab merge whose diff body is empty"
+
+  case_dir=$(make_forgejo_case gate-tea-files-fails)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/tea-files-fails"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-tea-files-fails: a failed tea files read must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-tea-files-fails: the refusal did not name the merge-content gate"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-tea-files-fails: the tea merge POST ran on an unreadable diff"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose diff read fails"
+
+  case_dir=$(make_forgejo_case gate-tea-files-empty)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/tea-files-empty"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-tea-files-empty: an empty tea files body must refuse"
+  assert_grep 'merge-content gate blocked the merge' "$case_dir/stderr" \
+    "gate-tea-files-empty: the refusal did not name the merge-content gate"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-tea-files-empty: the tea merge POST ran on an empty diff body"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose diff body is empty"
+}
+
+# The provider changed-path reads are paginated, so a gate that reads only
+# page one lets a protected path past page one bypass the second-look
+# requirement entirely. The gate pins the page size at the API maximum and
+# probes a second page: any non-empty or unreadable second page must refuse
+# the merge fail-closed instead of evaluating a truncated diff.
+test_merge_content_gate_refuses_truncated_provider_diff_pages() {
+  local case_dir rc
+
+  case_dir=$(make_gitlab_case gate-glab-diff-page2-nonempty)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"new_path":"README.md"}]\n' > "$case_dir/glab-diff.json"
+  printf '[{"new_path":".gitlab-ci.yml"}]\n' > "$case_dir/glab-diff-page2.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-glab-diff-page2-nonempty: a non-empty second diff page must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-glab-diff-page2-nonempty: the refusal did not name the truncated changed-path list"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-glab-diff-page2-nonempty: glab mr merge ran on a truncated diff"
+  pass "the merge-content gate refuses a yolo GitLab merge whose changed paths span a second page"
+
+  case_dir=$(make_gitlab_case gate-glab-diff-page2-fails)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/glab-diff-page2-fails"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-glab-diff-page2-fails: a failed second-page probe must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-glab-diff-page2-fails: the refusal did not name the unreadable second page"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-glab-diff-page2-fails: glab mr merge ran without a readable second page"
+  pass "the merge-content gate refuses a yolo GitLab merge whose second diff page cannot be read"
+
+  case_dir=$(make_forgejo_case gate-tea-files-page2-nonempty)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"filename":"README.md"}]\n' > "$case_dir/tea-files.json"
+  printf '[{"filename":".gitea/workflows/ci.yaml"}]\n' > "$case_dir/tea-files-page2.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-tea-files-page2-nonempty: a non-empty second files page must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-tea-files-page2-nonempty: the refusal did not name the truncated changed-path list"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-tea-files-page2-nonempty: the tea merge POST ran on a truncated diff"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose changed paths span a second page"
+
+  case_dir=$(make_forgejo_case gate-tea-files-page2-fails)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/tea-files-page2-fails"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-tea-files-page2-fails: a failed second-page probe must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-tea-files-page2-fails: the refusal did not name the unreadable second page"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-tea-files-page2-fails: the tea merge POST ran without a readable second page"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose second files page cannot be read"
 }
 
 test_github_merged_outcome_is_verified() {
@@ -2929,6 +3286,11 @@ test_github_conflicting_queue_rules_report_ambiguity
 test_verified_merge_records_pr_and_head
 test_pr_metadata_is_recorded_before_the_forge_call
 test_merge_failure_propagates_after_recording
+test_merge_content_gate_refuses_protected_path_without_verdict
+test_merge_content_gate_clean_verdict_releases_protected_merge
+test_merge_content_gate_refuses_when_head_moves_after_verdict
+test_merge_content_gate_refuses_unreadable_provider_diff
+test_merge_content_gate_refuses_truncated_provider_diff_pages
 test_github_open_unqueued_outcome_refuses
 test_github_mergeable_unknown_retries_then_succeeds
 test_github_mergeable_unknown_exhausts_bound_and_reports_pending
