@@ -22,9 +22,9 @@
 # Prints the stored verdict to stdout (exiting 0 only for clean). This script
 # never writes the verdict file; the operator records the reviewer's verdict
 # at state/<task-id>/.second-look/<pr-number>/current.verdict (with
-# defect_reason=<text> for defect verdicts). The brief built below is the
-# reviewer contract the operator hands to the spawned agent; no code
-# consumes it.
+# defect_reason=<text> for defect verdicts). The adversarial brief in
+# docs/configuration.md "AutoCraft Hardening Lessons" is the reviewer
+# contract the operator hands to the spawned agent; no code builds it.
 
 set -u
 

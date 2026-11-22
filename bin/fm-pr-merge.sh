@@ -1866,7 +1866,10 @@ fm_pr_merge_content_gate() {
   matched_paths=""
   gate_rc=0
   matched_paths=$(fm_protected_paths_check "$diff_file" "${FM_PROJECT_DIR:-}") || gate_rc=$?
-  # Return code 3 means missing config (fail-closed for security gate)
+  # Return code 3 means no usable protected-path list: the tracked
+  # bin/fm-protected-paths.default is missing (broken installation) or the
+  # resolved list - a project's config/protected-paths override - is present
+  # but empty (deliberately disarmed). Both refuse the merge (fail-closed).
   if [ "$gate_rc" -eq 3 ]; then
     rm -f "$diff_file"
     return 1
