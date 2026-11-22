@@ -58,7 +58,14 @@ while [ "$#" -gt 0 ]; do
     --task-id) shift; TASK_ID="${1:-}" ;;
     --pr-url)  shift; PR_URL="${1:-}" ;;
     --head)    shift; HEAD_SHA="${1:-}" ;;
-    --project) shift; PROJECT_DIR="${1:-}" ;;
+    --project)
+      shift
+      # Accepted for operator/reviewer context parity with the recorded
+      # verdict workflow; the pass-through runner consumes only the verdict
+      # file, so nothing reads it here.
+      # shellcheck disable=SC2034
+      PROJECT_DIR="${1:-}"
+      ;;
     --help|-h) usage; exit 0 ;;
     *) echo "error: unknown option: $1" >&2; usage; exit 2 ;;
   esac
@@ -117,56 +124,6 @@ if [ -n "$EXISTING_VERDICT" ]; then
     esac
   fi
 fi
-
-# Build the adversarial brief for the reviewer agent
-# This is the "independent agent whose only job is to find a reason this
-# change should NOT land"
-# shellcheck disable=SC2034 # The brief is the reviewer contract the operator hands to the spawned agent; no code consumes it.
-BRIEF="## Adversarial second-look review
-
-You are an independent code reviewer with an adversarial posture. Your ONLY
-job is to find reasons why this change should NOT land.
-
-## What to look for
-- Bugs that existing tests miss (edge cases, off-by-one, null/empty handling)
-- Security issues (injection, path traversal, auth bypass, information leak)
-- Quiet behavior changes (API contract violations, breaking changes)
-- Performance regressions (O(n²) loops, unnecessary allocations, blocking I/O)
-- Side effects (global state mutation, race conditions, signal handling)
-- Test coverage gaps (new code paths without corresponding tests)
-- Documentation inconsistencies (code does X but docs say Y)
-- Dependency issues (new dependencies with security advisories, license changes)
-
-## Constraints
-- You are reviewing the diff between the base commit and the current head.
-- Do NOT rewrite the code. Report findings as a list of issues.
-- Do NOT assume good faith - review as if the author is trying to sneak
-  something past you.
-- If you find nothing wrong, say so clearly: the change is clean.
-
-## The change to review
-PR URL: $PR_URL
-Head commit: $HEAD_SHA
-Project: ${PROJECT_DIR:-unspecified}
-
-## Output format
-Your response MUST start with one of these verdict lines:
-  VERDICT: clean
-or
-  VERDICT: defect
-or
-  VERDICT: unsure
-
-Followed by your findings. For defect verdicts, list each finding as:
-  FINDING: <severity> - <description>
-where severity is critical, high, medium, or low.
-
-For unsure verdicts, explain what information is missing that prevents
-a confident assessment.
-
-Remember: your job is to find reasons NOT to land. If you find nothing,
-that is a valid finding - report it as clean.
-"
 
 # The spawn is operator-driven for now: nothing in firstmate dispatches a
 # reviewer or calls this script. The merge gates read the verdict file

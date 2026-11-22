@@ -35,6 +35,16 @@ azure-pipelines.yaml
 */azure-pipelines.yaml
 cloudbuild.yaml
 */cloudbuild.yaml
+.forgejo/workflows/*
+*/.forgejo/workflows/*
+.gitea/workflows/*
+*/.gitea/workflows/*
+.woodpecker/*
+*/.woodpecker/*
+.buildkite/*
+*/.buildkite/*
+.teamcity/*
+*/.teamcity/*
 
 # ---- Agent instruction files ----
 AGENTS.md

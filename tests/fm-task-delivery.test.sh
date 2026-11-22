@@ -502,6 +502,71 @@ EOF
   pass "fm-merge-local: a registry change cannot redirect an in-flight local-only task"
 }
 
+# A push that lands between the gate's read and the merge itself must never
+# land unreviewed content: fm-merge-local pins the ship branch's commit before
+# the gate reads anything and fast-forwards that pinned SHA, so a commit
+# pushed in the window stays on the ship branch instead of riding the merge.
+test_local_merge_merges_the_pinned_reviewed_head() {
+  local home proj id main pinned out shim shim_log marker real_git
+  home="$TMP_ROOT/local-merge-pinned/home"
+  proj="$TMP_ROOT/local-merge-pinned/proj"
+  id=local-merge-pinned-e3
+  mkdir -p "$home/state" "$home/data" "$proj"
+  git -C "$proj" init -q || fail "could not initialize pinned-head fixture"
+  git -C "$proj" config user.email test@example.com
+  git -C "$proj" config user.name test
+  printf 'base\n' > "$proj/base"
+  git -C "$proj" add base || fail "could not stage pinned-head fixture base"
+  git -C "$proj" commit -qm base || fail "could not commit pinned-head fixture base"
+  main=$(git -C "$proj" branch --show-current)
+  git -C "$proj" checkout -qb "fix/$id" || fail "could not create pinned-head fixture branch"
+  printf 'reviewed\n' > "$proj/reviewed"
+  git -C "$proj" add reviewed || fail "could not stage reviewed commit"
+  git -C "$proj" commit -qm reviewed || fail "could not commit reviewed content"
+  pinned=$(git -C "$proj" rev-parse HEAD)
+  git -C "$proj" checkout -q "$main" || fail "could not restore fixture default branch"
+  cat > "$home/data/projects.md" <<EOF
+- $(basename "$proj") [local-only] - fixture (added 2026-01-01)
+EOF
+
+  # A git shim that advances the ship branch by one commit the first time the
+  # merge script reads its commit - the shape of a push landing right after
+  # the gate's pin read. Everything else delegates to the real git.
+  real_git=$(command -v git) || fail "no real git for the pinned-head shim"
+  shim="$TMP_ROOT/local-merge-pinned/bin"
+  mkdir -p "$shim"
+  shim_log="$shim/git.log"
+  marker="$shim/branch-advanced"
+  cat > "$shim/git" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$shim_log"
+case "\$*" in
+  *"rev-parse fix/$id"*)
+    if [ ! -e "$marker" ]; then
+      : > "$marker"
+      printf '%s\n' "$pinned" > "$shim/pinned-head"
+      ( cd "$proj" && "$real_git" checkout -q "fix/$id" && printf 'pushed\n' > pushed && "$real_git" add pushed && "$real_git" commit -qm pushed && "$real_git" checkout -q "$main" )
+      printf '%s\n' "$pinned"
+      exit 0
+    fi
+    ;;
+esac
+exec "$real_git" "\$@"
+SH
+  chmod +x "$shim/git"
+
+  printf 'project=%s\nmode=local-only\nbranch=fix/%s\n' "$proj" "$id" > "$home/state/$id.meta"
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" PATH="$shim:$PATH" "$MERGE_LOCAL" "$id") \
+    || fail "local merge did not fast-forward the pinned reviewed head: $out"
+  [ "$(git -C "$proj" rev-parse "refs/heads/fix/$id")" != "$pinned" ] \
+    || fail "the simulated push never landed, so this case proves nothing"
+  [ "$(git -C "$proj" rev-parse HEAD)" = "$pinned" ] \
+    || fail "local merge landed a head pushed after the gate's read (default at $(git -C "$proj" rev-parse --short HEAD))"
+  assert_contains "$out" "merged fix/$id into local $main" \
+    "local merge did not report the recorded branch for the pinned-head landing"
+  pass "fm-merge-local: a push landing after the gate's read cannot land unreviewed content"
+}
+
 # A registered name may contain spaces, and the lookup must match the whole
 # name rather than only its first whitespace-delimited token (issue #1977).
 # The longer "foo bar" row is listed before the "foo" row so a leading-prefix
@@ -1752,6 +1817,7 @@ test_promotion_delivers_the_real_definition_of_done
 test_promotion_persists_the_selected_ship_branch
 test_promotion_branch_command_is_shell_safe
 test_local_merge_uses_the_recorded_ship_branch
+test_local_merge_merges_the_pinned_reviewed_head
 test_project_mode_matches_whole_multiword_names
 test_project_mode_maps_the_conditional_policy
 test_project_mode_binds_the_forge_orthogonally

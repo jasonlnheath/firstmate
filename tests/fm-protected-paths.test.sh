@@ -46,6 +46,18 @@ else
   fail "missing .github/workflows pattern"
 fi
 
+# Test 2b: Default list contains forge-native and other CI workflow patterns
+echo -n "  Test 2b: Default list contains forge-native CI patterns... "
+missing=''
+for pattern in '^\.forgejo/workflows/\*$' '^\*/\.forgejo/workflows/\*$' '^\.gitea/workflows/\*$' '^\*/\.gitea/workflows/\*$' '^\.woodpecker/\*$' '^\*/\.woodpecker/\*$' '^\.buildkite/\*$' '^\*/\.buildkite/\*$' '^\.teamcity/\*$' '^\*/\.teamcity/\*$'; do
+  echo "$result" | grep -q "$pattern" || missing="$missing $pattern"
+done
+if [ -z "$missing" ]; then
+  pass "contains .forgejo/workflows, .gitea/workflows, .woodpecker, .buildkite, .teamcity patterns"
+else
+  fail "missing forge-native CI patterns:$missing"
+fi
+
 # Test 3: Default list contains lockfile patterns
 echo -n "  Test 3: Default list contains lockfile patterns... "
 if echo "$result" | grep -q 'package-lock\.json'; then

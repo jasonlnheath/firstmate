@@ -143,9 +143,18 @@ esac
 # shellcheck source=bin/fm-protected-paths-lib.sh
 . "$SCRIPT_DIR/fm-protected-paths-lib.sh"
 
+# Pin the ship branch's commit before the gate reads anything. The diff, the
+# verdict comparison, and the merge itself must all see the same content: a
+# push that lands after the pin is a newer head no second look covered, so
+# every step below consumes this SHA rather than re-reading the branch ref.
+branch_sha=$(git -C "$PROJ" rev-parse "$BRANCH" 2>/dev/null) || {
+  echo "error: merge-content gate: could not resolve the recorded ship branch $BRANCH; refusing to merge" >&2
+  exit 1
+}
+
 # Get the diff paths between default branch and ship branch
 local_diff_file=$(mktemp "${TMPDIR:-/tmp}/fm-merge-local-diff.XXXXXX")
-git -C "$PROJ" diff --name-only "$DEFAULT".."$BRANCH" > "$local_diff_file" 2>/dev/null || {
+git -C "$PROJ" diff --name-only "$DEFAULT".."$branch_sha" > "$local_diff_file" 2>/dev/null || {
   echo "error: merge-content gate: could not compute diff for local merge; refusing" >&2
   rm -f "$local_diff_file"
   exit 1
@@ -195,8 +204,8 @@ if [ -n "$matched_paths" ]; then
 
     # Check that the verdict was recorded for the same head we're about to merge.
     stored_head=$(grep '^head=' "$verdict_dir/current.verdict" 2>/dev/null | cut -d= -f2- || true)
-    # Compare to the actual commit SHA of the branch, not the branch name
-    branch_sha=$(git -C "$PROJ" rev-parse "$BRANCH" 2>/dev/null || true)
+    # Compare to the commit the gate pinned before its diff, not a fresh read
+    # of the branch ref: a push after the pin is a newer head no verdict covers.
     if [ -z "$stored_head" ] || [ "$stored_head" != "$branch_sha" ]; then
       echo "error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head ${stored_head:-<none>}, not the current branch head $branch_sha; refusing to merge" >&2
       printf 'protected paths: %s\n' "$matched_paths" >&2
@@ -225,7 +234,7 @@ else
 fi
 
 merge_status=0
-git -C "$PROJ" merge --ff-only "$BRANCH" >/dev/null || merge_status=$?
+git -C "$PROJ" merge --ff-only "$branch_sha" >/dev/null || merge_status=$?
 fm_lock_release "$MERGE_CONTROL_LOCK" || true
 MERGE_CONTROL_LOCK=
 [ "$merge_status" -eq 0 ] || exit "$merge_status"

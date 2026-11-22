@@ -394,14 +394,29 @@ case "${1:-} ${2:-}" in
     # glab-diff.json, and the fixture default touches none. glab-diff-fails
     # makes the provider read itself fail; glab-diff-empty answers an empty
     # body with exit 0, the transport-failure shape the gate must not read
-    # as "no changed paths".
+    # as "no changed paths". The gate probes a second page, so page 2
+    # answers from glab-diff-page2.json (a case writes it to put changed
+    # paths past page one) or an empty array; glab-diff-page2-fails breaks
+    # the probe read itself.
     [ ! -e "$case_dir/glab-diff-fails" ] || exit 1
     [ ! -e "$case_dir/glab-diff-empty" ] || exit 0
-    if [ -e "$case_dir/glab-diff.json" ]; then
-      cat "$case_dir/glab-diff.json"
-    else
-      printf '[]\n'
-    fi
+    case "$*" in
+      *page=2*)
+        [ ! -e "$case_dir/glab-diff-page2-fails" ] || exit 1
+        if [ -e "$case_dir/glab-diff-page2.json" ]; then
+          cat "$case_dir/glab-diff-page2.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+      *)
+        if [ -e "$case_dir/glab-diff.json" ]; then
+          cat "$case_dir/glab-diff.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+    esac
     exit 0
     ;;
 esac
@@ -533,19 +548,34 @@ case "$endpoint" in
       printf '{}\n'
     fi
     ;;
-  */files)
+  */files|*/files\?*)
     # The merge-content gate's changed-path read; the fixture pull request
     # touches no protected path unless a case writes tea-files.json.
     # tea-files-fails fails the read outright; tea-files-empty answers an
     # empty body with exit 0, the tea HTTP-failure shape the gate must not
-    # read as "no changed paths".
+    # read as "no changed paths". The gate probes a second page, so page 2
+    # answers from tea-files-page2.json (a case writes it to put changed
+    # paths past page one) or an empty array; tea-files-page2-fails breaks
+    # the probe read itself.
     [ ! -e "$log_dir/tea-files-fails" ] || exit 1
     [ ! -e "$log_dir/tea-files-empty" ] || exit 0
-    if [ -e "$log_dir/tea-files.json" ]; then
-      cat "$log_dir/tea-files.json"
-    else
-      printf '[]\n'
-    fi
+    case "$endpoint" in
+      *page=2*)
+        [ ! -e "$log_dir/tea-files-page2-fails" ] || exit 1
+        if [ -e "$log_dir/tea-files-page2.json" ]; then
+          cat "$log_dir/tea-files-page2.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+      *)
+        if [ -e "$log_dir/tea-files.json" ]; then
+          cat "$log_dir/tea-files.json"
+        else
+          printf '[]\n'
+        fi
+        ;;
+    esac
     ;;
   *)
     [ ! -e "$log_dir/tea-view-fails" ] || exit 1
@@ -1033,6 +1063,81 @@ test_merge_content_gate_refuses_unreadable_provider_diff() {
   assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
     "gate-tea-files-empty: the tea merge POST ran on an empty diff body"
   pass "the merge-content gate refuses a yolo Forgejo merge whose diff body is empty"
+}
+
+# The provider changed-path reads are paginated, so a gate that reads only
+# page one lets a protected path past page one bypass the second-look
+# requirement entirely. The gate pins the page size at the API maximum and
+# probes a second page: any non-empty or unreadable second page must refuse
+# the merge fail-closed instead of evaluating a truncated diff.
+test_merge_content_gate_refuses_truncated_provider_diff_pages() {
+  local case_dir rc
+
+  case_dir=$(make_gitlab_case gate-glab-diff-page2-nonempty)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"new_path":"README.md"}]\n' > "$case_dir/glab-diff.json"
+  printf '[{"new_path":".gitlab-ci.yml"}]\n' > "$case_dir/glab-diff-page2.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-glab-diff-page2-nonempty: a non-empty second diff page must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-glab-diff-page2-nonempty: the refusal did not name the truncated changed-path list"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-glab-diff-page2-nonempty: glab mr merge ran on a truncated diff"
+  pass "the merge-content gate refuses a yolo GitLab merge whose changed paths span a second page"
+
+  case_dir=$(make_gitlab_case gate-glab-diff-page2-fails)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/glab-diff-page2-fails"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-glab-diff-page2-fails: a failed second-page probe must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-glab-diff-page2-fails: the refusal did not name the unreadable second page"
+  assert_no_grep ' mr merge ' "$case_dir/glab.log" \
+    "gate-glab-diff-page2-fails: glab mr merge ran without a readable second page"
+  pass "the merge-content gate refuses a yolo GitLab merge whose second diff page cannot be read"
+
+  case_dir=$(make_forgejo_case gate-tea-files-page2-nonempty)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  printf '[{"filename":"README.md"}]\n' > "$case_dir/tea-files.json"
+  printf '[{"filename":".gitea/workflows/ci.yaml"}]\n' > "$case_dir/tea-files-page2.json"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-tea-files-page2-nonempty: a non-empty second files page must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-tea-files-page2-nonempty: the refusal did not name the truncated changed-path list"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-tea-files-page2-nonempty: the tea merge POST ran on a truncated diff"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose changed paths span a second page"
+
+  case_dir=$(make_forgejo_case gate-tea-files-page2-fails)
+  printf '\nyolo=on\n' >> "$case_dir/state/task-x1.meta"
+  : > "$case_dir/tea-files-page2-fails"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gate-tea-files-page2-fails: a failed second-page probe must refuse"
+  assert_grep 'spans more than one page' "$case_dir/stderr" \
+    "gate-tea-files-page2-fails: the refusal did not name the unreadable second page"
+  assert_no_grep '/pulls/9/merge' "$case_dir/tea.log" \
+    "gate-tea-files-page2-fails: the tea merge POST ran without a readable second page"
+  pass "the merge-content gate refuses a yolo Forgejo merge whose second files page cannot be read"
 }
 
 test_github_merged_outcome_is_verified() {
@@ -3185,6 +3290,7 @@ test_merge_content_gate_refuses_protected_path_without_verdict
 test_merge_content_gate_clean_verdict_releases_protected_merge
 test_merge_content_gate_refuses_when_head_moves_after_verdict
 test_merge_content_gate_refuses_unreadable_provider_diff
+test_merge_content_gate_refuses_truncated_provider_diff_pages
 test_github_open_unqueued_outcome_refuses
 test_github_mergeable_unknown_retries_then_succeeds
 test_github_mergeable_unknown_exhausts_bound_and_reports_pending

@@ -1777,42 +1777,83 @@ fm_pr_merge_content_gate() {
       # the URL-encoded project path (owner%2Frepo); it returns a JSON array of
       # diff records. No form flags: any -f/-F field switches glab's request
       # method to POST, and this read must stay a GET.
-      local encoded_path _glab_tmp
+      #
+      # The endpoint is paginated, so a gate that reads only page one lets a
+      # protected path past page one bypass the second-look requirement. The
+      # page size is pinned at the API maximum (per_page=100) and a second page
+      # is probed: a non-empty, malformed, or unreadable second page refuses
+      # the merge fail-closed rather than reviewing only part of the diff. A
+      # header-driven loop is not used because glab's response-header
+      # visibility is not stable across versions.
+      local encoded_path _glab_tmp _glab_next_tmp
       encoded_path=$(printf '%s' "$FM_PR_PATH" | sed 's|/|%2F|g')
       _glab_tmp=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-glab.XXXXXX") || {
         rm -f "$diff_file"
         return 1
       }
-      if ! GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs" \
-        > "$_glab_tmp" 2>/dev/null || [ ! -s "$_glab_tmp" ]; then
-        rm -f "$diff_file" "$_glab_tmp"
-        return 1
-      fi
-      jq -r '.[] | (.new_path // empty)' 2>/dev/null < "$_glab_tmp" > "$diff_file" || {
+      _glab_next_tmp=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-glab-next.XXXXXX") || {
         rm -f "$diff_file" "$_glab_tmp"
         return 1
       }
-      rm -f "$_glab_tmp"
+      if ! GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs?per_page=100" \
+        > "$_glab_tmp" 2>/dev/null || [ ! -s "$_glab_tmp" ]; then
+        rm -f "$diff_file" "$_glab_tmp" "$_glab_next_tmp"
+        return 1
+      fi
+      if ! GITLAB_HOST="$FM_PR_HOST" glab api "projects/$encoded_path/merge_requests/$PR_NUMBER/diffs?per_page=100&page=2" \
+        > "$_glab_next_tmp" 2>/dev/null || [ ! -s "$_glab_next_tmp" ] \
+        || ! jq -e 'type == "array" and length == 0' "$_glab_next_tmp" >/dev/null 2>&1; then
+        rm -f "$diff_file" "$_glab_tmp" "$_glab_next_tmp"
+        echo "error: merge-content gate: the GitLab changed-path list spans more than one page (per_page=100) or its second page could not be read; refusing fail-closed rather than reviewing only the first page - merge this PR with an attended captain approval instead" >&2
+        return 1
+      fi
+      jq -r '.[] | (.new_path // empty)' 2>/dev/null < "$_glab_tmp" > "$diff_file" || {
+        rm -f "$diff_file" "$_glab_tmp" "$_glab_next_tmp"
+        return 1
+      }
+      rm -f "$_glab_tmp" "$_glab_next_tmp"
       ;;
     forgejo)
-      local _forgejo_tmp
+      local _forgejo_tmp _forgejo_next_tmp
       _forgejo_tmp=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-forgejo.XXXXXX") || {
         rm -f "$diff_file"
         return 1
       }
-      # "tea api" reports an HTTP-level failure with exit status 0 (see the
-      # merge step below), so an empty body refuses as well.
-      if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
-        "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files" > "$_forgejo_tmp" 2>/dev/null \
-        || [ ! -s "$_forgejo_tmp" ]; then
-        rm -f "$diff_file" "$_forgejo_tmp"
-        return 1
-      fi
-      jq -r '.[].filename // empty' 2>/dev/null < "$_forgejo_tmp" > "$diff_file" || {
+      _forgejo_next_tmp=$(mktemp "${TMPDIR:-/tmp}/fm-pr-merge-forgejo-next.XXXXXX") || {
         rm -f "$diff_file" "$_forgejo_tmp"
         return 1
       }
-      rm -f "$_forgejo_tmp"
+      # "tea api" reports an HTTP-level failure with exit status 0 (see the
+      # merge step below), so an empty body refuses as well.
+      #
+      # The files endpoint is paginated, so a gate that reads only page one
+      # lets a protected path past page one bypass the second-look
+      # requirement. The page size is pinned at the API default response cap
+      # (limit=50) and a second page is probed: a non-empty, malformed, or
+      # unreadable second page refuses the merge fail-closed rather than
+      # reviewing only part of the diff. A header-driven loop is not used
+      # because the server clamps an oversized limit, so the loop could never
+      # trust that its page was full, and tea's response-header visibility is
+      # not stable across versions.
+      if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files?limit=50" > "$_forgejo_tmp" 2>/dev/null \
+        || [ ! -s "$_forgejo_tmp" ]; then
+        rm -f "$diff_file" "$_forgejo_tmp" "$_forgejo_next_tmp"
+        return 1
+      fi
+      if ! tea api --login "$FORGEJO_LOGIN" --repo "$PR_OWNER/$PR_REPO" \
+        "/repos/{owner}/{repo}/pulls/$PR_NUMBER/files?limit=50&page=2" > "$_forgejo_next_tmp" 2>/dev/null \
+        || [ ! -s "$_forgejo_next_tmp" ] \
+        || ! jq -e 'type == "array" and length == 0' "$_forgejo_next_tmp" >/dev/null 2>&1; then
+        rm -f "$diff_file" "$_forgejo_tmp" "$_forgejo_next_tmp"
+        echo "error: merge-content gate: the Forgejo changed-path list spans more than one page (limit=50) or its second page could not be read; refusing fail-closed rather than reviewing only the first page - merge this PR with an attended captain approval instead" >&2
+        return 1
+      fi
+      jq -r '.[].filename // empty' 2>/dev/null < "$_forgejo_tmp" > "$diff_file" || {
+        rm -f "$diff_file" "$_forgejo_tmp" "$_forgejo_next_tmp"
+        return 1
+      }
+      rm -f "$_forgejo_tmp" "$_forgejo_next_tmp"
       ;;
     *)
       rm -f "$diff_file"

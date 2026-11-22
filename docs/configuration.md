@@ -3149,7 +3149,7 @@ Protected paths resolve in exactly two steps. The tracked default list ships at 
 
 | Class | Examples |
 |-------|----------|
-| CI / workflow configuration | `.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.circleci/config.yml`, `.travis.yml`, `.drone.yml`, `cloudbuild.yaml` (each with a nested `*/` variant) |
+| CI / workflow configuration | `.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`, `azure-pipelines.yml`, `.circleci/config.yml`, `.travis.yml`, `.drone.yml`, `cloudbuild.yaml`, `.forgejo/workflows/*`, `.gitea/workflows/*`, `.woodpecker/*`, `.buildkite/*`, `.teamcity/*` (each with a nested `*/` variant) |
 | Agent instruction files | `AGENTS.md`, `CLAUDE.md` (with nested variants) |
 | Lockfiles | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Gemfile.lock`, `poetry.lock`, `Pipfile.lock`, `composer.lock`, `go.sum`, `bun.lockb`, `deno.lock`, `flake.lock`, `uv.lock`, and more (with nested variants) |
 | Submodule pointers | `.gitmodules` (with nested variants) |
@@ -3165,6 +3165,8 @@ Mode changes on executable scripts are gated by review policy rather than this l
   - **Verdict is `clean`**: merge proceeds.
   - **Verdict is `defect` or `unsure`**: merge is refused; the reason is printed.
 
+The gate's changed-path reads are fail-closed against provider pagination: the GitLab and Forgejo diff endpoints return limited pages, so a gate that read only page one would let a protected path past page one bypass the second look entirely. The GitLab read pins `per_page=100` and the Forgejo read pins `limit=50`, then each probes a second page; a non-empty, malformed, or unreadable second page refuses the merge with an instruction to use an attended captain approval instead. GitHub's `gh pr diff --name-only` is a single complete read and needs no probe.
+
 **Second-look verdicts** are stored in `state/<task-id>/.second-look/<pr-number>/current.verdict` with the format:
 
 ```
@@ -3179,7 +3181,7 @@ Verdicts are matched by head: a verdict recorded for head A does not satisfy a m
 **Integration points:**
 
 - `bin/fm-pr-merge.sh`: the merge-content gate runs before the forge command (it self-fetches the head from the PR, so it does not depend on mergeability verification), and after each provider's verification step it re-checks the verdict's head against the head the forge command will actually merge - a push landing between the two reads refuses the merge rather than letting an unreviewed head inherit the verdict. The gate is implemented in `bin/fm-pr-merge.sh` on top of the list-check and verdict helpers in `bin/fm-protected-paths-lib.sh`, and covers the GitHub, GitLab, and Forgejo merge paths.
-- `bin/fm-merge-local.sh`: the same gate runs for local-only fast-forward merges.
+- `bin/fm-merge-local.sh`: the same gate runs for local-only fast-forward merges. It pins the ship branch's commit before the gate reads anything and fast-forwards that pinned SHA, so a push landing after the gate's read stays on the ship branch instead of riding the merge unreviewed.
 - `bin/fm-second-look.sh`: the adversarial second-look runner that reads existing verdicts or prints 'unsure' if none exists; it does not spawn reviewers itself, and no firstmate code does either - spawning the reviewer is an operator action for now (see Lesson 2).
 
 ### Lesson 2: Adversarial second-look runner
