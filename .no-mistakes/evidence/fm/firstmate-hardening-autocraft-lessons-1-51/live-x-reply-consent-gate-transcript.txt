@@ -1,0 +1,25 @@
+
+===== C1: no consent hash recorded -> gate skipped, backward compatible =====
+stdout: req-live-314
+stderr: fm-x-reply: DRY RUN - would POST to https://myfirstmate.io/connector/answer (recorded: state/x-outbox/req-live-314.json): Shipped: the placement fix landed and both spaces keep their workers.
+exit=0 outbox_record=written
+RESULT: PASS
+
+===== C2: captain approves the exact bytes -> approved bytes pass the gate =====
+stdout: req-live-314
+stderr: fm-x-reply: DRY RUN - would POST to https://myfirstmate.io/connector/answer (recorded: state/x-outbox/req-live-314.json): Shipped: the placement fix landed and both spaces keep their workers.
+exit=0
+recorded would-post bytes: Shipped: the placement fix landed and both spaces keep their workers.
+RESULT: PASS (approved bytes are what would be posted)
+
+===== C3 (adversarial): changed bytes after approval -> refuse to post =====
+stdout: 
+stderr: fm-x-reply: exact-text consent gate: the reply text hash (6ef8b2fbdfe01aa4b0a4ae708c24ab4d7c4ccf063eba5fa1a34b441e905ae9d4) does not match the approved hash (29fc2ac49fac40871dc7253f8b139e5976bacb30700c106e2b21cfabdaf9bde3) for request req-live-314; the text has changed since approval. Record the approved hash in /tmp/fm-xr-live.JU6Bbw/home/state/fm-public-followup-consent/req-live-314.hash before retrying.
+exit=2 outbox_record=none
+RESULT: PASS (changed bytes refused before anything was staged or posted)
+
+===== C4 (adversarial): present-but-empty hash file -> refuse (armed but unverifiable) =====
+stdout: 
+stderr: fm-x-reply: exact-text consent gate: the consent hash file for request req-live-314 is present but empty or unreadable; the gate cannot be verified. Record the approved hash in /tmp/fm-xr-live.JU6Bbw/home/state/fm-public-followup-consent/req-live-314.hash before retrying.
+exit=2
+RESULT: PASS

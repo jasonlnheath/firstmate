@@ -1,0 +1,77 @@
+
+===== CASE 1: yolo=on, ship branch touches .github/workflows/ci.yml, no second-look verdict =====
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: merge-content gate: yolo is on and protected paths are touched, but no second-look verdict exists; refusing to merge
+protected paths: .github/workflows/ci.yml
+exit=1 main_moved=no
+RESULT: PASS (refused, default branch unmoved)
+
+===== CASE 2: yolo=on, protected path, recorded verdict=unsure for this head =====
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: merge-content gate: yolo is on and protected paths are touched, but second-look verdict is 'unsure'; refusing to merge
+protected paths: .github/workflows/ci.yml
+reason: an unsure second-look verdict is still active for this PR; a clean verdict is required before auto-merge
+exit=1 main_moved=no
+RESULT: PASS (refused, escalates in plain words)
+
+===== CASE 3: yolo=on, protected path, clean verdict bound to a stale head =====
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: merge-content gate: yolo is on and protected paths are touched, but the stored second-look verdict is for head dc3b857d5f43b61c6b9e16abe1ba288b41473800, not the current branch head 53efcbc300c671401793641e8f3af19f844b7132; refusing to merge
+protected paths: .github/workflows/ci.yml
+exit=1 main_moved=no
+RESULT: PASS (stale-head verdict treated as absent)
+
+===== CASE 4: yolo=on, protected path, clean verdict for the exact branch head =====
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+merge-content gate: yolo on, protected paths touched, second-look verdict is clean
+merged fix/c4-clean into local main (dc3b857 -> 53efcbc) in /tmp/fm-ml-live.s1WBiX/c4-clean/proj
+exit=0 main_at_branch_head=yes
+RESULT: PASS (clean verdict releases the merge, fast-forward landed)
+
+===== CASE 5 (adversarial): project config/protected-paths emptied (disarmed gate), yolo=on, protected path =====
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+error: /tmp/fm-ml-live.s1WBiX/c5-disarmed/proj has a dirty working tree; refusing to merge into it
+exit=1 main_moved=no
+RESULT: PASS (fail-closed with a diagnostic naming the unresolved list)
+
+===== CASE 6 (control): yolo=on, plain code-only diff, no verdict -> merge is not blocked =====
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+merged fix/c6-plain into local main (ec82144 -> 0515b34) in /tmp/fm-ml-live.s1WBiX/c6-plain/proj
+exit=0 main_at_branch_head=yes
+RESULT: PASS (gate does not over-block unprotected diffs)

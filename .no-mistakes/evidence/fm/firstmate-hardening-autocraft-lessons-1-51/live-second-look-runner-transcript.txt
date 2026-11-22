@@ -1,0 +1,36 @@
+
+===== A1: no verdict recorded for PR 321 -> runner reports 'unsure', exit 1 =====
+stdout: unsure
+stderr: 
+exit=1 (want 1)
+RESULT: PASS
+
+===== A2: operator records clean for the requested head -> runner prints clean, exit 0 =====
+stdout: clean
+stderr: 
+exit=0 (want 0)
+RESULT: PASS
+
+===== A3: unsure verdict for the requested head -> blocks with plain-words escalation, exit 1 =====
+stdout: unsure
+stderr: BLOCKED: an unsure second-look verdict is still active for this PR; a clean verdict is required before auto-merge
+exit=1 (want 1)
+RESULT: PASS
+BLOCKED: an unsure second-look verdict is still active for this PR; a clean verdict is required before auto-merge
+
+===== A4: defect verdict with reason for the requested head -> blocks and carries the reviewer's reason, exit 1 =====
+stdout: defect
+stderr: BLOCKED: a second-look defect verdict is still active: the workflow change disables CI on protected branches
+exit=1 (want 1)
+RESULT: PASS
+BLOCKED: a second-look defect verdict is still active: the workflow change disables CI on protected branches
+
+===== A5 (adversarial): clean verdict recorded for a DIFFERENT head -> treated as absent, 'unsure', exit 1 =====
+stdout: unsure
+stderr: 
+exit=1 (want 1)
+RESULT: PASS
+
+===== A6: local-only merge task (pr number 0) verdict directory is what the merge gate reads =====
+stdout: clean exit=0
+RESULT: PASS
