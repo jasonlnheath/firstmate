@@ -78,7 +78,7 @@ done
 
 # Derive PR number from URL using the same parser as the merge gate
 # (bin/fm-pr-merge.sh arms FM_PR_NUMBER through fm_pr_url_parse), so the
-# verdict this runner writes lands in the directory the gate reads.
+# verdict the operator records is read from the directory the gate reads.
 PR_NUMBER=""
 if fm_pr_url_parse "$PR_URL"; then
   PR_NUMBER="$FM_PR_NUMBER"
@@ -121,6 +121,10 @@ if [ -n "$EXISTING_VERDICT" ]; then
         echo "BLOCKED: $STUCK_REASON" >&2
         exit 1
         ;;
+      *)
+        echo "$EXISTING_VERDICT"
+        exit 1
+        ;;
     esac
   fi
 fi
@@ -129,28 +133,6 @@ fi
 # reviewer or calls this script. The merge gates read the verdict file
 # directly through fm-protected-paths-lib.sh; this runner exists so the
 # operator can query the recorded verdict for a head.
-
-# Check if a verdict file has been recorded by the reviewer
-if [ -f "$VERDICT_DIR/current.verdict" ]; then
-  VERDICT=$(fm_second_look_read_verdict "$VERDICT_DIR")
-  if [ -n "$VERDICT" ]; then
-    # Apply the same head binding as the early block
-    if [ -n "$HEAD_SHA" ]; then
-      stored_head=$(grep '^head=' "$VERDICT_DIR/current.verdict" 2>/dev/null | cut -d= -f2- || true)
-      if [ -z "$stored_head" ] || [ "$stored_head" != "$HEAD_SHA" ]; then
-        # Verdict is for a different head - fall through to fresh review
-        VERDICT=""
-      fi
-    fi
-    if [ -n "$VERDICT" ]; then
-      echo "$VERDICT"
-      case "$VERDICT" in
-        clean) exit 0 ;;
-        *) exit 1 ;;
-      esac
-    fi
-  fi
-fi
 
 # No verdict for this head exists yet. Without one:
 # - If yolo is on and protected paths are touched, the merge gate refuses.

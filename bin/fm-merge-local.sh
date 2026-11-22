@@ -164,8 +164,12 @@ git -C "$PROJ" diff --name-only "$DEFAULT".."$branch_sha" > "$local_diff_file" 2
 matched_paths=""
 gate_rc=0
 matched_paths=$(fm_protected_paths_check "$local_diff_file" "$PROJ") || gate_rc=$?
-# Return code 3 means missing config (fail-closed for security gate)
+# Return code 3 means no usable protected-path list: the tracked default
+# bin/fm-protected-paths.default is missing (broken installation) or the
+# resolved list - a project's config/protected-paths override - is present
+# but empty (deliberately disarmed). Both refuse every merge (fail-closed).
 if [ "$gate_rc" -eq 3 ]; then
+  echo "error: merge-content gate: no usable protected-path list (missing tracked bin/fm-protected-paths.default or empty config/protected-paths); refusing to merge" >&2
   rm -f "$local_diff_file"
   exit 1
 fi
