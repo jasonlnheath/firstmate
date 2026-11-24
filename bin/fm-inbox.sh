@@ -102,10 +102,10 @@
 #   FM_HOME              operational home whose state/ and data/ are used.
 #
 # PRIVACY: `say` sends your audio and `ask` sends your question to Bedrock.
-# `note`, `announce`, `receipts`, `ready`, `status`, `list` and `drain` make
-# no network call except the source=tg receipt push on `reply` and
-# `drain --ack`, which is off unless gitignored config/tg-target exists (the
-# `note --source` paragraph above owns that best-effort path).
+# `note`, `announce`, `reply`, `receipts`, `ready`, `status`, `list` and `drain`
+# make no network call at all, except the source=tg receipt push on `reply`
+# and `drain --ack`, which is off unless gitignored config/tg-target exists
+# (the `note --source` paragraph above owns that best-effort path).
 #
 # `note` is also the queueing half of the spoken interface: when the voice agent
 # in bin/fm-voice-relay.py hands real work over to firstmate, it runs this
