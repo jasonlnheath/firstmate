@@ -73,6 +73,8 @@ config/helm-reset  gated bedtime /new reset for the primary pi helm (away postur
 config/watched-tools.json  optional list of the tools this home depends on, read by the update check armed with bin/fm-tool-update-check.sh; LOCAL, gitignored, firstmate-maintained but human-editable, and NOT inherited by secondmate homes; see docs/configuration.md "Watched tool updates"
 config/watch.env     optional home-local watcher tuning as exported shell assignments; LOCAL, gitignored, never removed by bootstrap; loaded by bin/fm-watch-arm.sh before x-mode.env; see docs/configuration.md "Relay (.env)"
 config/usage-warner  optional Claude usage-window thresholds for the opt-in macOS threshold warner armed with bin/fm-usage-warner.sh; LOCAL, gitignored, and NOT inherited by secondmate homes; see docs/configuration.md "Local Claude usage warner"
+config/tg-target     the outbound Telegram lane's delivery target, the only place it lives; LOCAL, gitignored, not inherited; absent means the lane is off and every push fails closed; see docs/configuration.md "Telegram lane"
+config/tg-hermes-bin optional explicit hermes binary for the outbound Telegram lane, winning over every discovery path; LOCAL, gitignored, not inherited; see docs/configuration.md "Telegram lane"
 config/x-mode.env    generated Relay watcher cadence; LOCAL, gitignored; source before arming watcher when present
 data/                personal fleet records; LOCAL, gitignored as a whole
   backlog.md         task queue, dependencies, history
@@ -135,6 +137,7 @@ state/               runtime records and signals; gitignored
   reconcile-requests/ private open obligations to re-check a captain call whose board selection was `reconcile`; written only by bin/fm-captain-hold.sh, retired by its verify-then-decide outcomes or a normal answer that settles the call (`process-event-sources` and `captain-hold-lifecycle` skills; docs/captain-hold-lifecycle.md)
   when/              private condition->action watch specs, their trust bindings, and single-fire markers; written only by bin/fm-procevent-when.sh (`process-event-sources` skill)
   inbox/             captain notes captured out of band by bin/fm-inbox.sh, including the voice handover's queued requests; each note appends one `check` wake and stays pending until acknowledged with `bin/fm-inbox.sh drain --ack <id>`, which moves it to inbox/handled/; request-id reservations, announcement markers, and primary replies live beside the notes (bin/fm-inbox.sh; docs/voice-relay.md)
+  tg/                the outbound Telegram lane's append-only send journal, send lock, and last-send marker; written only by bin/fm-tg.sh, including its fail-closed refusals (docs/configuration.md "Telegram lane")
   x-inbox/           generated Relay pending mention payloads; fmx-respond drains it (section 14)
   x-context/         generated Relay durable per-request reply context and one-wake offer markers, keyed by request_id; survives inbox cleanup and expires within seven days (section 14; bin/fm-x-lib.sh)
   x-outbox/          generated Relay dry-run reply and dismiss previews; inspect it when FMX_DRY_RUN is set (section 14)

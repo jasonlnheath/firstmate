@@ -42,7 +42,9 @@
 # Telegram submit helper (bin/fm-telegram-note.sh) files `tg`. A source=tg
 # note arms the receipt hooks: `drain --ack` pushes `fm: picked up - note
 # <id>` and `reply` pushes `fm: <answer>` through bin/fm-tg.sh, the outbound
-# Telegram lane, in every posture and for any actor. The hooks are best
+# Telegram lane, in every posture and for any actor. The `fm:` prefix is
+# loop safety: the Telegram side reads it as firstmate's own receipt line,
+# never as a captain note to file. The hooks are best
 # effort and opt-in: only source=tg notes reach them, the lane fails closed
 # without gitignored config/tg-target, a failed push is journaled by
 # fm-tg.sh for its retry, and a push never changes this command's exit
@@ -100,8 +102,10 @@
 #   FM_HOME              operational home whose state/ and data/ are used.
 #
 # PRIVACY: `say` sends your audio and `ask` sends your question to Bedrock.
-# `note`, `announce`, `reply`, `receipts`, `ready`, `status`, `list` and `drain`
-# make no network call at all.
+# `note`, `announce`, `receipts`, `ready`, `status`, `list` and `drain` make
+# no network call except the source=tg receipt push on `reply` and
+# `drain --ack`, which is off unless gitignored config/tg-target exists (the
+# `note --source` paragraph above owns that best-effort path).
 #
 # `note` is also the queueing half of the spoken interface: when the voice agent
 # in bin/fm-voice-relay.py hands real work over to firstmate, it runs this

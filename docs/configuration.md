@@ -14,6 +14,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
 | Review bots on owned GitHub pull requests | [Contribution review bots](#contribution-review-bots-configcontribution-review-bots) |
+| Telegram delivery to the captain | [Telegram lane](#telegram-lane-configtg-target-configtg-hermes-bin) |
 | Merge-content gates, second-look verdicts, or public-post consent | [AutoCraft Hardening Lessons](#autocraft-hardening-lessons) |
 | Per-run overrides and tuning | [Environment variables](#environment-variables) |
 
@@ -2908,6 +2909,21 @@ The two read files use different parsing rules:
 
 `FM_VOICE_RELAY` and `FM_VOICE_PYTHON` belong to the laptop rather than to a home, so they have no config file: `bin/fm-voice-client.py` requires the relay path as a flag or that variable and carries no default path.
 
+## Telegram lane (config/tg-target, config/tg-hermes-bin)
+
+The outbound Telegram lane is the only path firstmate's lines take to Telegram, and it is off until `config/tg-target` exists: every push fails closed with one journaled refusal line and nothing is sent, so an unconfigured home sends nothing.
+[`bin/fm-tg.sh`](../bin/fm-tg.sh)'s header owns the lane's mechanics - serialized sends with minimum spacing, the append-only journal that keys one line per event, retry, hermes resolution, exit codes, and the privacy contract that never prints the target.
+Receipts are opt-in per note: only notes filed with `--source tg`, the path [`bin/fm-telegram-note.sh`](../bin/fm-telegram-note.sh) takes, push `fm:`-prefixed receipt lines when the note is accepted, picked up, and answered, for any actor in any posture, and a failed push never changes the filing, reply, or acknowledgement exit status.
+The inbox subcommands keep needing no other configuration: with these two files absent the lane is simply off.
+
+| File | Holds |
+| --- | --- |
+| `config/tg-target` | The delivery target, the only place it lives; absent means the lane is off. |
+| `config/tg-hermes-bin` | Optional explicit hermes binary, winning over PATH and the canonical install-dir search. |
+
+Both files are LOCAL, gitignored, and not inherited by secondmate homes.
+Both follow the parsing described above for the voice and inbox files: the first line that is neither blank nor a `#` comment.
+
 ## Environment variables
 
 Runtime tuning via environment variables (defaults shown):
@@ -2970,6 +2986,7 @@ FM_CHECK_TIMEOUT=30     # seconds allowed per slow check script
 FM_MAIL_CHECK_BUDGET=15   # seconds allowed for one standing mail poll; valid 5..25, cut to fit FM_CHECK_TIMEOUT
 FM_MAIL_POLL_MAX_WAKES=20   # per-poll wake cap for a mail poll; valid 1..200, keeps a flood from flooding firstmate
 FM_MAIL_TIMEOUT=20   # mail-plane IMAP/SMTP socket timeout in seconds; invalid or non-positive values become 20
+FM_TG_LOCK_WAIT=30   # seconds one Telegram-lane send waits for the send lock before it journals a lock-busy failure and exits 1 (bin/fm-tg.sh)
 FM_TOOL_UPDATE_INTERVAL=900   # seconds between watched-tool probe sweeps; 0 probes on every run, other values must be 60..86400
 FM_TOOL_UPDATE_PROBE_SECS=5   # 1..30 seconds allowed for one version or git probe
 FM_TOOL_UPDATE_BUDGET_SECS=20   # 1..120 seconds allowed for a whole watched-tool sweep; cut to fit FM_CHECK_TIMEOUT, and the cut is reported

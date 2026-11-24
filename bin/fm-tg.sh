@@ -65,6 +65,8 @@
 #
 #   Environment:
 #     FM_HOME / FM_STATE_OVERRIDE / FM_CONFIG_OVERRIDE   the usual home dirs.
+#     FM_TG_LOCK_WAIT    seconds one send waits for the send lock before it
+#                       journals a lock-busy failure and exits 1 (default 30).
 #     FM_TG_TEST_CLOCK  (test seam, armed only with FM_TEST_SEAM=1) absolute
 #                       path to a file holding the current epoch (digits with
 #                       an optional fraction). The clock, the journal `at`
