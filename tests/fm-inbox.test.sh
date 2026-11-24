@@ -544,3 +544,50 @@ run_inbox "$home" drain --ack "$did" >/dev/null || fail "drain --ack failed"
 assert_absent "$home/state/inbox/$did.note" "acked note leaves pending"
 assert_present "$home/state/inbox/handled/$did.note" "acked note is in handled"
 pass "drain --ack still moves the note to handled"
+
+# --- --source records where a note came from -------------------------------
+
+home=$(make_home source-flag)
+out=$(printf 'from the telegram lane\n' | run_inbox "$home" note --source tg --json -) \
+  || fail "note --source tg should file"
+sid=$(printf '%s' "$out" | json_get id)
+assert_equals "tg" "$(sed -n '/^--$/q;s/^source=//p' "$home/state/inbox/$sid.note")" \
+  "the source header is recorded"
+assert_equals "tg" "$(run_inbox "$home" receipts --all-pending | json_get pending 0 source)" \
+  "receipts expose the source"
+plain=$(run_inbox "$home" note "from the terminal") || fail "a plain note should still file"
+pid=${plain#queued }
+pid=${pid%%$'\n'*}
+assert_equals "text" "$(sed -n '/^--$/q;s/^source=//p' "$home/state/inbox/$pid.note")" \
+  "the default source stays text"
+set +e
+bad=$(run_inbox "$home" note --source 'not a source' "words" 2>&1)
+bad_rc=$?
+set -e
+expect_code 1 "$bad_rc" "an unsafe source label is refused"
+assert_contains "$bad" "invalid note source" "the refusal names the rule"
+assert_equals "2" "$(count_notes "$home")" "the refusal files nothing"
+pass "--source records and validates the origin"
+
+# --- the Telegram receipt hooks are opt-in behind source=tg -----------------
+#
+# No config/tg-target in this home, so a tg note's pushes fail closed into
+# state/tg/journal.jsonl while a plain note never reaches the lane at all.
+
+home=$(make_home receipt-hooks)
+tg_out=$(printf 'via the lane\n' | run_inbox "$home" note --source tg --json -) \
+  || fail "note --source tg should file"
+tgid=$(printf '%s' "$tg_out" | json_get id)
+run_inbox "$home" drain --ack "$tgid" >/dev/null 2>&1
+run_inbox "$home" reply "$tgid" "an answer" >/dev/null 2>&1
+assert_present "$home/state/tg/journal.jsonl" "the tg note's receipts reach the lane"
+assert_equals "2" "$(wc -l < "$home/state/tg/journal.jsonl" | tr -d ' ')" \
+  "the ack and the reply each push one receipt"
+plain_out=$(run_inbox "$home" note "plain words")
+pid=${plain_out#queued }
+pid=${pid%%$'\n'*}
+run_inbox "$home" drain --ack "$pid" >/dev/null 2>&1
+run_inbox "$home" reply "$pid" "another answer" >/dev/null 2>&1
+assert_equals "2" "$(wc -l < "$home/state/tg/journal.jsonl" | tr -d ' ')" \
+  "non-tg notes never touch the lane"
+pass "receipt hooks fire only for source=tg notes"
