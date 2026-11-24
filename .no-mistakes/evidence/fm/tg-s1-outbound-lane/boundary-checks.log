@@ -1,0 +1,50 @@
+# S1 boundary checks (run 2026-11-24T20:17:05Z)
+
+## 1. The original fm-note-submit.sh shim is untouched
+Repo diff base..target for bin/fm-note-submit.sh (empty = no change; the shim is not a repo file):
+[no output = untouched]
+
+The live shim the /fm skill still calls (read-only stat; mtime predates this task, 2026-09-24):
+  mtime=2026-09-24 22:02:52.144759319 -0400  /home/jason/Work/fm-note-submit.sh
+  head of the shim (still the pre-S1 argv-based filing path):
+  #!/usr/bin/env bash
+  # fm-note-submit.sh - keyword-filter-safe note filing for Hermes's /fm skill.
+  # The gateway keyword filter blocks terminal COMMANDS containing words like
+  # stop/kill/restart; a captain message carrying such words cannot be passed
+  # inline to fm-inbox.sh note. This helper takes a FILE path instead, so the
+  # command line never contains the captain's words.
+  # Usage: fm-note-submit.sh <note-file>
+  set -euo pipefail
+  NOTE_FILE="${1:?usage: fm-note-submit.sh <note-file>}"
+  FM_HOME=/home/jason/Work/firstmate
+  TEXT=$(cat "$NOTE_FILE")
+  "$FM_HOME/bin/fm-inbox.sh" note "$TEXT"
+
+## 2. The Hermes /fm skill was not rewritten by this task
+The live skill (read-only stat; mtime 2026-09-25, predates this task):
+  mtime=2026-09-25 16:42:11.669963788 -0400  /home/jason/.hermes/skills/fm/SKILL.md
+  it still references the ORIGINAL shim path (no fm-telegram-note.sh, no fm-tg.sh):
+  29:   `bash /home/jason/Work/fm-note-submit.sh /tmp/fm-note.txt`
+
+## 3. No Telegram install material was written into the repo
+Tracked files changed by this task (git diff --name-only):
+  bin/fm-inbox.sh
+  bin/fm-telegram-note.sh
+  bin/fm-tg.sh
+  tests/fixtures.sh
+  tests/fm-inbox.test.sh
+  tests/fm-telegram-note.test.sh
+  tests/fm-tg.test.sh
+config/tg-target tracked? (empty = never committed):
+[empty]
+git check-ignore -v config/tg-target (the real consumer; the chat id file is gitignored):
+  .gitignore:13:config/*	config/tg-target
+
+## 4. The gate worktree is clean after validation (no stray target or state):
+[empty = clean]
+
+## 5. The real hermes/Telegram edge was never driven (no real send)
+Real engine binary exists at the canonical path (resolution target, read-only check):
+  -rwxr-xr-x 1 jason jason 331 Oct 24 12:39 /home/jason/.hermes/hermes-agent/.venv/bin/hermes
+Every engine call in validation went to the recording fake (see live-drive-transcript.log CALL lines);
+the target value was always the fixture id telegram:424242, never a real chat id.

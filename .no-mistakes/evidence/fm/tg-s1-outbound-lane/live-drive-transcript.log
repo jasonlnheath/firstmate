@@ -1,0 +1,136 @@
+fm-tg live drive 2026-11-24T20:16:26Z
+worktree: /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M87J87WWN8NW18YVC1P4R0J4
+lab home root: /tmp/fm-tg-live.zEdcoy (removed at the end of this drive)
+engine: fake hermes on PATH recording CALL/BODY lines (no real Telegram send, per the task contract)
+
+==================================================================
+SCENARIO 1: captain sends a note from Telegram and gets all three receipts (while /afk is on, quoting hazards in the body)
+==================================================================
+home: /tmp/fm-tg-live.zEdcoy/homes/s1-receipts (config/tg-target = fixture id, state/.afk present = away posture)
+$ printf <quoting-hazard body> | bin/fm-telegram-note.sh   (stdin, not argv)
+exit=0 stdout={"schema":"fm-inbox-note.v1","outcome":"created","id":"1795551386-TEcXMP","request_id":"tg:20261124:7e7b94b01cac","saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-tg-live.zEdcoy/homes/s1-receipts/state/inbox/1795551386-TEcXMP.note"}
+stderr: sent note.1795551386-TEcXMP.accepted
+PASS  filing exits 0 (saved and announced)
+PASS  outcome is created
+PASS  note is announced (a wake exists for it)
+PASS  one engine call so far (the accepted receipt)
+PASS  accepted receipt is the catalog line
+PASS  note body stored byte-identical through quoting hazards
+$ bin/fm-inbox.sh drain --ack 1795551386-TEcXMP
+exit=0 stdout=acked 1795551386-TEcXMP stderr=sent note.1795551386-TEcXMP.pickedup
+PASS  drain --ack succeeds while the lane pushes
+PASS  two engine calls after the picked-up receipt
+PASS  picked-up receipt is the catalog line
+$ bin/fm-inbox.sh reply 1795551386-TEcXMP 'the nightly build is green'
+exit=0 stdout=replied 1795551386-TEcXMP stderr=sent note.1795551386-TEcXMP.answered
+PASS  reply succeeds while the lane pushes
+PASS  exactly three engine calls for the whole lifecycle
+PASS  answered receipt is the reply text with the fm: prefix
+PASS  exactly one note file ever exists
+PASS  exactly one wake row ever exists
+engine argv of every call (the body never travels on the command line):
+  send --to telegram:424242 --quiet --file -
+  send --to telegram:424242 --quiet --file -
+  send --to telegram:424242 --quiet --file -
+PASS  the engine argv is the fixed send shape, target included only there
+PASS  the chat id never appears in helper/inbox/lane output or the journal
+journal (gitignored state/tg/journal.jsonl):
+  {"at":1795551387.118255,"key":"note.1795551386-TEcXMP.accepted","rc":0,"source":"telegram-note","line":"fm: got it - note 1795551386-TEcXMP"}
+  {"at":1795551388.218255,"key":"note.1795551386-TEcXMP.pickedup","rc":0,"source":"inbox-ack","line":"fm: picked up - note 1795551386-TEcXMP"}
+  {"at":1795551389.318255,"key":"note.1795551386-TEcXMP.answered","rc":0,"source":"inbox-reply","line":"fm: the nightly build is green"}
+
+==================================================================
+SCENARIO 2: same-day retry of the same text replays the original note (one event, one line)
+==================================================================
+$ printf <same body> | bin/fm-telegram-note.sh   (again, same day)
+exit=0 stdout={"schema":"fm-inbox-note.v1","outcome":"replay","id":"1795551386-TEcXMP","request_id":"tg:20261124:7e7b94b01cac","saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-tg-live.zEdcoy/homes/s1-receipts/state/inbox/handled/1795551386-TEcXMP.note"}
+PASS  same-day resubmit exits 0
+PASS  outcome is replay
+PASS  replay returns the original note id
+PASS  still exactly one note file
+PASS  still exactly one wake row
+PASS  the replay's accepted push is an already-sent no-op (still 3 calls)
+PASS  the replay journals no second accepted row
+
+==================================================================
+SCENARIO 3: a failed send never loses the line; retry delivers it exactly once (keyed dedupe, seam clock)
+==================================================================
+engine exit set to 1 (fault injection); seam clock T0=1795551389
+$ printf 'fm: got it - note X' | bin/fm-tg.sh send --key note.X.accepted
+exit=1 stdout= stderr=fm-tg: send failed for note.X.accepted (engine exit 1); the line stays queued for retry
+PASS  engine failure passes through as exit 1
+PASS  the failed attempt is journaled (rc=1)
+PASS  the journal row keeps the line for retry
+$ bin/fm-tg.sh failed   (human view of what is still queued)
+  note.X.accepted rc=1 0s ago: fm: got it - note X
+exit=0 stdout=
+PASS  retry before the 60 s grace sends nothing
+(seam clock aged to T0+61)
+$ bin/fm-tg.sh retry
+exit=0 stdout=retried note.X.accepted stderr=
+PASS  retry after the grace reports the key it delivered
+PASS  the retry re-sends the queued line exactly once
+PASS  a later idle retry never re-sends it
+
+==================================================================
+SCENARIO 4: sends serialize under the lock with >= 1.1 s spacing (real clock, real sleeps)
+==================================================================
+PASS  two back-to-back sends take at least 1.1 s of wall time (1.181 >= 1.1)
+PASS  journal start-stamps are spaced at least 1.1 s apart (1.100 >= 1.100)
+PASS  both rate-limited sends were delivered
+wall time for two sends: 1.181s; journal at-gaps: 1.100
+
+==================================================================
+SCENARIO 5: the lane fails closed while config/tg-target is absent; the note is never lost (adversarial: chat id file missing)
+==================================================================
+home has NO config/tg-target (the lane is off)
+exit=0 stdout={"schema":"fm-inbox-note.v1","outcome":"created","id":"1795551391-xnxqSM","request_id":"tg:20261124:f44590be650e","saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-tg-live.zEdcoy/homes/s5-lane-off/state/inbox/1795551391-xnxqSM.note"} stderr=fm-tg: telegram lane is off: no /tmp/fm-tg-live.zEdcoy/homes/s5-lane-off/config/tg-target; nothing was sent
+PASS  the note files and exits 0 while the lane is off
+PASS  the note is announced (wake) even with the lane off
+PASS  nothing was sent while the lane is off
+PASS  the refused accepted receipt is journaled (rc=4)
+PASS  ack and reply receipts fail closed into the journal too
+PASS  still nothing sent after ack and reply
+PASS  drain --ack exit status never changed (push is best effort)
+PASS  reply exit status never changed (push is best effort)
+$ printf 'late line' | bin/fm-tg.sh send --key late.1   (direct push, lane off)
+exit=4 output=fm-tg: telegram lane is off: no /tmp/fm-tg-live.zEdcoy/homes/s5b-direct-off/config/tg-target; nothing was sent
+PASS  a direct push fails closed with exit 4
+PASS  the refusal names tg-target without the chat id
+PASS  no engine call happened for the refused push
+(queued rows aged past the grace; lane now configured)
+exit=0 stdout=retried note.1795551391-xnxqSM.accepted
+retried note.1795551391-xnxqSM.answered
+retried note.1795551391-xnxqSM.pickedup stderr=
+PASS  the three queued receipts deliver after opt-in
+PASS  the note was never lost or duplicated
+
+==================================================================
+SCENARIO 6: no usable hermes is a loud one-line failure, journaled (adversarial: engine missing, broken symlink)
+==================================================================
+PATH without hermes, HOME without .hermes or .local/bin/hermes:
+exit=5 output=fm-tg: no usable hermes binary (PATH, /tmp/fm-tg-live.zEdcoy/no-home/.hermes/hermes-agent/.venv/bin/hermes, ~/.local/bin/hermes, or /tmp/fm-tg-live.zEdcoy/homes/s6-no-hermes/config/tg-hermes-bin); nothing was sent
+PASS  missing hermes exits 5
+PASS  the failure is one loud line naming what is missing
+PASS  the refusal is journaled (rc=5)
+broken ~/.local/bin/hermes symlink case:
+exit=5 output=fm-tg: no usable hermes binary (PATH, /tmp/fm-tg-live.zEdcoy/broken-home/.hermes/hermes-agent/.venv/bin/hermes, ~/.local/bin/hermes, or /tmp/fm-tg-live.zEdcoy/homes/s6-no-hermes/config/tg-hermes-bin); nothing was sent
+PASS  a broken local hermes symlink still exits 5
+PASS  the real machine has hermes at the canonical venv path (resolution target)
+
+==================================================================
+SCENARIO 7: a corrupt journal refuses to send (adversarial: dedupe oracle corrupted)
+==================================================================
+exit=2 output=fm-tg: journal /tmp/fm-tg-live.zEdcoy/homes/s7-corrupt/state/tg/journal.jsonl line 1 is malformed; refusing to send or retry until it is repaired or truncated manually
+PASS  a corrupt journal refuses to send (exit 2)
+PASS  nothing was sent from a corrupt journal
+
+==================================================================
+SCENARIO 8: receipt hooks are opt-in: non-tg notes never reach the lane (adversarial: boundary)
+==================================================================
+plain note filed (default source text): id 1795551393-9xAYpX
+PASS  no engine call for a non-tg note's lifecycle
+PASS  no state/tg directory is even created for non-tg notes
+
+RESULT: ALL LIVE-DRIVE CHECKS PASSED
+lab home removed: /tmp/fm-tg-live.zEdcoy
