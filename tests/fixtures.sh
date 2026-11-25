@@ -543,3 +543,34 @@ make_stubs() {
   fm_test_fake_sleep_noop "$fakebin"
   printf '%s\n' "$fakebin"
 }
+
+# --- fake hermes ------------------------------------------------------------
+
+# fm_test_fake_hermes <fakebin>
+# The Telegram send-engine fake for the outbound-lane suites. It records one
+# CALL line per invocation (the full argv) and one BODY line per invocation
+# (the stdin body, trailing newline stripped) into $fakebin/hermes.log, then
+# exits with the code held in $fakebin/hermes.exit (default 0), which is how a
+# suite injects send failures. The argv/body logs are the send-side evidence
+# those suites assert against; a suite resets them by removing the two files.
+# The target the suites configure in config/tg-target is always a fixture id,
+# never a real chat id, so no test ever reaches a live Telegram conversation.
+fm_test_fake_hermes() {
+  local fakebin=$1
+  cat > "$fakebin/hermes" <<'SH'
+#!/usr/bin/env bash
+d=$(dirname "$0")
+printf 'CALL %s\n' "$*" >> "$d/hermes.log"
+body=$(cat; printf .)
+body=${body%.}
+body=${body%$'\n'}
+printf 'BODY %s\n' "$body" >> "$d/hermes.log"
+code=0
+if [ -r "$d/hermes.exit" ]; then
+  code=$(tr -d '[:space:]' < "$d/hermes.exit")
+  case "$code" in ''|*[!0-9]*) code=0 ;; esac
+fi
+exit "$code"
+SH
+  chmod +x "$fakebin/hermes"
+}

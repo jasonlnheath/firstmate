@@ -20,8 +20,8 @@
 #           fleet work and must not become fleet work.
 #
 # Usage:
-#   fm-inbox.sh note [--request-id <id>] [--json] [--] <text>...
-#   fm-inbox.sh note [--request-id <id>] [--json] -   (body from stdin)
+#   fm-inbox.sh note [--request-id <id>] [--source <source>] [--json] [--] <text>...
+#   fm-inbox.sh note [--request-id <id>] [--source <source>] [--json] -   (body from stdin)
 #   fm-inbox.sh announce [--json] <id>
 #   fm-inbox.sh reply [--json] <id> <text>... | reply [--json] <id> -
 #   fm-inbox.sh receipts [--after <cursor>] [--all-pending] [--all-handled] [--all-replies]
@@ -38,6 +38,17 @@
 # retry are distinguishable. The binding is recorded before announcement, so a
 # crash between save and wake still replays the original note. Without
 # --request-id the historical one-note-per-call behaviour is unchanged.
+# `note --source` records where a note came from (default `text`); the
+# Telegram submit helper (bin/fm-telegram-note.sh) files `tg`. A source=tg
+# note arms the receipt hooks: `drain --ack` pushes `fm: picked up - note
+# <id>` and `reply` pushes `fm: <answer>` through bin/fm-tg.sh, the outbound
+# Telegram lane, in every posture and for any actor. The `fm:` prefix is
+# loop safety: the Telegram side reads it as firstmate's own receipt line,
+# never as a captain note to file. The hooks are best
+# effort and opt-in: only source=tg notes reach them, the lane fails closed
+# without gitignored config/tg-target, a failed push is journaled by
+# fm-tg.sh for its retry, and a push never changes this command's exit
+# status or stdout.
 # `announce` repairs the wake for an already-saved note without creating another.
 # A note already acknowledged (in handled/) gets no wake from `announce` or a
 # request-id replay; both report it as acknowledged and exit 0.
@@ -92,7 +103,9 @@
 #
 # PRIVACY: `say` sends your audio and `ask` sends your question to Bedrock.
 # `note`, `announce`, `reply`, `receipts`, `ready`, `status`, `list` and `drain`
-# make no network call at all.
+# make no network call at all, except the source=tg receipt push on `reply`
+# and `drain --ack`, which is off unless gitignored config/tg-target exists
+# (the `note --source` paragraph above owns that best-effort path).
 #
 # `note` is also the queueing half of the spoken interface: when the voice agent
 # in bin/fm-voice-relay.py hands real work over to firstmate, it runs this
@@ -231,6 +244,17 @@ valid_note_id() {
   case "$1" in
     ''|*/*|*[[:space:]]*|*..*) return 1 ;;
   esac
+  case "$1" in
+    *[!A-Za-z0-9._-]*) return 1 ;;
+  esac
+  return 0
+}
+
+valid_note_source() {
+  case "$1" in
+    ''|*[[:space:]]*) return 1 ;;
+  esac
+  [ "${#1}" -le 32 ] || return 1
   case "$1" in
     *[!A-Za-z0-9._-]*) return 1 ;;
   esac
@@ -469,33 +493,58 @@ queue_note() {
   finish_note_result created "$id" "" "$json" "$strict" "$summary"
 }
 
+# One Telegram receipt per inbox event for notes that came from the lane
+# (source=tg). The push is the note lane's voice: it fires for any actor in
+# any posture, it goes to stderr so reply/ack stdout stays machine-clean,
+# and it is best effort (see the header's note --source paragraph).
+tg_receipt_push() {  # <note-id> <note-path> <key-suffix> <source-label> <line>
+  local id=$1 path=$2 suffix=$3 label=$4 line=$5 record_source=""
+  [ -x "$FM_ROOT/bin/fm-tg.sh" ] || return 0
+  [ -r "$path" ] || return 0
+  record_source=$(sed -n '/^--$/q;s/^source=//p' "$path" 2>/dev/null) || record_source=""
+  [ "$record_source" = "tg" ] || return 0
+  printf '%s\n' "$line" \
+    | "$FM_ROOT/bin/fm-tg.sh" send --key "note.$id.$suffix" --source "$label" >&2 \
+    || true
+}
+
 cmd_note() {
-  local body json=0 request_id=""
+  local body json=0 request_id="" note_source=text
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --json) json=1; shift ;;
       --request-id)
-        [ "$#" -ge 2 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)"
+        [ "$#" -ge 2 ] \
+          || die "usage: fm-inbox.sh note [--request-id <id>] [--source <source>] [--json] [--] <text>... (or: note -)"
         request_id=$2
         valid_request_id "$request_id" \
           || die "invalid request id (use 1-128 characters: A-Za-z0-9._:-)"
         shift 2
         ;;
+      --source)
+        [ "$#" -ge 2 ] \
+          || die "usage: fm-inbox.sh note [--request-id <id>] [--source <source>] [--json] [--] <text>... (or: note -)"
+        note_source=$2
+        valid_note_source "$note_source" \
+          || die "invalid note source (use 1-32 characters: A-Za-z0-9._-)"
+        shift 2
+        ;;
       --) shift; break ;;
-      -h|--help) die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)" ;;
+      -h|--help) \
+        die "usage: fm-inbox.sh note [--request-id <id>] [--source <source>] [--json] [--] <text>... (or: note -)" ;;
       *) break ;;
     esac
   done
   if [ "$#" -eq 0 ]; then
-    die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)"
+    die "usage: fm-inbox.sh note [--request-id <id>] [--source <source>] [--json] [--] <text>... (or: note -)"
   elif [ "$1" = "-" ]; then
-    [ "$#" -eq 1 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--json] -"
+    [ "$#" -eq 1 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--source <source>] [--json] -"
     body=$(cat; printf .)
     body=${body%.}
   else
     body="$*"
   fi
-  queue_note text "$body" "" "$request_id" "$json"
+  queue_note "$note_source" "$body" "" "$request_id" "$json"
 }
 
 cmd_announce() {
@@ -633,6 +682,9 @@ cmd_reply() {
   } >"$staging"
   mv "$staging" "$REPLIES/$id"
   fm_lock_release "$REPLY_SEQ_LOCK"
+  # The answer receipt is pushed only after the reply record is durable, and
+  # a push failure never fails the reply itself (the journal holds the line).
+  tg_receipt_push "$id" "$path" answered inbox-reply "fm: $body"
   if [ "$json" -eq 1 ]; then
     need_python
     python3 - "$id" "$REPLIES/$id" <<'PY'
@@ -1123,6 +1175,10 @@ cmd_drain() {
       if [ -f "$INBOX/$id.note" ]; then
         mv "$INBOX/$id.note" "$INBOX/handled/$id.note"
         printf 'acked %s\n' "$id"
+        # The picked-up receipt fires on the move itself: an already-acked
+        # note was announced by its own first ack, never by this one.
+        tg_receipt_push "$id" "$INBOX/handled/$id.note" pickedup inbox-ack \
+          "fm: picked up - note $id"
       else
         printf 'already-acked %s\n' "$id"
       fi
