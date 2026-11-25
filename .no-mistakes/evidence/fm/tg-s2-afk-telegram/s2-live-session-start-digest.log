@@ -1,0 +1,14 @@
+### Scenario 8: the session-start AFK digest states the standing away record's true reach
+$ FM_HOME=/tmp/fm-lab.kivQA4 bin/fm-session-start.sh 2>&1 | sed -n '/AFK/,/^$/p' (digest section only)
+AFK
+--------------------------------------------------------------------------------
+present - away posture recorded at 2026-11-25T18:24:57Z (Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you.; bin/fm-afk-contract.sh readback for the mandate); no daemon runs, the ordinary supervision session continues.
+
+================================================================================
+NETWORK CHECKS
+================================================================================
+IN PROGRESS - the deferred network checks have not finished yet.
+NOT yet confirmed: GitHub authentication, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, project clone refresh with its drift reporting, and inactive terminal-outcome reconciliation.
+Started 0s ago, bounded at 120s.
+Only a FAILED or otherwise actionable result arrives as a `check: startup-network` wake; a clean success stays silent.
+The durable result is readable on demand with /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M89WPWSGSE6N3SR9CKVY6PZN/bin/fm-startup-network.sh report; until it finishes, treat none of it as confirmed.

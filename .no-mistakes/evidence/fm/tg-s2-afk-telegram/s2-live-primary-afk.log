@@ -1,0 +1,29 @@
+### Scenario 10: the captain types /afk in a real primary on a lane-configured home (real claude CLI, headless -p; tmux absent on this host so the TUI form is untested)
+$ env -u NO_MISTAKES_GATE -u FM_GATE_REFUSE_BYPASS -u FM_ROOT_OVERRIDE -u FM_STATE_OVERRIDE -u FM_DATA_OVERRIDE -u FM_CONFIG_OVERRIDE -u FM_PROJECTS_OVERRIDE FM_HOME=/tmp/fm-lab.kivQA4 claude -p --dangerously-skip-permissions '/afk merge small green PRs while i am out; anything else waits for me'
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+[claude-code:unrecognized_model] {"model":"glm-5.3","query_source":"sdk"}
+Captain, you're away as of 18:27 UTC — the record is written and stands on its own; nothing further is needed from you.
+
+**Reach:** Telegram is this away window's channel — your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you.
+
+**How I read your words:**
+- *"merge small green PRs while i am out"* — while you're gone, the away session may merge pull requests that are genuinely green at their live head and small in scope — modest, contained changes — through the normal guarded merge path, synchronously, and never one with a failing or unreported required check.
+- *"anything else waits for me"* — nothing else moves: no new work starts, no other calls get made. Everything else accumulates and is waiting in your return brief.
+
+**Expected return:** not given. **Spend cap:** at most 4 workers at once (the standing default). Anything the away session is unsure of, or that needs you, holds for your return — and destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. No part of your mandate asks for something I can't do while away; a red merge, discarding any work, and local-only landings all wait for you regardless.
+
+First message back ends the posture and gets you the full brief. Aye — see you when you're back.
+exit=0
+
+--- record the primary's entry wrote ---
+version: 3
+entered: 2026-11-25T18:27:56Z
+entered_epoch: 1795631276
+expected_return: -
+reach_channels: telegram
+reach_announced: Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you.
+spend_max_concurrent_workers: 4
+confirmed: 2026-11-25T18:27:56Z
+confirmed_epoch: 1795631276
+words: |-
+  merge small green PRs while i am out; anything else waits for me

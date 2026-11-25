@@ -1,0 +1,28 @@
+### Scenario 2: captain sends a note from Telegram while away; the away session answers; exactly one pushed line
+$ printf 'status of the windows fix?' | FM_HOME=/tmp/fm-lab.kivQA4 bin/fm-inbox.sh note --source tg --json -
+{"schema":"fm-inbox-note.v1","outcome":"created","id":"1795631110-Y8JCLk","request_id":null,"saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-lab.kivQA4/state/inbox/1795631110-Y8JCLk.note"}
+note id = 1795631110-Y8JCLk
+
+--- wake queue row ---
+1795631110	1	check	inbox:1795631110-Y8JCLk	check: captain inbox note 1795631110-Y8JCLk - status of the windows fix?
+
+$ FM_SUPERVISION_ACTOR=branch FM_HOME=/tmp/fm-lab.kivQA4 bin/fm-inbox.sh reply 1795631110-Y8JCLk 'the fix is green; its PR is up for review'
+sent note.1795631110-Y8JCLk.answered
+replied 1795631110-Y8JCLk
+exit=0
+
+--- durable reply record state/inbox/.replies/1795631110-Y8JCLk ---
+id=1795631110-Y8JCLk
+at=2026-11-25T18:25:10Z
+seq=1
+--
+the fix is green; its PR is up for review
+
+--- engine capture (must be exactly one CALL, one BODY) ---
+CALL send --to telegram:424242 --quiet --file -
+BODY fm: the fix is green; its PR is up for review
+CALL count = 1
+
+--- second reply to the same note is refused ---
+fm-inbox: reply already recorded for 1795631110-Y8JCLk
+exit=1

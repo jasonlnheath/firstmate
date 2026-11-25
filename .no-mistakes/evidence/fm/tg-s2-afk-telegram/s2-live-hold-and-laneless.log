@@ -1,0 +1,18 @@
+### Scenario 3: a note the away session must not act on is held for the return
+note id = 1795631121-NvK1QU
+sent note.1795631121-NvK1QU.answered
+replied 1795631121-NvK1QU
+engine pushes:
+CALL send --to telegram:424242 --quiet --file -
+BODY fm: held for your return - a discard is never-set, so it waits for you
+CALL count = 1
+
+### Scenario 4: lane-less home - the answer still records, the push fails closed into the journal, the engine is never invoked
+reach without tg-target = none
+note id = 1795631122-ZKkqyk
+fm-tg: telegram lane is off: no /tmp/fm-lab.kivQA4/arm-nolane/config/tg-target; nothing was sent
+replied 1795631122-ZKkqyk
+exit=0
+reply record present: yes
+journal: {"at":1795631122.2270536,"key":"note.1795631122-ZKkqyk.answered","rc":4,"source":"inbox-reply","line":"fm: task-y is still building; nothing new","reason":"lane off: no /tmp/fm-lab.kivQA4/arm-nolane/config/tg-target"}
+engine CALL count after lane-less reply = 1

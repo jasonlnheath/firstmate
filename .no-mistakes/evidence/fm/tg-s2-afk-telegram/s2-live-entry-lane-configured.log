@@ -1,0 +1,30 @@
+### Scenario 1: /afk entry on a lane-configured home (config/tg-target present, engine pinned to a capture stub)
+$ FM_HOME=/tmp/fm-lab.kivQA4 bin/fm-afk-launch.sh enter --words 'merge small green PRs while i am out; anything else waits'
+Away posture recorded at 2026-11-25T18:24:57Z: Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you. Your away instructions are recorded verbatim; the away session will carry them out where it can, and anything it is unsure of, or that needs you, waits for your return. Destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. Expected return: not given. Spend cap: 4 concurrent workers.
+Away posture (recorded):
+  entered: 2026-11-25T18:24:57Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  reach: Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you.
+  your words (verbatim):
+    merge small green PRs while i am out; anything else waits
+exit=0
+
+--- record (state/.afk-contract) ---
+version: 3
+entered: 2026-11-25T18:24:57Z
+entered_epoch: 1795631097
+expected_return: -
+reach_channels: telegram
+reach_announced: Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you.
+spend_max_concurrent_workers: 4
+confirmed: 2026-11-25T18:24:57Z
+confirmed_epoch: 1795631097
+words: |-
+  merge small green PRs while i am out; anything else waits
+
+--- field reads ---
+version = 3
+reach_channels = telegram
+reach_announced = Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you.
+validate: OK

@@ -1,0 +1,32 @@
+### Scenario 5 (adversarial): the captain comments out the chat id in config/tg-target (the lane's supported off gesture), then runs /afk
+--- tg-target as written ---
+# telegram:424242
+
+   # off while travelling
+Away posture recorded at 2026-11-25T18:25:30Z: hold-for-return only. No phone channel is configured; anything that needs you waits for your return. No away instructions were recorded; the away session acts on standing authority only, and anything that needs you waits for your return. Destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. Expected return: not given. Spend cap: 4 concurrent workers.
+Away posture (recorded):
+  entered: 2026-11-25T18:25:30Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words: (none)
+
+reach_channels = none
+
+### Scenario 6 (regression): channel-less home keeps the hold-for-return-only wording byte for byte
+Away posture recorded at 2026-11-25T18:25:30Z: hold-for-return only. No phone channel is configured; anything that needs you waits for your return. No away instructions were recorded; the away session acts on standing authority only, and anything that needs you waits for your return. Destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. Expected return: not given. Spend cap: 4 concurrent workers.
+Away posture (recorded):
+  entered: 2026-11-25T18:25:30Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words: (none)
+
+### Scenario 7: quiet entry never records the channel even while the lane is configured
+Quiet mode recorded at 2026-11-25T18:25:30Z: you are present, so nothing waits for your return: every action you ask for, a local landing or a merge included, proceeds now under ordinary attended authority, and quiet mode changes only which updates reach this conversation. Only an explicit /quiet off ends it.
+Quiet mode (recorded):
+  entered: 2026-11-25T18:25:30Z
+  holds: none - you are present, so nothing waits for your return: every action you ask for, a local landing or a merge included, proceeds now under ordinary attended authority, and quiet mode changes only which updates reach this conversation.
+  your words (verbatim):
+    keep routine wakes off my main
+mode = quiet, reach_channels = none
