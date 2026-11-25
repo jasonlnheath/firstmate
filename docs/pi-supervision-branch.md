@@ -580,6 +580,8 @@ A leftover `state/.afk` flag declines nothing.
   Supervision continuity is the safety property, and the return brief's health section reads any gap.
 - The wake message ends with a fixed `POSTURE: AWAY` tail plus the record's read-back verbatim (`bin/fm-afk-contract.sh readback`).
   The branch therefore has the captain's away words, the spend cap, the expected return, and the reach line in front of it at execution time, without any prefix change.
+- A captain inbox note is the branch's to answer in the same turn through `bin/fm-inbox.sh reply`, whose receipt hook delivers the answer line to the captain's Telegram when the note came from that lane.
+  [`bin/fm-branch-prompt.sh`](../bin/fm-branch-prompt.sh) "Postures" owns the answer duty, its two dispositions (answer, hold-for-return), the note authority reading, and the rule that a note disposition is a routine silent outcome; the branch never composes event lines and never calls the outbound lane itself.
 - Captain-verdict outcomes accumulate unprocessed in the outcome store.
   Their visible entries still persist, but no processing turn opens on the parked main.
   The request is re-checked against the record immediately before it would open and at every run boundary, so a request pending when the record appears is cancelled rather than delivered.
@@ -607,6 +609,7 @@ The captain's away words are the whole mandate:
 
 `bin/fm-branch-prompt.sh` "Postures" owns those execution rules.
 It requires every action taken under the words to open its outcome summary with "per your away instructions:".
+A captain inbox note that arrives mid-away is the captain speaking now: the branch reads it together with the record's words and acts only through the same guarded scripts and standing limits, opening that outcome summary with "per your note:".
 
 Each relocated script keeps its own gate, enforcing exactly what a script can check without reading words:
 

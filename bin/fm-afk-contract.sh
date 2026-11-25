@@ -8,9 +8,13 @@
 # the home is afk; the captain's first unmarked message archives it (the return
 # path in bin/fm-afk-return.sh calls `archive` through bin/fm-afk-launch.sh stop).
 # Being away changes how the captain is informed and what happens at a
-# captain-owned decision point, never the authority set. Hold-for-return is the
-# only reach profile this release records: there is no phone channel, and the
-# entry announcement says so every time.
+# captain-owned decision point, never the authority set. The away posture's
+# reach follows the outbound Telegram lane: an away entry records
+# reach_channels: telegram while the lane bin/fm-tg.sh owns resolves a target
+# (a readable gitignored config/tg-target holding a non-comment, non-blank
+# line) and none otherwise, so the record reflects the channel that actually
+# exists, and the entry announcement says which every time.
+# Hold-for-return is the reach profile of a channel-less away record.
 #
 # AWAY OR QUIET. The same record also backs daemon-backed quiet mode, which a
 # quiet entry marks with `mode: quiet`: the captain is present there, so a quiet
@@ -19,8 +23,10 @@
 # fm_afk_contract_away_present is true only for an away record; any record
 # without a valid quiet mode reads as away, so a damaged mode keeps the holds.
 # A quiet record's announcement and read-back say it holds nothing and name no
-# reach, return, or spend cap; an away record's are unchanged. Only a quiet
-# entry over no record or over a quiet record writes one: an away entry over a
+# reach, return, or spend cap; an away record's are unchanged. A quiet entry
+# always records reach_channels: none, even while the outbound lane is
+# configured, because its captain is present. Only a quiet entry over no
+# record or over a quiet record writes one: an away entry over a
 # quiet record, a refresh included, rewrites it as away, and a quiet entry never
 # turns a standing away record quiet (the captain's return comes first).
 #
@@ -50,8 +56,12 @@
 #   entered: <UTC ISO 8601>
 #   entered_epoch: <seconds>
 #   expected_return: <UTC ISO 8601> | -
-#   reach_channels: none
-#   reach_announced: <the one-sentence reach announcement>
+#   reach_channels: none|telegram   telegram only on an away entry while the
+#                                  outbound lane is configured (config/tg-
+#                                  target resolving a target); every other
+#                                  record, quiet mode included, records none
+#   reach_announced: <the one-sentence reach announcement matching the
+#                                  recorded channels>
 #   spend_max_concurrent_workers: <n>   without --spend, the ordinary worker
 #                                  records this home already holds at entry,
 #                                  and never fewer than the default
@@ -71,7 +81,7 @@
 # A version 1 record (the retired clause model) still validates and reads: its
 # scalar fields and words are read exactly as above, and its clauses:, refused:,
 # and merge_grants: sections are ignored, so an upgrade never breaks a live away
-# window. Only version 2 is ever written.
+# window; a version 2 record reads the same way. Only version 3 is ever written.
 # The retired two-step entry staged a proposal at state/.afk-contract.proposed;
 # no proposal is written any more, and `enter` removes one an older version left
 # behind. Archived final records live under state/afk-contracts/ as
@@ -156,14 +166,16 @@ if [ -z "$FM_ROOT" ]; then
 fi
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 FM_AFK_CONTRACT_STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+FM_AFK_CONTRACT_CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 
 # shellcheck source=bin/fm-classify-lib.sh
 . "$FM_AFK_CONTRACT_DIR/fm-classify-lib.sh"
 
-FM_AFK_CONTRACT_VERSION=2
+FM_AFK_CONTRACT_VERSION=3
 # Older record versions this script still reads (never writes).
-FM_AFK_CONTRACT_READABLE_VERSIONS="1 2"
+FM_AFK_CONTRACT_READABLE_VERSIONS="1 2 3"
 FM_AFK_CONTRACT_REACH_ANNOUNCED='No phone channel is configured; anything that needs you waits for your return.'
+FM_AFK_CONTRACT_REACH_TELEGRAM_ANNOUNCED="Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you."
 FM_AFK_CONTRACT_SPEND_DEFAULT=4
 FM_AFK_CONTRACT_QUIET_HOLDS_NOTHING='you are present, so nothing waits for your return: every action you ask for, a local landing or a merge included, proceeds now under ordinary attended authority, and quiet mode changes only which updates reach this conversation.'
 # Generous against the longest legitimate holder, a merge waiting on the forge,
@@ -293,6 +305,43 @@ fm_afk_contract_now_iso() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
 
+# The outbound lane's own notion of configured (bin/fm-tg.sh read_setting,
+# which every push resolves its target with): a readable config/tg-target
+# holding at least one non-comment, non-blank line. A commented-out or empty
+# tg-target is the lane's supported off gesture.
+fm_afk_contract_lane_configured() {
+  local path="$FM_AFK_CONTRACT_CONFIG/tg-target" line
+  [ -r "$path" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%%#*}
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [ -n "$line" ] || continue
+    return 0
+  done < "$path"
+  return 1
+}
+
+# The reach profile an entry records: telegram only for an away entry while
+# the outbound lane is configured, none for every other record including quiet
+# mode's, whose captain is present.
+fm_afk_contract_entry_reach() {  # <entry-mode>
+  if [ "$1" = away ] && fm_afk_contract_lane_configured; then
+    printf 'telegram\n'
+  else
+    printf 'none\n'
+  fi
+}
+
+# The one-sentence announcement matching a recorded reach profile.
+fm_afk_contract_reach_announced() {  # <reach>
+  if [ "$1" = telegram ]; then
+    printf '%s\n' "$FM_AFK_CONTRACT_REACH_TELEGRAM_ANNOUNCED"
+  else
+    printf '%s\n' "$FM_AFK_CONTRACT_REACH_ANNOUNCED"
+  fi
+}
+
 # --- record writing ---------------------------------------------------------
 
 fm_afk_contract_validate_iso() {  # <ts>
@@ -302,13 +351,14 @@ fm_afk_contract_validate_iso() {  # <ts>
 # Render a whole record on stdout.
 # Inputs: WORDS (verbatim), EXPECTED_RETURN, SPEND.
 fm_afk_contract_render_record() {  # <entered-iso> <entered-epoch> <confirmed-iso> <confirmed-epoch>
-  local entered=$1 entered_epoch=$2 confirmed=$3 confirmed_epoch=$4
+  local entered=$1 entered_epoch=$2 confirmed=$3 confirmed_epoch=$4 reach
+  reach=$(fm_afk_contract_entry_reach "${FM_AFK_CONTRACT_ENTRY_MODE:-away}")
   printf 'version: %s\n' "$FM_AFK_CONTRACT_VERSION"
   printf 'entered: %s\n' "$entered"
   printf 'entered_epoch: %s\n' "$entered_epoch"
   printf 'expected_return: %s\n' "${EXPECTED_RETURN:--}"
-  printf 'reach_channels: none\n'
-  printf 'reach_announced: %s\n' "$FM_AFK_CONTRACT_REACH_ANNOUNCED"
+  printf 'reach_channels: %s\n' "$reach"
+  printf 'reach_announced: %s\n' "$(fm_afk_contract_reach_announced "$reach")"
   printf 'spend_max_concurrent_workers: %s\n' "${SPEND:-$FM_AFK_CONTRACT_SPEND_DEFAULT}"
   printf 'confirmed: %s\n' "$confirmed"
   printf 'confirmed_epoch: %s\n' "$confirmed_epoch"
@@ -404,7 +454,10 @@ fm_afk_contract_validate() {  # <path>
   expected=$(fm_afk_contract_read_field "$path" expected_return)
   [ "$expected" = - ] || fm_afk_contract_validate_iso "$expected" || { fm_afk_contract_log "record $path has no valid expected_return"; return 1; }
   reach=$(fm_afk_contract_read_field "$path" reach_channels)
-  [ "$reach" = none ] || { fm_afk_contract_log "record $path has no valid reach_channels"; return 1; }
+  case "$reach" in
+    none|telegram) ;;
+    *) fm_afk_contract_log "record $path has no valid reach_channels"; return 1 ;;
+  esac
   announced=$(fm_afk_contract_read_field "$path" reach_announced)
   [ -n "$announced" ] || { fm_afk_contract_log "record $path has no reach announcement"; return 1; }
   spend=$(fm_afk_contract_read_field "$path" spend_max_concurrent_workers)
@@ -446,7 +499,11 @@ fm_afk_contract_render_readback() {  # <path>
     printf '  entered: %s\n' "$(fm_afk_contract_read_field "$path" entered)"
     printf '  expected return: %s\n' "$( [ "$expected" = - ] && printf 'not given' || printf '%s' "$expected")"
     printf '  spend cap: %s concurrent workers\n' "$spend"
-    printf '  reach: hold-for-return only. %s\n' "$(fm_afk_contract_read_field "$path" reach_announced)"
+    if [ "$(fm_afk_contract_read_field "$path" reach_channels)" = telegram ]; then
+      printf '  reach: %s\n' "$(fm_afk_contract_read_field "$path" reach_announced)"
+    else
+      printf '  reach: hold-for-return only. %s\n' "$(fm_afk_contract_read_field "$path" reach_announced)"
+    fi
   fi
   words=$(fm_afk_contract_read_words "$path"; rc=$?; printf x; exit "$rc") || return 1
   words=${words%x}
@@ -460,7 +517,7 @@ fm_afk_contract_render_readback() {  # <path>
 }
 
 fm_afk_contract_render_announcement() {  # <path>
-  local path=$1 expected words mandate_text
+  local path=$1 expected words mandate_text reach_lead='hold-for-return only. '
   if [ "$(fm_afk_contract_record_mode "$path")" = quiet ]; then
     printf 'Quiet mode recorded at %s: %s Only an explicit /quiet off ends it.\n' \
       "$(fm_afk_contract_read_field "$path" confirmed)" "$FM_AFK_CONTRACT_QUIET_HOLDS_NOTHING"
@@ -474,8 +531,12 @@ fm_afk_contract_render_announcement() {  # <path>
   else
     mandate_text='No away instructions were recorded; the away session acts on standing authority only, and anything that needs you waits for your return.'
   fi
-  printf 'Away posture recorded at %s: hold-for-return only. %s %s Destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. Expected return: %s. Spend cap: %s concurrent workers.\n' \
+  if [ "$(fm_afk_contract_read_field "$path" reach_channels)" = telegram ]; then
+    reach_lead=''
+  fi
+  printf 'Away posture recorded at %s: %s%s %s Destructive, irreversible, and security-sensitive actions are never pre-authorizable, whatever the words say. Expected return: %s. Spend cap: %s concurrent workers.\n' \
     "$(fm_afk_contract_read_field "$path" confirmed)" \
+    "$reach_lead" \
     "$(fm_afk_contract_read_field "$path" reach_announced)" \
     "$mandate_text" \
     "$( [ "$expected" = - ] && printf 'not given' || printf '%s' "$expected")" \

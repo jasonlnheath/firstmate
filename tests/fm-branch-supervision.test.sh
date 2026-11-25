@@ -50,7 +50,7 @@ test_branch_prompt_is_byte_stable_and_above_cache_floor() {
     *) fail "branch prompt lost the inlined recovery playbook" ;;
   esac
   case "$out_a" in
-    *"Report verdict captain for the finished result of work the captain requested, even when that result is healthy."*"A start or still-working update on requested work that brings no new artifact, finding, or decision is verdict routine."*"Set silent true for a task-level routine outcome only when it says the worker is still busy, nothing new has happened since the last outcome, and no action was taken."*"Any routine outcome reporting an action, state change, or new result stays rendered; captain outcomes are never silent."*"Keep an unsolicited routine outcome as verdict routine"*"Keep an unchanged fleet review silent"*) ;;
+    *"Report verdict captain for the finished result of work the captain requested, even when that result is healthy."*"A start or still-working update on requested work that brings no new artifact, finding, or decision is verdict routine."*"Set silent true for a task-level routine outcome only when it says the worker is still busy, nothing new has happened since the last outcome, and no action was taken."*"Any routine outcome reporting an action, state change, or new result stays rendered; captain outcomes are never silent."*"A captain note's disposition is the one exception: report it as verdict routine with silent true even after the action it took - the pushed reply is already the account, and a rendered row would notify the captain twice for one note."*"Keep an unsolicited routine outcome as verdict routine"*"Keep an unchanged fleet review silent"*) ;;
     *) fail "branch prompt lost the requested-result, progress-routine, or routine-silence rules" ;;
   esac
   case "$out_a" in
@@ -1611,6 +1611,90 @@ WRAPPER
   pass "the away spend cap is rechecked under the task-set lock so concurrent spawns cannot both publish"
 }
 
+# --- the away posture's Telegram note answers (the channel plan's S2) ------
+
+# The emitted prompt is the contract (the byte-stability test above pins its
+# determinism): the away posture must carry the note answer duty with its two
+# dispositions, the note authority reading with its per-your-note marker, the
+# note-disposition silence rule, the ban on composing event lines, the scope
+# refusal for routine digests, and the captain-kind report flag.
+test_branch_prompt_carries_the_away_note_answer_duty() {
+  local prompt
+  prompt=$(bash "$ROOT/bin/fm-branch-prompt.sh") || fail "branch prompt generator failed"
+  assert_contains "$prompt" \
+    "a \`check: captain inbox note\` row is answered in the same turn through \`bin/fm-inbox.sh reply <id> \"<one line>\"\`" \
+    "the prompt lost the away note answer duty"
+  assert_contains "$prompt" 'held for your return -` and names the one thing that waits' \
+    "the prompt lost the hold-for-return reply wording"
+  assert_contains "$prompt" \
+    'Recording an outcome and consuming the wake is never a valid terminal state for a captain note: the pushed reply is.' \
+    "the prompt allows consuming a captain note without answering it"
+  assert_contains "$prompt" \
+    'Report a note you answered or held as verdict routine with silent true' \
+    "a note disposition is not pinned as a routine silent outcome"
+  assert_contains "$prompt" \
+    "A captain note's disposition is the one exception: report it as verdict routine with silent true even after the action it took" \
+    "the silent-eligibility rule does not mark the note-disposition exception"
+  assert_contains "$prompt" \
+    'an action taken on a captain note'\''s words opens with "per your note:" instead' \
+    "the prompt lost the per-your-note marker for actions taken on a note"
+  assert_contains "$prompt" \
+    'so the durable outcome row accounts for each one' \
+    "the away-action marker rationale overpromises past the durable row"
+  assert_contains "$prompt" \
+    'Read the note'\''s words together with the record'\''s words and act on them only through the same guarded scripts and standing limits the record'\''s words already permit' \
+    "the prompt lost the note authority reading"
+  assert_contains "$prompt" \
+    "You never compose Telegram event lines and never call \`bin/fm-tg.sh\`" \
+    "the prompt lets the away session compose its own event lines"
+  assert_contains "$prompt" 'out of the away notification scope' \
+    "the prompt lost the scope refusal for routine digests"
+  assert_contains "$prompt" \
+    'only the record'\''s words, the standing rules, and the captain'\''s own inbox notes do.' \
+    "the mirrored-sentence rule still absolute against the captain'\''s notes"
+  assert_contains "$prompt" \
+    'the away posture'\''s note answers (Postures below) are the one bounded exception' \
+    "the preamble lost its carve-out for the away note answers"
+  assert_contains "$prompt" '--captain-kind decision|review|failure|finished' \
+    "the report step lost the captain-kind flag"
+  assert_contains "$prompt" \
+    'a missing kind still records as the legacy fallback, while a kind outside decision|review|failure|finished is refused and nothing is recorded' \
+    "the report step misstates the enforced captain-kind contract"
+  pass "the branch prompt carries the away note answer duty, its dispositions, the note authority reading, and the captain-kind report flag"
+}
+
+# The outcome store records the captain-facing category of a captain verdict
+# for the away notification lines: every kind is stored on its row, a kindless
+# captain row stays valid in the legacy shape, and an invalid kind or a kind on
+# a routine verdict is refused without touching the store.
+test_outcome_append_records_the_captain_kind() {
+  local home store kind seq row before
+  home="$TMP_ROOT/kind-home"
+  mkdir -p "$home/state"
+  store="$home/state/branch-outcomes.jsonl"
+  for kind in decision review failure finished; do
+    seq=$(FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+      --task alpha --verdict captain --summary "kind $kind" --captain-kind "$kind") \
+      || fail "append with captain kind $kind failed"
+    assert_grep "\"verdict\":\"captain\",\"summary\":\"kind $kind\",\"silent\":false,\"captainKind\":\"$kind\"" \
+      "$store" "the $kind kind was not recorded on its row"
+  done
+  seq=$(FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task alpha --verdict captain --summary 'kindless captain row') \
+    || fail "append without a captain kind failed"
+  row=$(tail -n 1 "$store")
+  case "$row" in *captainKind*) fail "a kindless captain row carries a captainKind field: $row" ;; esac
+  before=$(cat "$store")
+  FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task alpha --verdict captain --summary 'bad kind' --captain-kind lunch >/dev/null 2>&1 \
+    && fail "an unknown captain kind was accepted"
+  FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task alpha --verdict routine --summary 'kind on routine' --silent true --captain-kind decision >/dev/null 2>&1 \
+    && fail "a captain kind was accepted on a routine verdict"
+  [ "$(cat "$store")" = "$before" ] || fail "a refused kind changed the durable store"
+  pass "the outcome store records each captain kind, keeps kindless captain rows valid, and refuses kinds on routine verdicts or unknown values"
+}
+
 test_branch_prompt_is_byte_stable_and_above_cache_floor
 test_branch_prompt_routes_completed_scouts_through_guarded_cleanup
 test_outcome_store_is_append_only_with_cursor_reads
@@ -1647,3 +1731,5 @@ test_away_record_relocates_main_owned_actions_to_the_branch
 test_away_branch_spawn_requires_queued_dispatchable_work
 test_away_spend_cap_is_rechecked_under_the_task_set_lock
 test_quiet_record_never_caps_a_present_captains_spawn
+test_branch_prompt_carries_the_away_note_answer_duty
+test_outcome_append_records_the_captain_kind

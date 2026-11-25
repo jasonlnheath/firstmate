@@ -2809,6 +2809,30 @@ EOF
   pass "the AFK digest reads a quiet record as a present captain holding nothing, and an away record as hold-for-return"
 }
 
+# A telegram away window must not read as hold-for-return in the AFK digest:
+# the digest states the record's own reach profile, so a branch relaying a
+# status answer off it carries the true profile to the captain.
+test_away_digest_reads_the_record_reach_profile() {
+  local rec root home fakebin out
+  rec=$(new_world away-reach-digest)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf '%s\n' 'telegram:424242' > "$home/config/tg-target"
+  FM_HOME="$home" "$ROOT/bin/fm-afk-contract.sh" enter >/dev/null 2>&1 || fail "away entry with the lane configured failed"
+
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  assert_contains "$out" "present - away posture recorded at" "AFK digest did not name the away record"
+  assert_contains "$out" "Telegram is this away window's channel: your messages there get a prompt answer" \
+    "AFK digest lost the telegram reach for a lane-configured away record"
+  assert_not_contains "$out" "hold-for-return only" "AFK digest read a telegram away window as hold-for-return only"
+
+  pass "the AFK digest renders the away record's reach profile instead of a hardcoded hold-for-return"
+}
+
 test_next_step_afk_legacy_empty_flag_defaults_away() {
   local rec root home fakebin out
   rec=$(new_world next-step-afk-legacy)
@@ -3136,6 +3160,7 @@ test_next_step_sources_x_mode_cadence
 test_next_step_afk_delegates_to_daemon
 test_next_step_quiet_mode_delegates_to_daemon
 test_quiet_record_digest_holds_nothing_for_a_return
+test_away_digest_reads_the_record_reach_profile
 test_next_step_afk_legacy_empty_flag_defaults_away
 test_supervision_block_exactly_one_and_pi_diagnostic
 test_pi_signed_primary_uses_pi_extensions_without_identity_normalization

@@ -1798,6 +1798,72 @@ EOF
   pass "branch prompt_cache_key is stable per home across sessions and distinct between homes"
 }
 
+# The fm_branch_report tool records the captain verdict's kind (the channel
+# plan's S2 --captain-kind twin): the parameter reaches the store row, and a
+# kind on a routine verdict or an unknown kind is refused without a store
+# append.
+test_branch_report_tool_records_the_captain_kind() {
+  local repo home
+  repo="$TMP_ROOT/report-kind-root"
+  home="$TMP_ROOT/report-kind-home"
+  mkdir -p "$home/state" "$home/config"
+  install_pi_branch_extension_fixture "$repo"
+  PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-kind-output" 2>&1 <<'EOF' || true
+const prelude = process.env.DRIVER_PRELUDE;
+await eval(`(async () => { ${prelude}; globalThis.__t = { fire, dispatch, settle, defaultSessionCtx, home }; })()`);
+const { fire, dispatch, settle, defaultSessionCtx, home } = globalThis.__t;
+import { readFileSync, writeFileSync } from "node:fs";
+
+writeFileSync(`${home}/state/.lock`, `${process.ppid}\n`);
+await fire("session_start", {}, defaultSessionCtx);
+let finishWakePrompt;
+globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishWakePrompt = resolve; });
+const offer = dispatch("signal: task-9 done: PR https://example.com/pr/9 checks green");
+if (!offer.accepted) throw new Error("branch did not accept the wake offer");
+await settle(() => (globalThis.__fmPrompts ?? []).length === 1, "branch wake prompt");
+const session = globalThis.__fmSessions[0];
+const report = session.options.customTools.find((tool) => tool.name === "fm_branch_report");
+
+const schema = report.parameters.properties.captainKind;
+if (!schema || !String(schema.description).includes("decision|review|failure|finished")) {
+  throw new Error(`captainKind schema missing or vague: ${JSON.stringify(schema)}`);
+}
+const ok = await report.execute(
+  "kind-1",
+  { task: "branch-driver", verdict: "captain", summary: "PR ready for review", captainKind: "review", wake: "signal: working" },
+  undefined, undefined, {},
+);
+if (ok.isError) throw new Error(`captain report with its kind failed: ${JSON.stringify(ok)}`);
+finishWakePrompt();
+await offer.settlement;
+globalThis.__fmOnBranchPrompt = undefined;
+const row = JSON.parse(readFileSync(`${home}/state/branch-outcomes.jsonl`, "utf8").trim().split("\n")[0]);
+if (row.captainKind !== "review") throw new Error(`captainKind did not reach the store: ${JSON.stringify(row)}`);
+
+const routineKind = await report.execute(
+  "kind-2",
+  { task: "task-9", verdict: "routine", summary: "no kind on routine", captainKind: "review" },
+  undefined, undefined, {},
+);
+if (!routineKind.isError) throw new Error("a routine report with a captain kind must be refused");
+const unknownKind = await report.execute(
+  "kind-3",
+  { task: "task-9", verdict: "captain", summary: "unknown kind", captainKind: "lunch" },
+  undefined, undefined, {},
+);
+if (!unknownKind.isError) throw new Error("an unknown captain kind must be refused");
+const lines = readFileSync(`${home}/state/branch-outcomes.jsonl`, "utf8").trim().split("\n");
+if (lines.length !== 1) throw new Error(`refused reports changed the store: ${lines.length} rows`);
+process.exit(0);
+EOF
+  [ -s "$TMP_ROOT/node-kind-output" ] && fail "branch report captain-kind driver failed: $(cat "$TMP_ROOT/node-kind-output")"
+  [ -s "$home/state/branch-outcomes.jsonl" ] || fail "the driver never recorded its kind row"
+  grep -q '"captainKind":"review"' "$home/state/branch-outcomes.jsonl" \
+    || fail "the recorded outcome row does not carry the kind"
+  pass "the fm_branch_report tool records the captain kind and refuses it on routine verdicts or unknown values"
+}
+
 test_branch_default_on_heartbeat_afk_and_fallback() {
   local repo broken home out status
   repo="$TMP_ROOT/gating-root"
@@ -6285,3 +6351,4 @@ test_delivery_keeps_the_event_loop_live_and_ordered
 test_session_replacement_during_delivery_neither_loses_nor_duplicates
 test_store_failure_during_delivery_neither_loses_nor_duplicates
 test_mark_read_failure_keeps_routine_redelivery_and_captain_deduplication
+test_branch_report_tool_records_the_captain_kind
