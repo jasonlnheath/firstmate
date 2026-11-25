@@ -10,9 +10,10 @@
 # Being away changes how the captain is informed and what happens at a
 # captain-owned decision point, never the authority set. The away posture's
 # reach follows the outbound Telegram lane: an away entry records
-# reach_channels: telegram while gitignored config/tg-target exists (the lane
-# bin/fm-tg.sh owns) and none otherwise, so the record reflects the channel
-# that actually exists, and the entry announcement says which every time.
+# reach_channels: telegram while the lane bin/fm-tg.sh owns resolves a target
+# (a readable gitignored config/tg-target holding a non-comment, non-blank
+# line) and none otherwise, so the record reflects the channel that actually
+# exists, and the entry announcement says which every time.
 # Hold-for-return is the reach profile of a channel-less away record.
 #
 # AWAY OR QUIET. The same record also backs daemon-backed quiet mode, which a
@@ -57,8 +58,8 @@
 #   expected_return: <UTC ISO 8601> | -
 #   reach_channels: none|telegram   telegram only on an away entry while the
 #                                  outbound lane is configured (config/tg-
-#                                  target); every other record, quiet mode
-#                                  included, records none
+#                                  target resolving a target); every other
+#                                  record, quiet mode included, records none
 #   reach_announced: <the one-sentence reach announcement matching the
 #                                  recorded channels>
 #   spend_max_concurrent_workers: <n>   without --spend, the ordinary worker
@@ -304,11 +305,28 @@ fm_afk_contract_now_iso() {
   date -u +%Y-%m-%dT%H:%M:%SZ
 }
 
+# The outbound lane's own notion of configured (bin/fm-tg.sh read_setting,
+# which every push resolves its target with): a readable config/tg-target
+# holding at least one non-comment, non-blank line. A commented-out or empty
+# tg-target is the lane's supported off gesture.
+fm_afk_contract_lane_configured() {
+  local path="$FM_AFK_CONTRACT_CONFIG/tg-target" line
+  [ -r "$path" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%%#*}
+    line=${line#"${line%%[![:space:]]*}"}
+    line=${line%"${line##*[![:space:]]}"}
+    [ -n "$line" ] || continue
+    return 0
+  done < "$path"
+  return 1
+}
+
 # The reach profile an entry records: telegram only for an away entry while
 # the outbound lane is configured, none for every other record including quiet
 # mode's, whose captain is present.
 fm_afk_contract_entry_reach() {  # <entry-mode>
-  if [ "$1" = away ] && [ -f "$FM_AFK_CONTRACT_CONFIG/tg-target" ]; then
+  if [ "$1" = away ] && fm_afk_contract_lane_configured; then
     printf 'telegram\n'
   else
     printf 'none\n'

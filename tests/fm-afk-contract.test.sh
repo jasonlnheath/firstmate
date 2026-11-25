@@ -627,10 +627,11 @@ test_away_entry_over_quiet_mode_becomes_away_and_quiet_never_masks_away() {
 # --- the away posture's reach channel (the Telegram channel plan's S2) ------
 #
 # The record reflects the outbound lane that actually exists: an away entry
-# records reach_channels: telegram while gitignored config/tg-target exists
-# (the lane bin/fm-tg.sh owns) and none otherwise, the announcement and
-# read-back say which every time, a quiet entry never records a channel, and
-# the validator accepts exactly none and telegram.
+# records reach_channels: telegram while the outbound lane bin/fm-tg.sh owns
+# resolves a target (a readable gitignored config/tg-target with a non-comment,
+# non-blank line) and none otherwise, the announcement and read-back say which
+# every time, a quiet entry never records a channel, and the validator accepts
+# exactly none and telegram.
 
 REACH_TELEGRAM="Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you."
 
@@ -685,6 +686,25 @@ test_quiet_entry_never_records_telegram_reach() {
     || fail 'a quiet record recorded the telegram reach channel'
   assert_not_contains "$out" 'Telegram' 'the quiet announcement names no reach channel'
   pass 'a quiet entry records no reach channel even while the outbound lane is configured'
+}
+
+# The lane's own resolution (bin/fm-tg.sh read_setting, which every push
+# resolves its target with) reads a tg-target whose lines are all comments or
+# blank as lane off: commenting out the chat id is the captain's supported
+# disable gesture, so an away entry over it must not record or announce a
+# channel every push would refuse.
+test_away_entry_over_a_commented_out_target_records_no_reach() {
+  local home out
+  home=$(make_home commented-lane)
+  mkdir -p "$home/config"
+  printf '%s\n' '# telegram:424242' '' '   # off while travelling' > "$home/config/tg-target"
+  out=$(contract "$home" enter 2>&1) || fail "away entry over a commented-out tg-target failed: $out"
+  [ "$(contract "$home" field reach_channels)" = none ] \
+    || fail "a commented-out tg-target recorded the reach channel: $(contract "$home" field reach_channels)"
+  assert_contains "$out" 'hold-for-return only. No phone channel is configured; anything that needs you waits for your return.' \
+    'a commented-out lane was not announced as hold-for-return only'
+  assert_not_contains "$out" 'Telegram' 'a commented-out lane named Telegram'
+  pass 'an away entry over a commented-out tg-target records reach none, matching the lane it mirrors'
 }
 
 test_validator_accepts_none_and_telegram_reach_only() {
@@ -768,4 +788,5 @@ test_away_entry_over_quiet_mode_becomes_away_and_quiet_never_masks_away
 test_away_entry_records_telegram_reach_when_the_lane_is_configured
 test_away_entry_without_the_lane_records_no_reach
 test_quiet_entry_never_records_telegram_reach
+test_away_entry_over_a_commented_out_target_records_no_reach
 test_validator_accepts_none_and_telegram_reach_only

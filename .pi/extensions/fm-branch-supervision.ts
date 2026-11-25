@@ -1232,7 +1232,7 @@ export default function (pi: ExtensionAPI) {
         }),
         wake: Type.Optional(Type.String({ description: "The wake reason line this outcome answers" })),
         silent: Type.Optional(Type.Boolean({
-          description: "True only for an eligible routine no-change outcome; captain outcomes are never silent, and actions, state changes, or new results stay rendered",
+          description: "True only for an eligible routine no-change outcome; captain outcomes are never silent, and actions, state changes, or new results stay rendered - a captain note's disposition is the one exception (routine silent true, the pushed reply as the account)",
         })),
         captainKind: Type.Optional(Type.Union([
           Type.Literal("decision"),

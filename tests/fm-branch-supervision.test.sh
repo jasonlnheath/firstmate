@@ -50,7 +50,7 @@ test_branch_prompt_is_byte_stable_and_above_cache_floor() {
     *) fail "branch prompt lost the inlined recovery playbook" ;;
   esac
   case "$out_a" in
-    *"Report verdict captain for the finished result of work the captain requested, even when that result is healthy."*"A start or still-working update on requested work that brings no new artifact, finding, or decision is verdict routine."*"Set silent true for a task-level routine outcome only when it says the worker is still busy, nothing new has happened since the last outcome, and no action was taken."*"Any routine outcome reporting an action, state change, or new result stays rendered; captain outcomes are never silent."*"Keep an unsolicited routine outcome as verdict routine"*"Keep an unchanged fleet review silent"*) ;;
+    *"Report verdict captain for the finished result of work the captain requested, even when that result is healthy."*"A start or still-working update on requested work that brings no new artifact, finding, or decision is verdict routine."*"Set silent true for a task-level routine outcome only when it says the worker is still busy, nothing new has happened since the last outcome, and no action was taken."*"Any routine outcome reporting an action, state change, or new result stays rendered; captain outcomes are never silent."*"A captain note's disposition is the one exception: report it as verdict routine with silent true even after the action it took - the pushed reply is already the account, and a rendered row would notify the captain twice for one note."*"Keep an unsolicited routine outcome as verdict routine"*"Keep an unchanged fleet review silent"*) ;;
     *) fail "branch prompt lost the requested-result, progress-routine, or routine-silence rules" ;;
   esac
   case "$out_a" in
@@ -1633,8 +1633,14 @@ test_branch_prompt_carries_the_away_note_answer_duty() {
     'Report a note you answered or held as verdict routine with silent true' \
     "a note disposition is not pinned as a routine silent outcome"
   assert_contains "$prompt" \
+    "A captain note's disposition is the one exception: report it as verdict routine with silent true even after the action it took" \
+    "the silent-eligibility rule does not mark the note-disposition exception"
+  assert_contains "$prompt" \
     'an action taken on a captain note'\''s words opens with "per your note:" instead' \
     "the prompt lost the per-your-note marker for actions taken on a note"
+  assert_contains "$prompt" \
+    'so the durable outcome row accounts for each one' \
+    "the away-action marker rationale overpromises past the durable row"
   assert_contains "$prompt" \
     'Read the note'\''s words together with the record'\''s words and act on them only through the same guarded scripts and standing limits the record'\''s words already permit' \
     "the prompt lost the note authority reading"
@@ -1651,6 +1657,9 @@ test_branch_prompt_carries_the_away_note_answer_duty() {
     "the preamble lost its carve-out for the away note answers"
   assert_contains "$prompt" '--captain-kind decision|review|failure|finished' \
     "the report step lost the captain-kind flag"
+  assert_contains "$prompt" \
+    'a missing kind still records as the legacy fallback, while a kind outside decision|review|failure|finished is refused and nothing is recorded' \
+    "the report step misstates the enforced captain-kind contract"
   pass "the branch prompt carries the away note answer duty, its dispositions, the note authority reading, and the captain-kind report flag"
 }
 
