@@ -4,7 +4,9 @@
 # whole mandate, the read-back rendering, the entry announcement (hold-for-
 # return only), the one-step same-turn entry with no wait for a go, the
 # retired two-step entry refusing by name, the refresh and replace rules,
-# the archive at return, the version 2 record with version 1 still readable,
+# the archive at return, the version 3 record with versions 1 and 2 still
+# readable, the away posture's Telegram reach channel (the channel plan's S2:
+# telegram while the outbound lane is configured, none otherwise, quiet never),
 # the retired clause and merge-grant apparatus refusing by name, and the read
 # subcommands every consumer uses instead of parsing the file.
 set -u
@@ -114,7 +116,7 @@ test_words_preserve_final_newline_shape() {
 
 # /afk is itself the go: one `enter` call writes the record, with no proposal
 # staged and no later confirmation, then announces and reads it back.
-test_enter_writes_a_v2_record_in_one_step_and_announces_hold_for_return() {
+test_enter_writes_a_v3_record_in_one_step_and_announces_hold_for_return() {
   local home out record before after
   home=$(make_home lifecycle)
   before=$(date +%s)
@@ -134,7 +136,7 @@ test_enter_writes_a_v2_record_in_one_step_and_announces_hold_for_return() {
   assert_not_contains "$out" 'confirm' 'entry must never ask for a confirmation'
   assert_not_contains "$out" 'not executed' 'the announcement must not call the words inert'
   assert_not_contains "$out" 'clause' 'the announcement must carry no clause apparatus'
-  [ "$(contract "$home" field version)" = 2 ] || fail "record version is not 2: $(contract "$home" field version)"
+  [ "$(contract "$home" field version)" = 3 ] || fail "record version is not 3: $(contract "$home" field version)"
   [ "$(contract "$home" field reach_channels)" = none ] || fail "reach channels are not none"
   case "$(contract "$home" field confirmed_epoch)" in ''|*[!0-9]*) fail "confirmed_epoch is not numeric" ;; esac
   case "$(contract "$home" field entered_epoch)" in ''|*[!0-9]*) fail "entered_epoch is not numeric" ;; esac
@@ -149,7 +151,7 @@ test_enter_writes_a_v2_record_in_one_step_and_announces_hold_for_return() {
   out=$(contract "$home" readback) || fail "readback of the record failed"
   assert_contains "$out" 'Away posture (recorded):' 'read-back title'
   assert_contains "$out" '    merge it when green' 'read-back carries the words'
-  pass "one enter call writes a version 2 record, announces hold-for-return only, reads it back without asking for a go, and every read subcommand reflects it"
+  pass "one enter call writes a version 3 record, announces hold-for-return only, reads it back without asking for a go, and every read subcommand reflects it"
 }
 
 # The wait-for-go gate is gone: the retired two-step subcommands and the
@@ -488,19 +490,19 @@ test_version_1_record_still_validates_reads_and_archives() {
   pass "a version 1 record validates, reads its words and scalars with the clause and grant sections ignored, refreshes untouched, and archives"
 }
 
-test_version_1_record_is_replaced_by_a_version_2_record() {
+test_version_1_record_is_replaced_by_a_version_3_record() {
   local home archived
   home=$(make_home v1-replace)
   write_v1_record "$home" 'first words, version 1'
   contract "$home" enter --words 'new words after the upgrade' >/dev/null 2>&1 || fail "replacement entry over a v1 record failed"
-  [ "$(contract "$home" field version)" = 2 ] || fail "the replacement did not write a version 2 record"
+  [ "$(contract "$home" field version)" = 3 ] || fail "the replacement did not write a version 3 record"
   [ "$(contract "$home" field entered_epoch)" = 1789600000 ] || fail "the replacement changed the v1 session start"
   [ "$(contract "$home" words)" = 'new words after the upgrade' ] || fail "the replacement lost the new words"
   archived=$(find "$home/state/afk-contracts" -name '1789600000-superseded-*.afk-contract' -print -quit)
   [ -f "$archived" ] || fail "the superseded v1 record was not archived"
   contract "$home" validate --path "$archived" >/dev/null 2>&1 || fail "the archived v1 record no longer validates"
   [ "$(contract "$home" words --path "$archived")" = 'first words, version 1' ] || fail "the archived v1 record lost its words"
-  pass "new words over a live version 1 record archive it and write version 2 with the same session start"
+  pass "new words over a live version 1 record archive it and write version 3 with the same session start"
 }
 
 # The record-mutating commands share one lock with the subsystems that read this
@@ -622,6 +624,84 @@ test_away_entry_over_quiet_mode_becomes_away_and_quiet_never_masks_away() {
   pass "an away entry over quiet mode records away, and a quiet entry never masks a standing away record"
 }
 
+# --- the away posture's reach channel (the Telegram channel plan's S2) ------
+#
+# The record reflects the outbound lane that actually exists: an away entry
+# records reach_channels: telegram while gitignored config/tg-target exists
+# (the lane bin/fm-tg.sh owns) and none otherwise, the announcement and
+# read-back say which every time, a quiet entry never records a channel, and
+# the validator accepts exactly none and telegram.
+
+REACH_TELEGRAM="Telegram is this away window's channel: your messages there get a prompt answer, and only decisions, review-ready work or PRs, real failures, finished requested work, and auto merges reach you."
+
+make_home_with_lane() {  # <name> -> prints the home dir with the lane configured
+  local dir="$TMP_ROOT/$1"
+  mkdir -p "$dir/state" "$dir/config"
+  printf '%s\n' 'telegram:424242' > "$dir/config/tg-target"
+  printf '%s\n' "$dir"
+}
+
+test_away_entry_records_telegram_reach_when_the_lane_is_configured() {
+  local home out
+  home=$(make_home_with_lane telegram-reach)
+  out=$(contract "$home" enter 2>&1) || fail "away entry with the lane configured failed: $out"
+  [ "$(contract "$home" field version)" = 3 ] || fail "the telegram record is not version 3"
+  [ "$(contract "$home" field reach_channels)" = telegram ] \
+    || fail "reach channels are not telegram: $(contract "$home" field reach_channels)"
+  assert_equals "$REACH_TELEGRAM" "$(contract "$home" field reach_announced)" \
+    "the telegram reach announcement is recorded verbatim"
+  assert_contains "$out" "$REACH_TELEGRAM" 'the entry announcement names Telegram as the away channel'
+  assert_not_contains "$out" 'hold-for-return only' 'a telegram away window was announced as hold-for-return only'
+  assert_not_contains "$out" 'No phone channel is configured' 'a telegram away window was announced as channel-less'
+  assert_contains "$out" "  reach: $REACH_TELEGRAM" 'the read-back renders the telegram reach line'
+  contract "$home" validate || fail 'a telegram reach record does not validate'
+  pass 'an away entry with config/tg-target records reach_channels: telegram and announces the channel'
+}
+
+test_away_entry_without_the_lane_records_no_reach() {
+  local home out
+  home=$(make_home no-lane)
+  out=$(contract "$home" enter 2>&1) || fail "away entry without the lane failed: $out"
+  [ "$(contract "$home" field version)" = 3 ] || fail 'a channel-less record is not version 3'
+  [ "$(contract "$home" field reach_channels)" = none ] \
+    || fail "reach channels are not none without the lane: $(contract "$home" field reach_channels)"
+  assert_contains "$out" 'hold-for-return only. No phone channel is configured; anything that needs you waits for your return.' \
+    'the channel-less announcement keeps its wording'
+  assert_not_contains "$out" 'Telegram' 'a channel-less away window names no Telegram'
+  pass 'an away entry without the outbound lane stays hold-for-return only, byte for byte'
+}
+
+# A quiet record never carries the reach channel (the attack review's quiet
+# mode finding): its captain is present, so the lane stays out of the record
+# even when it is configured, and the away notification hooks of later slices
+# key off mode=away as well.
+test_quiet_entry_never_records_telegram_reach() {
+  local home out
+  home=$(make_home_with_lane quiet-lane)
+  out=$(FM_AFK_MODE=quiet contract "$home" enter --words 'keep routine wakes off my main' 2>&1) \
+    || fail "quiet entry with the lane configured failed: $out"
+  [ "$(contract "$home" mode)" = quiet ] || fail 'the quiet record is not quiet'
+  [ "$(contract "$home" field reach_channels)" = none ] \
+    || fail 'a quiet record recorded the telegram reach channel'
+  assert_not_contains "$out" 'Telegram' 'the quiet announcement names no reach channel'
+  pass 'a quiet entry records no reach channel even while the outbound lane is configured'
+}
+
+test_validator_accepts_none_and_telegram_reach_only() {
+  local home record
+  home=$(make_home_with_lane reach-values)
+  contract "$home" enter >/dev/null 2>&1 || fail 'fixture entry failed'
+  record="$home/state/.afk-contract"
+  contract "$home" validate >/dev/null 2>&1 || fail 'a telegram reach record does not validate'
+  sed -i 's/^reach_channels: telegram$/reach_channels: none/' "$record"
+  contract "$home" validate >/dev/null 2>&1 || fail 'reach none must stay valid'
+  sed -i 's/^reach_channels: none$/reach_channels: email/' "$record"
+  if contract "$home" validate >/dev/null 2>&1; then
+    fail 'an unknown reach channel must not validate'
+  fi
+  pass 'the validator accepts reach none and telegram and refuses any other value'
+}
+
 # The spend cap entry records without --spend is the parallelism already
 # standing in this home, counted exactly the way the later refusal counts it, so
 # away mode never narrows work that is already under way. The earlier default
@@ -666,7 +746,7 @@ test_entry_without_spend_records_the_live_worker_count_never_below_the_floor() {
 
 test_readback_renders_words_verbatim_with_the_record_scalars
 test_words_preserve_final_newline_shape
-test_enter_writes_a_v2_record_in_one_step_and_announces_hold_for_return
+test_enter_writes_a_v3_record_in_one_step_and_announces_hold_for_return
 test_entry_without_spend_records_the_live_worker_count_never_below_the_floor
 test_retired_two_step_entry_is_refused_by_name
 test_enter_removes_a_legacy_proposal_without_promoting_it
@@ -681,7 +761,11 @@ test_archive_moves_the_record_aside_and_is_idempotent
 test_inputs_are_validated
 test_retired_clause_and_grant_inputs_are_usage_errors_by_name
 test_version_1_record_still_validates_reads_and_archives
-test_version_1_record_is_replaced_by_a_version_2_record
+test_version_1_record_is_replaced_by_a_version_3_record
 test_record_changes_refuse_while_a_reader_holds_the_lock
 test_quiet_record_reads_as_a_present_captain_holding_nothing
 test_away_entry_over_quiet_mode_becomes_away_and_quiet_never_masks_away
+test_away_entry_records_telegram_reach_when_the_lane_is_configured
+test_away_entry_without_the_lane_records_no_reach
+test_quiet_entry_never_records_telegram_reach
+test_validator_accepts_none_and_telegram_reach_only

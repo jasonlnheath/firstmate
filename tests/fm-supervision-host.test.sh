@@ -410,6 +410,39 @@ test_report_after_the_return_is_queued_for_main() {
   pass "report surface: visible late outcomes queue a relay, while silent outcomes remain stored without a wake or note"
 }
 
+# The report surface carries the captain verdict's kind into the outcome row
+# for the away notification lines, refuses an unknown kind or a kind on a
+# routine verdict, and still records a kindless captain report.
+test_report_surface_records_the_captain_kind() {
+  local home state out rc
+  home="$TMP_ROOT/report-kind"
+  state="$home/state"
+  mkdir -p "$state"
+  printf 'turn=t1\nrows=4\ntasks=alpha\nunscoped=0\nwake=signal: alpha.status\n' > "$state/.supervision-host-turn"
+
+  out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_BRANCH_REPORT_TURN=t1 "$REPORT" \
+    --task alpha --verdict captain --summary 'PR ready' --captain-kind review 2>&1); rc=$?
+  expect_code 0 "$rc" "a captain report with its kind must be recorded"
+  assert_contains "$out" "recorded seq 1 [captain]" "the kind report lost its store sequence"
+  assert_grep '"verdict":"captain","summary":"PR ready","silent":false,"captainKind":"review"' \
+    "$state/branch-outcomes.jsonl" "the kind did not reach the outcome store"
+
+  out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_BRANCH_REPORT_TURN=t1 "$REPORT" \
+    --task alpha --verdict captain --summary 'no kind given' 2>&1); rc=$?
+  expect_code 0 "$rc" "a kindless captain report must still record"
+  assert_grep '"summary":"no kind given","silent":false,"statusEndpoint"' \
+    "$state/branch-outcomes.jsonl" "the kindless captain row is not in the legacy shape"
+
+  out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_BRANCH_REPORT_TURN=t1 "$REPORT" \
+    --task alpha --verdict captain --summary 'bad kind' --captain-kind lunch 2>&1); rc=$?
+  expect_code 2 "$rc" "an unknown captain kind must be a usage error"
+
+  out=$(FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_BRANCH_REPORT_TURN=t1 "$REPORT" \
+    --task alpha --verdict routine --summary 'kind on routine' --silent true --captain-kind decision 2>&1); rc=$?
+  expect_code 2 "$rc" "a routine report must not carry a captain kind"
+  pass "report surface: a captain verdict records its kind, and kinds on routine verdicts or unknown values are refused"
+}
+
 # --- dispatch entry -----------------------------------------------------------
 
 test_dispatch_entry_scopes_rows_and_renders_the_away_tail() {
@@ -3406,6 +3439,7 @@ test_claude_stop_hook_notifies_when_closed_announced_successor_downtime_restore_
 test_park_exit_probe_uses_half_second_child_sleeps
 test_report_surface_enforces_actor_turn_and_scope
 test_report_after_the_return_is_queued_for_main
+test_report_surface_records_the_captain_kind
 test_dispatch_entry_scopes_rows_and_renders_the_away_tail
 test_branch_outcomes_only_on_a_host_home_off_pi
 test_branch_outcomes_put_captain_first_and_collapse_routine_overflow

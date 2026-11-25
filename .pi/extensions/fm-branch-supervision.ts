@@ -202,6 +202,9 @@ const PROCESSING_INSTRUCTION =
 type MirrorItem = { tag: "captain" | "main"; text: string };
 type MirrorCursor = { file: string; index: number };
 type Verdict = "routine" | "captain";
+// The captain-facing categories a captain verdict may carry (the store's
+// --captain-kind contract, bin/fm-branch-outcome.sh header).
+const CAPTAIN_KINDS: readonly string[] = ["decision", "review", "failure", "finished"];
 type LockOwnership = "owned" | "other" | "missing";
 type OutcomeRow = {
   seq: number;
@@ -1231,6 +1234,15 @@ export default function (pi: ExtensionAPI) {
         silent: Type.Optional(Type.Boolean({
           description: "True only for an eligible routine no-change outcome; captain outcomes are never silent, and actions, state changes, or new results stay rendered",
         })),
+        captainKind: Type.Optional(Type.Union([
+          Type.Literal("decision"),
+          Type.Literal("review"),
+          Type.Literal("failure"),
+          Type.Literal("finished"),
+        ], {
+          description:
+            "The captain-facing category of a captain verdict: decision|review|failure|finished, matching the category the verdict names; never on a routine verdict",
+        })),
       }),
       execute: async (_toolCallId, params) => {
         const task = String((params as { task: unknown }).task || "").trim();
@@ -1238,6 +1250,7 @@ export default function (pi: ExtensionAPI) {
         const summary = String((params as { summary: unknown }).summary || "").trim();
         const wake = String((params as { wake?: unknown }).wake ?? "").trim();
         const silent = (params as { silent?: unknown }).silent === true;
+        const captainKindRaw = String((params as { captainKind?: unknown }).captainKind ?? "");
         if (!task || !summary || (verdictRaw !== "routine" && verdictRaw !== "captain")) {
           return {
             content: [{ type: "text", text: "invalid report: task, verdict (routine|captain), and summary are required" }],
@@ -1252,12 +1265,27 @@ export default function (pi: ExtensionAPI) {
             isError: true,
           };
         }
+        if (captainKindRaw && !CAPTAIN_KINDS.includes(captainKindRaw)) {
+          return {
+            content: [{ type: "text", text: "invalid report: captainKind must be one of decision|review|failure|finished" }],
+            details: undefined,
+            isError: true,
+          };
+        }
+        if (captainKindRaw && verdictRaw !== "captain") {
+          return {
+            content: [{ type: "text", text: "invalid report: a captain kind is recorded only on a captain verdict" }],
+            details: undefined,
+            isError: true,
+          };
+        }
         const verdict = verdictRaw as Verdict;
         const scopeRefusal = wakeScopeRefusal(task);
         if (scopeRefusal) {
           return { content: [{ type: "text", text: scopeRefusal }], details: undefined, isError: true };
         }
         const appendArgs = ["append", "--task", task, "--verdict", verdict, "--summary", summary, "--silent", String(silent)];
+        if (captainKindRaw) appendArgs.push("--captain-kind", captainKindRaw);
         if (wake) appendArgs.push("--wake", wake);
         // Ownership, the durable append, and the delivery it authorizes are
         // ONE unit of the delivery queue: store-before-visible-delivery and
