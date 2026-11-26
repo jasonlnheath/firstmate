@@ -221,6 +221,26 @@ suite_cleanup() {
 }
 trap suite_cleanup EXIT
 
+# A passing test's fake sessions, host, and watchers otherwise keep polling
+# until the whole suite exits, and their pile-up is what pushes this script
+# past the serial lane's time cap on slow runners. Stop each finished test's
+# fixtures with the same helper the exit trap uses, so only a failing test's
+# home waits for the trap; the sweep stops processes and deletes nothing.
+SWEPT_HOMES=0
+sweep_new_homes() {  # stop the fixtures homes registered since the last sweep
+  local home count
+  [ -f "$HOMES_FILE" ] || return 0
+  count=$(wc -l < "$HOMES_FILE")
+  while IFS= read -r home; do
+    [ -n "$home" ] && stop_home_processes "$home"
+  done < <(tail -n +"$((SWEPT_HOMES + 1))" "$HOMES_FILE")
+  SWEPT_HOMES=$((count))
+}
+pass() {  # tests/lib.sh's reporter, with this test's fixtures stopped first
+  sweep_new_homes
+  printf 'ok - %s\n' "$1"
+}
+
 make_home() {  # <name> <attended|away|quiet> [config line]
   local home="$TMP_ROOT/$1"
   mkdir -p "$home/state" "$home/config" "$home/fakebin"
