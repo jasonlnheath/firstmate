@@ -1,0 +1,17 @@
+label=base
+worktree=/tmp/fm-serial1-base.ldCeoH
+unit=fm-serial1-base-1795658628
+runner_exit=0
+duration_seconds=412
+ok_lines=88
+not_ok_lines=0
+fixture_root=/tmp/fm-supervision-host.HOxRgD
+FM_TEST_END 2026-11-26T02:10:39Z tests/fm-supervision-host.test.sh exit=0 duration_ms=410306 gate_skip=false
+samples=191
+max_descendants=118
+median_descendants=56
+mean_descendants=56.3
+max_root_args=55
+median_root_args=31
+first_sample=1795658628,0,0,0
+last_sample=1795659038,88,22,4

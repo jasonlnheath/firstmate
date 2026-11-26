@@ -1,0 +1,38 @@
+mid-run sweep check (target arm), taken at 32 tests passed
+fixture_root=/tmp/fm-supervision-host.NtgyM0
+
+homes registered: 15 ; homes still on disk: 38
+
+per passed-home: directory present? live processes naming it?
+  hook-inherited-handling-restore: dir=yes live_procs=0
+  hook-inherited-handling-refuse: dir=yes live_procs=0
+  hook-returned-driver-attended: dir=yes live_procs=0
+  hook-returned-driver-away: dir=yes live_procs=0
+  lost-handoff-boundary: dir=yes live_procs=0
+  lost-handoff-pass-through: dir=yes live_procs=0
+  hook-turns-main-only-ack: dir=yes live_procs=0
+  handoff-doorbell: dir=yes live_procs=0
+  hook-successor-closed-before-return: dir=yes live_procs=0
+  hook-successor-closed-before-outcome: dir=yes live_procs=0
+  hook-successor-restore-fails-pending: dir=yes live_procs=0
+  hook-successor-restore-fails-announced: dir=yes live_procs=0
+  park-cadence: dir=yes live_procs=0
+  attended-routine: dir=yes live_procs=0
+  handled-then-term: dir=yes live_procs=2
+
+live processes naming ANY registered home path (should be only the in-flight test's home):
+ 179827 sed s#<HOME>#<HOME>#g
+ 179909 sed s#<HOME>#<HOME>#g
+ 179984 sed s#<HOME>#<HOME>#g
+ 180044 sed s#<HOME>#<HOME>#g
+ 180083 sed s#<HOME>#<HOME>#g
+ 180137 sed s#<HOME>#<HOME>#g
+ 180166 sed s#<HOME>#<HOME>#g
+ 180195 sed s#<HOME>#<HOME>#g
+ 180272 sed s#<HOME>#<HOME>#g
+ 180340 sed s#<HOME>#<HOME>#g
+ 180436 sed s#<HOME>#<HOME>#g
+ 180520 sed s#<HOME>#<HOME>#g
+ 180597 sed s#<HOME>#<HOME>#g
+ 180659 sed s#<HOME>#<HOME>#g
+ 180713 sed s#<HOME>#<HOME>#g

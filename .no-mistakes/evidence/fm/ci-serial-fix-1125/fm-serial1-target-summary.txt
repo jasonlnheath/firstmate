@@ -1,0 +1,17 @@
+label=target
+worktree=/home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M8AQ910DZ8X1ZE6TFZA37DWH
+unit=fm-serial1-target-1795658196
+runner_exit=0
+duration_seconds=414
+ok_lines=88
+not_ok_lines=0
+fixture_root=/tmp/fm-supervision-host.KOo5vu
+FM_TEST_END 2026-11-26T02:03:30Z tests/fm-supervision-host.test.sh exit=0 duration_ms=413399 gate_skip=false
+samples=195
+max_descendants=24
+median_descendants=10
+mean_descendants=9.6
+max_root_args=17
+median_root_args=1
+first_sample=1795658196,0,6,0
+last_sample=1795658608,86,5,0

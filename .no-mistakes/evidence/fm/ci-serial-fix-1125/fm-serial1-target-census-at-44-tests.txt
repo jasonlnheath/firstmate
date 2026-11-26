@@ -1,0 +1,15 @@
+census: arm=target at >= 44 tests passed
+ok_lines=44
+fixture_root=/tmp/fm-supervision-host.KOo5vu
+runner_pid=1586155 total_tree_processes=11 (runner included)
+
+1586155 1586145     132 bash bin/fm-test-run.sh --lane portable-serial-1of10 --fail-on-gate-skip Pi extension typecheck prerequisite not found --json /home/jason/.no-mistakes/evidence/01M8AQ910DZ8X1ZE6TFZA37DWH/fm-serial1-target-timing.json
+1587635 1586155     131 bash tests/fm-supervision-host.test.sh
+1587636 1586155     131 tee /tmp/fm-test-run.MB13bF/out.0
+1792667 1587635       1 /tmp/fm-supervision-host.KOo5vu/fakebin/fakebin/claude -c        printf "%s\n" "$$" > "$FM_HOME/state/.lock"       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"       for seed in "$FM_HOME"/mirror-seed.*; do         [ -f "$seed" ] || continue         "$FM_HOME/bin/fm-host-mirror.sh" hook claude < "$seed"       done       while [ ! -e "$FM_HOME/session.stop" ] && [ -d "$FM_HOME" ] \         && kill -0 "$FM_TEST_SUITE_PID" 2>/dev/null; do         if [ -e "$FM_HOME/stop.go" ]; then           rm -f "$FM_HOME/stop.go"           if [ -e "$FM_HOME/hook.own-group" ]; then             # Claude owns the hook as a process group of its own and tears the             # whole group down once the hook has exited.             printf "{\"session_id\":\"sess-host-hook\",\"stop_hook_active\":false}\n" > "$FM_HOME/hook.stdin"             set -m             "$FM_HOME/bin/fm-claude-stop-autoarm.sh" < "$FM_HOME/hook.stdin" > "$FM_HOME/hook.out" 2> "$FM_HOME/hook.err" &             printf "%s\n" "$!" > "$FM_HOME/hook.pgid"             wait "$!"             printf "%s\n" "$?" > "$FM_HOME/hook.rc"             set +m           else             printf "{\"session_id\":\"sess-host-hook\",\"stop_hook_active\":false}\n" \               | "$FM_HOME/bin/fm-claude-stop-autoarm.sh" > "$FM_HOME/hook.out" 2> "$FM_HOME/hook.err"             printf "%s\n" "$?" > "$FM_HOME/hook.rc"           fi         fi         sleep 0.1       done     
+1792904 1792667       1 bash /tmp/fm-supervision-host.KOo5vu/hook-inbox-after-handled/bin/fm-claude-stop-autoarm.sh
+1793025 1792904       1 bash /tmp/fm-supervision-host.KOo5vu/hook-inbox-after-handled/bin/fm-supervision-host.sh park
+1795215 1793025       0 bash /tmp/fm-supervision-host.KOo5vu/hook-inbox-after-handled/bin/fm-watch-arm.sh
+1795243 1793025       0 sleep 0.2
+1795249 1795215       0 bash /tmp/fm-supervision-host.KOo5vu/hook-inbox-after-handled/bin/fm-watch.sh
+1795287 1795215       0 sleep 0.2

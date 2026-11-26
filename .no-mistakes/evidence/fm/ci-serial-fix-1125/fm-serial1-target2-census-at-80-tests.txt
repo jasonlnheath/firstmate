@@ -1,0 +1,15 @@
+census: arm=target2 at >= 80 tests passed
+ok_lines=80
+fixture_root=/tmp/fm-supervision-host.NtgyM0
+runner_pid=38036 total_tree_processes=11 (runner included)
+
+  38036   38026     378 bash bin/fm-test-run.sh --lane portable-serial-1of10 --fail-on-gate-skip Pi extension typecheck prerequisite not found --json /home/jason/.no-mistakes/evidence/01M8AQ910DZ8X1ZE6TFZA37DWH/fm-serial1-target2-timing.json
+  39514   38036     378 bash tests/fm-supervision-host.test.sh
+  39515   38036     378 tee /tmp/fm-test-run.UskMea/out.0
+ 596477   39514       2 /tmp/fm-supervision-host.NtgyM0/fakebin/fakebin/claude -c        printf "%s\n" "$$" > "$FM_HOME/state/.lock"       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"       rm -f "$FM_HOME/host.rc"       for seed in "$FM_HOME"/mirror-seed.*; do         [ -f "$seed" ] || continue         FM_ROOT_OVERRIDE="$MIRROR_ROOT" "$MIRROR_ROOT/bin/fm-host-mirror.sh" hook claude < "$seed"       done       "$0" park "$@" > "$FM_HOME/host.out" 2>&1       printf "%s\n" "$?" > "$FM_HOME/host.rc"      /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M8AQ910DZ8X1ZE6TFZA37DWH/bin/fm-supervision-host.sh
+ 596482  596477       2 bash /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M8AQ910DZ8X1ZE6TFZA37DWH/bin/fm-supervision-host.sh park
+ 598401  596482       1 bash /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M8AQ910DZ8X1ZE6TFZA37DWH/bin/fm-watch-arm.sh
+ 599401  596482       0 bash /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M8AQ910DZ8X1ZE6TFZA37DWH/bin/fm-supervision-host.sh park
+ 598432  598401       1 bash /home/jason/.no-mistakes/worktrees/5a4bc58bcad7/01M8AQ910DZ8X1ZE6TFZA37DWH/bin/fm-watch.sh
+ 600243  599401       0 sleep 0.1
+ 599003  598432       0 sleep 1

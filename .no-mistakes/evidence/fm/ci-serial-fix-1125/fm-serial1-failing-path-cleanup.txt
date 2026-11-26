@@ -1,0 +1,23 @@
+Bonus check: a failing test's fixtures are still stopped by the suite's
+unchanged exit trap (the sweep only adds stops for passing tests)
+==================================================================
+
+The first target-arm run (launched from inside the validation agent's Claude
+Code session; archived as fm-serial1-target-claudeancestry-*) failed at test
+87 of 88 for an environment reason unrelated to the change (the Windows-tagged
+lock emulation; see fm-serial1-tagged-ownership-repro.txt). `fail` exits the
+suite immediately, so that run exercised exactly the path the fix leaves
+untouched: suite_cleanup through the EXIT trap.
+
+Observed after that run exited (fm_test_cleanup runs at trap time):
+
+  - `ls -d /tmp/fm-supervision-host.*`     -> empty: the suite's fixture root
+    (fm-supervision-host.M4Ogu9) was removed by the trap's fm_test_cleanup.
+  - `ps -ww -eo pid=,args= | grep fm-supervision-host.M4Ogu9`
+    -> no live process referenced the removed root (the only matches were the
+    checking shell's own pipeline).
+
+So the 86 tests that had passed before the failure left nothing running (the
+sweep had stopped them at their pass lines), and the failing test's own home
+was stopped and deleted by the unchanged exit trap. The fix's contract --
+"only a failing test's home waits for the trap" -- held on a real failure.

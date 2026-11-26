@@ -1,0 +1,13 @@
+census: arm=target at >= 44 tests passed
+ok_lines=44
+fixture_root=/tmp/fm-supervision-host.M4Ogu9
+runner_pid=874788 total_tree_processes=15 (runner included)
+
+ 874788  874784     134 bash bin/fm-test-run.sh --lane portable-serial-1of10 --fail-on-gate-skip Pi extension typecheck prerequisite not found --json /home/jason/.no-mistakes/evidence/01M8AQ910DZ8X1ZE6TFZA37DWH/fm-serial1-target-timing.json
+ 876264  874788     133 bash tests/fm-supervision-host.test.sh
+ 876265  874788     133 tee /tmp/fm-test-run.ssu0SY/out.0
+1088867  876264       0 /tmp/fm-supervision-host.M4Ogu9/fakebin/fakebin/claude -c        printf "%s\n" "$$" > "$FM_HOME/state/.lock"       printf "%s\n" "$$" >> "$FM_HOME/claude-pids"       for seed in "$FM_HOME"/mirror-seed.*; do         [ -f "$seed" ] || continue         "$FM_HOME/bin/fm-host-mirror.sh" hook claude < "$seed"       done       while [ ! -e "$FM_HOME/session.stop" ] && [ -d "$FM_HOME" ] \         && kill -0 "$FM_TEST_SUITE_PID" 2>/dev/null; do         if [ -e "$FM_HOME/stop.go" ]; then           rm -f "$FM_HOME/stop.go"           if [ -e "$FM_HOME/hook.own-group" ]; then             # Claude owns the hook as a process group of its own and tears the             # whole group down once the hook has exited.             printf "{\"session_id\":\"sess-host-hook\",\"stop_hook_active\":false}\n" > "$FM_HOME/hook.stdin"             set -m             "$FM_HOME/bin/fm-claude-stop-autoarm.sh" < "$FM_HOME/hook.stdin" > "$FM_HOME/hook.out" 2> "$FM_HOME/hook.err" &             printf "%s\n" "$!" > "$FM_HOME/hook.pgid"             wait "$!"             printf "%s\n" "$?" > "$FM_HOME/hook.rc"             set +m           else             printf "{\"session_id\":\"sess-host-hook\",\"stop_hook_active\":false}\n" \               | "$FM_HOME/bin/fm-claude-stop-autoarm.sh" > "$FM_HOME/hook.out" 2> "$FM_HOME/hook.err"             printf "%s\n" "$?" > "$FM_HOME/hook.rc"           fi         fi         sleep 0.1       done     
+1089110 1088867       0 bash /tmp/fm-supervision-host.M4Ogu9/hook-inbox-after-handled/bin/fm-claude-stop-autoarm.sh
+1089273 1089110       0 bash /tmp/fm-supervision-host.M4Ogu9/hook-inbox-after-handled/bin/fm-supervision-host.sh park
+1089421 1089273       0 bash /tmp/fm-supervision-host.M4Ogu9/hook-inbox-after-handled/bin/fm-watch-arm.sh
+1089461 1089421       0 bash /tmp/fm-supervision-host.M4Ogu9/hook-inbox-after-handled/bin/fm-watch.sh

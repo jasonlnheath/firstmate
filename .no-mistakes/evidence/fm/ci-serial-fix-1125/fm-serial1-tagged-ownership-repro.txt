@@ -1,0 +1,68 @@
+Diagnosis: why one test failed when the lane was launched from inside a
+Claude Code session, and passed under a clean ancestry
+===================================================================
+
+Symptom (first target-arm run, launched from inside the validation agent's
+Claude Code session, evidence fm-serial1-target-claudeancestry-run.log):
+
+    not ok - tagged: the host never started a watcher cycle:
+    supervision-host stood down: this session does not own supervision
+
+That is test_tagged_lock_holder_reaches_the_engine_whole (position 87 of 88),
+which emulates a Windows/Git Bash home: state/.lock holds a Windows-tagged
+holder ("win:7204"), a fake `uname` reports MINGW, and a fake `ps -W` lists
+claude.exe with WINPID 7204. bin/fm-session-lock-lib.sh's
+fm_harness_ancestry_pids() walks the host's ancestry for harness-shaped
+processes and consults the Windows ps -W bridge ONLY when it finds none - the
+shape a hosted runner has. When the lane runs as a descendant of a real Claude
+Code session, the walk finds the real `claude` process (this validation
+agent's own harness), so the bridge is skipped, "win:7204" is not recognized,
+and the host correctly stands down. The sweep change is not involved: nothing
+it stops is ever an ancestor of the suite, and the same fixture is accepted
+the moment the ancestry is clean.
+
+Direct reproduction of the ownership check alone (fixture built exactly as
+the test builds it; fm_session_lock_owned_by_self called directly):
+
+  A) launched from inside the Claude Code session (claude in ancestry):
+
+      uname=MINGW64_NT-10.0-26200
+      ancestry:
+        718343            <- the real `claude` process of the session
+      VERDICT: NOT-OWNED
+
+  B) launched under a transient systemd user unit (clean ancestry, like CI):
+
+      uname=MINGW64_NT-10.0-26200
+      ancestry:
+        win:7204          <- recognized through the Windows ps -W bridge
+      VERDICT: OWNED
+
+Reproduction commands (from the run worktree, shell date 2026-11-26):
+
+  H=$(mktemp -d /tmp/fm-tagged-repro.XXXXXX)
+  mkdir -p "$H/state" "$H/fakebin"
+  printf 'win:7204\n' > "$H/state/.lock"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" MINGW64_NT-10.0-26200\n' > "$H/fakebin/uname"
+  cat > "$H/fakebin/ps" <<'SH'
+  #!/usr/bin/env bash
+  [ "$*" = -W ] || exec /bin/ps "$@"
+  printf '%s\n' '      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND'
+  printf '%s\n' '  4201508       0       0       7204  ?              0 22:24:48 C:\Users\u\.local\bin\claude.exe'
+  SH
+  chmod +x "$H/fakebin/uname" "$H/fakebin/ps"
+
+  # A: bash -c '. <worktree>/bin/fm-session-lock-lib.sh;
+  #      fm_harness_ancestry_pids;
+  #      fm_session_lock_owned_by_self "$FM_HOME/state" && echo OWNED || echo NOT-OWNED'
+  #    with PATH="$H/fakebin:$PATH" CLAUDE_PID=7204
+  #    CLAUDE_CODE_SESSION_ID=tagged-session FM_HOME="$H"
+  # B: the same, but launched with:
+  #    systemd-run --user --collect --pipe --wait \
+  #      --setenv=PATH="$H/fakebin:/usr/bin:/bin" \
+  #      --setenv=CLAUDE_PID=7204 \
+  #      --setenv=CLAUDE_CODE_SESSION_ID=tagged-session
+
+Both evidence arms (target and base) were therefore re-run inside transient
+systemd user units (run-serial1-lane-inner.sh), which is also the closer match
+to a hosted CI runner's clean process ancestry and environment.
